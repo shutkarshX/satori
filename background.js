@@ -35,14 +35,11 @@ async function readGeminiResponse(tabId) {
           if (!nodes.length) continue;
           const latest = nodes[nodes.length - 1];
           const parts = [latest, ...latest.querySelectorAll('.markdown, [class*="markdown" i], [class*="response" i], message-content')];
-          const codeBlocks = [...latest.querySelectorAll('pre code, pre')]
-            .map((node) => (node.textContent || node.innerText || '').replace(/\r\n?/g, '\n').trim())
-            .filter((text) => text.length > 20);
-          const text = codeBlocks.length
-            ? codeBlocks.sort((a, b) => b.length - a.length)[0]
-            : parts.map((n) => clean((n.innerText || n.textContent || '').trim()))
-              .filter((value) => value.length > 20)
-              .reduce((longest, value) => value.length > longest.length ? value : longest, '');
+          // Gemini may render one answer partly as ordinary text and partly in
+          // a scrollable <pre>/<code> box. Read the whole latest response node
+          // so neither portion is discarded.
+          const raw = (latest.innerText || latest.textContent || '').replace(/\r\n?/g, '\n').trim();
+          const text = clean(raw || parts.map((n) => (n.innerText || n.textContent || '').trim()).join('\n'));
           const generating = Boolean(document.querySelector(
             'button[aria-label*="stop" i], button[data-tooltip*="stop" i], [aria-label*="generating" i]'
           ));
