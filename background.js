@@ -13,9 +13,18 @@ async function readGoogleAIOverview(tabId) {
       func: () => {
         const clean = (value) => value.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
         const selectors = ['[data-attrid="wa"]', '[data-attrid="AIOverview"]', '[data-mce-source]', 'div[jsname="N760b"]'];
-        const candidates = selectors.flatMap((selector) => [...document.querySelectorAll(selector)])
+        const nodes = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
+        const candidates = nodes
           .map((node) => clean(node.innerText || node.textContent || ''))
           .filter((text) => text.length > 40);
+        nodes.forEach((node) => {
+          let parent = node;
+          for (let depth = 0; depth < 7 && parent; depth += 1) {
+            const text = clean(parent.innerText || '');
+            if (text.length > 40 && text.length < 40000) candidates.push(text);
+            parent = parent.parentElement;
+          }
+        });
         const overviewLabel = [...document.querySelectorAll('h1,h2,h3,div,span')]
           .find((node) => /^AI Overview$/i.test((node.innerText || '').trim()));
         if (overviewLabel?.parentElement) {
