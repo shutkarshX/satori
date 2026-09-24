@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "description": "A practice-study assistant for MCQs and coding questions using ChatGPT in the browser.",
   "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel"],
-  "host_permissions": ["https://chatgpt.com/*", "https://www.chatgpt.com/*"],
+  "host_permissions": ["https://chatgpt.com/*", "https://www.chatgpt.com/*", "https://chat.openai.com/*"],
   "background": { "service_worker": "background.js" },
   "side_panel": { "default_path": "sidepanel.html" },
   "action": {
@@ -18,7 +18,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chatgpt.com/*", "https://www.chatgpt.com/*"],
+      "matches": ["https://chatgpt.com/*", "https://www.chatgpt.com/*", "https://chat.openai.com/*"],
       "js": ["chatgpt.js"],
       "run_at": "document_idle"
     }

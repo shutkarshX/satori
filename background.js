@@ -73,6 +73,7 @@ async function waitForChatGPT(tabId, prompt, attempts = 20) {
     } catch (_error) { /* retry while the page finishes loading */ }
   }
   if (attempts > 0) setTimeout(() => waitForChatGPT(tabId, prompt, attempts - 1), 500);
+  else setStatus('ChatGPT input was not ready. Log in to ChatGPT and try again.', 'error');
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -84,7 +85,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type !== 'OPEN_OR_REUSE_GEMINI') return;
   chrome.storage.local.remove('latestGeminiResponse');
   setStatus('Opening ChatGPT in the background…', 'waiting');
-  chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://www.chatgpt.com/*'] }, (tabs) => {
+  chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://www.chatgpt.com/*', 'https://chat.openai.com/*'] }, (tabs) => {
     const existing = tabs[0];
     const activate = (tab) => {
       // Keep the assignment tab in front. Gemini is used as an inactive helper tab.

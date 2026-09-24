@@ -75,7 +75,7 @@ $('gemini').addEventListener('click', async () => {
     const prompt = buildPrompt();
     const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_GEMINI', prompt });
     if (!result?.ok) throw new Error('Could not open Gemini.');
-    status(result.reused ? 'Reused Gemini and sent the prompt.' : 'Opened Gemini and sent the prompt.');
+    status(result.reused ? 'Reused ChatGPT and sent the prompt.' : 'Opened ChatGPT in the background and sent the prompt.');
   } catch (e) { status(e.message, true); }
 });
 
