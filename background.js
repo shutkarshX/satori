@@ -60,9 +60,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   chrome.tabs.query({ url: 'https://gemini.google.com/*' }, (tabs) => {
     const existing = tabs[0];
     const activate = (tab) => {
-      chrome.tabs.update(tab.id, { active: true }, () => {
-        chrome.windows.update(tab.windowId, { focused: true });
-        chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+      // Keep the assignment tab in front. Gemini is used as an inactive helper tab.
+      chrome.tabs.update(tab.id, { active: false }, () => {
         waitForGemini(tab.id, message.prompt);
       });
     };
@@ -71,11 +70,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ ok: true, reused: true });
       return;
     }
-    chrome.tabs.create({ url: 'https://gemini.google.com/app', active: true }, (tab) => {
+    chrome.tabs.create({ url: 'https://gemini.google.com/app', active: false }, (tab) => {
       const listener = (tabId, changeInfo) => {
         if (tabId === tab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
-          chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
           waitForGemini(tab.id, message.prompt);
         }
       };
