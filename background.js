@@ -85,29 +85,61 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, attempts = 6
   else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
 }
 
-async function startGoogleSearch(query, requestId, mode) {
-  const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
-  chrome.storage.local.remove('latestGoogleResponse');
-  addDiagnostic('tab', 'creating Google Search tab');
-  setStatus('Opening Google Search for AI Overview in the background…', 'waiting');
-  chrome.tabs.create({ url, active: false }, (tab) => {
-    if (chrome.runtime.lastError || !tab?.id) {
-      setStatus(`Could not open Google Search: ${chrome.runtime.lastError?.message || 'Chrome did not create the tab.'}`, 'error');
-      return;
+async function getReusableGoogleTab(windowId) {
+  const stored = await chrome.storage.local.get(['satoriGoogleTabId', 'satoriGoogleWindowId']);
+  if (stored.satoriGoogleTabId && stored.satoriGoogleWindowId === windowId) {
+    try {
+      const tab = await chrome.tabs.get(stored.satoriGoogleTabId);
+      if (tab?.windowId === windowId && /^https:\/\/(www\.)?google\./i.test(tab.url || '')) return tab;
+    } catch (_error) {
+      addDiagnostic('tab', 'saved Google tab no longer exists');
     }
-    const listener = async (tabId, changeInfo) => {
-      if (tabId !== tab.id || changeInfo.status !== 'complete') return;
-      chrome.tabs.onUpdated.removeListener(listener);
-      setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
-      addDiagnostic('page', 'Google Search page loaded');
-      const before = (await readGoogleAIOverview(tab.id)).text || '';
-      pollGoogleAIOverview(tab.id, before, requestId, mode);
-    };
-    chrome.tabs.onUpdated.addListener(listener);
-  });
+  }
+  return null;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+async function startGoogleSearch(query, requestId, mode, assignmentTab) {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
+  await chrome.storage.local.remove(['latestGoogleResponse', 'latestGoogleRawResponse']);
+  const windowId = assignmentTab?.windowId;
+  let tab = windowId ? await getReusableGoogleTab(windowId) : null;
+  const reused = Boolean(tab?.id);
+  addDiagnostic('tab', tab ? `reusing Google Search tab ${tab.id}` : 'creating reusable Google Search tab');
+  setStatus('Opening Google Search for AI Overview in the background…', 'waiting');
+  let targetTabId = tab?.id || null;
+  let handled = false;
+  const handleLoaded = async () => {
+    if (handled || requestId !== activeRequestId || !targetTabId) return;
+    handled = true;
+    chrome.tabs.onUpdated.removeListener(listener);
+    setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
+    addDiagnostic('page', `Google Search tab ${targetTabId} loaded`);
+    const reading = await readGoogleAIOverview(targetTabId);
+    const before = mode === 'coding' ? (reading.code || '') : (reading.text || '');
+    pollGoogleAIOverview(targetTabId, before, requestId, mode);
+  };
+  const listener = (updatedTabId, changeInfo) => {
+    if (updatedTabId === targetTabId && changeInfo.status === 'complete') handleLoaded();
+  };
+  chrome.tabs.onUpdated.addListener(listener);
+  try {
+    if (tab?.id) {
+      await chrome.tabs.update(tab.id, { url, active: false });
+    } else {
+      tab = await chrome.tabs.create({ url, active: false, windowId });
+      if (!tab?.id) throw new Error('Chrome did not create the tab.');
+      targetTabId = tab.id;
+      await chrome.storage.local.set({ satoriGoogleTabId: tab.id, satoriGoogleWindowId: tab.windowId });
+    }
+    if (!reused && tab.status === 'complete') handleLoaded();
+  } catch (error) {
+    chrome.tabs.onUpdated.removeListener(listener);
+    setStatus(`Could not open Google Search: ${error.message}`, 'error');
+    addDiagnostic('tab-error', error.message);
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== 'OPEN_GOOGLE_SEARCH') return;
   activeRequestId += 1;
   const requestId = activeRequestId;
@@ -121,6 +153,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
   addDiagnostic('prompt', `Google raw-page query length=${query.length}`);
-  if (provider === 'google') startGoogleSearch(query, requestId, message.mode || 'text');
+  if (provider === 'google') startGoogleSearch(query, requestId, message.mode || 'text', sender.tab);
   sendResponse({ ok: true });
 });
