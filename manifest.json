@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini Practice Assistant",
+  "version": "0.2.0",
+  "description": "Extract practice questions, prepare Gemini prompts, and type reviewed text into the assignment editor without clipboard paste.",
+  "permissions": ["activeTab", "scripting", "storage", "clipboardWrite", "tabs"],
+  "host_permissions": ["https://gemini.google.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Gemini Practice Assistant",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["gemini.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

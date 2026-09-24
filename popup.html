@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gemini Practice Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header><strong>Gemini Practice Assistant</strong><span class="badge">practice only</span></header>
+  <label for="mode">Question type</label>
+  <select id="mode"><option value="mcq">MCQ</option><option value="coding">Coding</option></select>
+  <button id="extract">Read current question</button>
+  <textarea id="question" placeholder="Select question text on the page, or click Read current question."></textarea>
+  <label for="extra">Optional instructions</label>
+  <input id="extra" placeholder="e.g. use Python 3.11">
+  <button id="gemini" class="primary">Prepare prompt & open Gemini</button>
+  <hr>
+  <label for="draft">Reviewed answer/code to type into the assignment</label>
+  <textarea id="draft" placeholder="Click the assignment editor first, then put reviewed text here."></textarea>
+  <label class="check"><input type="checkbox" id="append"> append instead of replace</label>
+  <button id="type">Type into focused assignment editor</button>
+  <p id="status" role="status"></p>
+  <small>Final review and submission stay manual. The extension does not use an AI API.</small>
+  <script src="popup.js"></script>
+</body>
+</html>
