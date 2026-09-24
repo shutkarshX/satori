@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+let fullPageContext = '';
 const status = (message, error = false) => {
   $('status').textContent = message;
   $('status').style.color = error ? '#b3261e' : '#4a5560';
@@ -71,17 +72,24 @@ async function extract() {
   if (!result?.ok) throw new Error(result?.error || 'Could not read the page.');
   if (!result.text || result.text.length < 10) throw new Error('Very little text was found. Select the question manually, then try again.');
   $('question').value = result.text;
-  status(`Read ${result.text.length.toLocaleString()} characters from the page.`);
+  fullPageContext = result.fullText || result.text;
+  if (fullPageContext.length > result.text.length * 1.25) {
+    status(`Read ${result.text.length.toLocaleString()} focused characters plus ${fullPageContext.length.toLocaleString()} full-page characters.`);
+  }
+  else status(`Read ${result.text.length.toLocaleString()} characters from the page.`);
 }
 
 function buildPrompt() {
   const question = $('question').value.trim();
   if (!question) throw new Error('Read or enter a question first.');
   const extra = $('extra').value.trim();
+  const context = $('mode').value === 'coding' && fullPageContext.length > question.length * 1.25
+    ? `\n\nFULL PAGE CONTEXT (use this to recover omitted problem details; solve only the coding problem):\n${fullPageContext}`
+    : '';
   if ($('mode').value === 'mcq') {
-    return `You are helping me study a practice assignment. Analyze the MCQ below. Explain the reasoning, evaluate every option, and then state the best answer clearly as: ANSWER: <option letter/text>. If the question is ambiguous or information is missing, say so instead of pretending certainty. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}`;
+    return `You are helping me study a practice assignment. Analyze the MCQ below. Explain the reasoning, evaluate every option, and then state the best answer clearly as: ANSWER: <option letter/text>. If the question is ambiguous or information is missing, say so instead of pretending certainty. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}${context}`;
   }
-  return `You are helping me with a practice coding assignment. Solve the problem below. Return ONLY ONE complete, compilable, submission-ready source file. Finish writing the entire program before responding; never return a fragment, partial draft, or code that begins in the middle of a function. Include every required import or header, all global variables and helper methods, the entry point, and the required class wrapper. If the language is Java, use import java.util.*; and public class Main with public static void main(String[] args). If the language is C++, include the required headers and a complete main function. Preserve normal source formatting: put each statement and declaration on appropriate separate lines, preserve indentation, and do not minify, compress, or remove whitespace. Do not include an explanation, algorithm, complexity analysis, headings, comments outside the code, markdown fences, or any text before or after the code. Use the requested programming language and exact input/output format. Do not provide alternative solutions.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}`;
+  return `You are helping me with a practice coding assignment. Solve the problem below. Return ONLY ONE complete, compilable, submission-ready source file. Finish writing the entire program before responding; never return a fragment, partial draft, or code that begins in the middle of a function. Include every required import or header, all global variables and helper methods, the entry point, and the required class wrapper. If the language is Java, use import java.util.*; and public class Main with public static void main(String[] args). If the language is C++, include the required headers and a complete main function. Preserve normal source formatting: put each statement and declaration on appropriate separate lines, preserve indentation, and do not minify, compress, or remove whitespace. Do not include an explanation, algorithm, complexity analysis, headings, comments outside the code, markdown fences, or any text before or after the code. Use the requested programming language and exact input/output format. Do not provide alternative solutions.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}${context}`;
 }
 
 $('extract').addEventListener('click', async () => {

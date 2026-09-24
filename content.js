@@ -33,6 +33,10 @@
     return best || visibleText(document.body).slice(0, 30000);
   }
 
+  function extractFullPage() {
+    return visibleText(document.body).slice(0, 50000);
+  }
+
   function setNativeValue(element, value) {
     const tag = element.tagName.toLowerCase();
     const proto = tag === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -60,7 +64,7 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
-      if (message.type === 'EXTRACT_QUESTION') sendResponse({ ok: true, text: extractQuestion(), title: document.title, url: location.href });
+      if (message.type === 'EXTRACT_QUESTION') sendResponse({ ok: true, text: extractQuestion(), fullText: extractFullPage(), title: document.title, url: location.href });
       if (message.type === 'TYPE_INTO_EDITOR') sendResponse({ ok: true, typed: typeIntoEditor(message.text || '', Boolean(message.append)) });
     } catch (error) {
       sendResponse({ ok: false, error: error.message });
