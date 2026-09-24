@@ -7,7 +7,7 @@ const status = (message, error = false) => {
 function showSavedResponse(response) {
   if (response) {
     $('response').value = response;
-    status('Latest Gemini response loaded.');
+    status('Latest ChatGPT response loaded.');
   }
 }
 

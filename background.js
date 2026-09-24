@@ -4,13 +4,13 @@ chrome.runtime.onInstalled.addListener(() => {
 
 const setStatus = (text, kind = 'waiting') => chrome.storage.local.set({ satoriStatus: { text, kind, at: Date.now() } });
 
-async function ensureGeminiScript(tabId) {
+async function ensureChatGPTScript(tabId) {
   try {
-    await chrome.tabs.sendMessage(tabId, { type: 'PING_GEMINI' });
+    await chrome.tabs.sendMessage(tabId, { type: 'PING_CHATGPT' });
     return true;
   } catch (_error) {
     try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['gemini.js'] });
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['chatgpt.js'] });
       return true;
     } catch (_injectError) {
       return false;
@@ -18,7 +18,7 @@ async function ensureGeminiScript(tabId) {
   }
 }
 
-async function readGeminiResponse(tabId) {
+async function readChatGPTResponse(tabId) {
   try {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
@@ -29,7 +29,7 @@ async function readGeminiResponse(tabId) {
         };
         // Keep selectors narrow: broad class/data-test selectors can match Gemini's
         // whole application shell and make an old page look like a new answer.
-        const responseSelectors = ['model-response', '[data-message-author-role="model"]', 'message-content', '.markdown'];
+        const responseSelectors = ['[data-message-author-role="assistant"]', '[data-testid^="conversation-turn"] [data-message-author-role="assistant"]', '.markdown'];
         for (const selector of responseSelectors) {
           const nodes = [...document.querySelectorAll(selector)].filter((n) => (n.innerText || n.textContent || '').trim());
           if (!nodes.length) continue;
@@ -46,50 +46,50 @@ async function readGeminiResponse(tabId) {
   } catch (_error) { return ''; }
 }
 
-async function pollGeminiResponse(tabId, before, attempts = 90, stable = 0, previous = '') {
-  const text = await readGeminiResponse(tabId);
+async function pollChatGPTResponse(tabId, before, attempts = 90, stable = 0, previous = '') {
+  const text = await readChatGPTResponse(tabId);
   if (text && text !== before && text === previous) stable += 1; else stable = 0;
   if (text && text !== before && stable >= 2) {
     chrome.storage.local.set({ latestGeminiResponse: text, latestGeminiAt: Date.now() });
-    setStatus('Response ready — open Satori to review it.', 'ready');
+    setStatus('ChatGPT response ready — open Satori to review it.', 'ready');
     chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text }).catch(() => {});
     return;
   }
-  if (attempts > 0) setTimeout(() => pollGeminiResponse(tabId, before, attempts - 1, stable, text), 1000);
-  else setStatus('Gemini did not return a response. Open Gemini and check it.', 'error');
+  if (attempts > 0) setTimeout(() => pollChatGPTResponse(tabId, before, attempts - 1, stable, text), 1000);
+  else setStatus('ChatGPT did not return a response. Open ChatGPT and check it.', 'error');
 }
 
-async function waitForGemini(tabId, prompt, attempts = 20) {
-  const ready = await ensureGeminiScript(tabId);
+async function waitForChatGPT(tabId, prompt, attempts = 20) {
+  const ready = await ensureChatGPTScript(tabId);
   if (ready) {
     try {
-      const before = await readGeminiResponse(tabId);
-      const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', prompt });
+      const before = await readChatGPTResponse(tabId);
+      const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', prompt });
       if (result?.ok) {
-        setStatus('Prompt sent — waiting for Gemini response…', 'waiting');
-        pollGeminiResponse(tabId, before);
+        setStatus('Prompt sent — waiting for ChatGPT response…', 'waiting');
+        pollChatGPTResponse(tabId, before);
         return;
       }
     } catch (_error) { /* retry while the page finishes loading */ }
   }
-  if (attempts > 0) setTimeout(() => waitForGemini(tabId, prompt, attempts - 1), 500);
+  if (attempts > 0) setTimeout(() => waitForChatGPT(tabId, prompt, attempts - 1), 500);
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'GEMINI_RESPONSE') {
     chrome.storage.local.set({ latestGeminiResponse: message.text, latestGeminiAt: Date.now() });
-    chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text: message.text }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'CHATGPT_RESPONSE', text: message.text }).catch(() => {});
     return;
   }
   if (message.type !== 'OPEN_OR_REUSE_GEMINI') return;
   chrome.storage.local.remove('latestGeminiResponse');
-  setStatus('Opening Gemini in the background…', 'waiting');
-  chrome.tabs.query({ url: 'https://gemini.google.com/*' }, (tabs) => {
+  setStatus('Opening ChatGPT in the background…', 'waiting');
+  chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://www.chatgpt.com/*'] }, (tabs) => {
     const existing = tabs[0];
     const activate = (tab) => {
       // Keep the assignment tab in front. Gemini is used as an inactive helper tab.
       chrome.tabs.update(tab.id, { active: false }, () => {
-        waitForGemini(tab.id, message.prompt);
+        waitForChatGPT(tab.id, message.prompt);
       });
     };
     if (existing) {
@@ -97,11 +97,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ ok: true, reused: true });
       return;
     }
-    chrome.tabs.create({ url: 'https://gemini.google.com/app', active: false }, (tab) => {
+    chrome.tabs.create({ url: 'https://chatgpt.com/', active: false }, (tab) => {
       const listener = (tabId, changeInfo) => {
         if (tabId === tab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
-          waitForGemini(tab.id, message.prompt);
+          waitForChatGPT(tab.id, message.prompt);
         }
       };
       chrome.tabs.onUpdated.addListener(listener);
