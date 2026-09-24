@@ -7,7 +7,7 @@ const status = (message, error = false) => {
 function showSavedResponse(response) {
   if (response) {
     $('response').value = response;
-    status('Latest Gemini response loaded.');
+    status('Latest Google AI Overview loaded.');
   }
 }
 
@@ -18,12 +18,12 @@ function showAiStatus(value) {
   el.className = `ai-status ${value.kind || 'idle'}`;
 }
 
-chrome.storage.local.get(['latestGeminiResponse', 'satoriStatus'], (result) => {
-  showSavedResponse(result.latestGeminiResponse);
+chrome.storage.local.get(['latestGoogleResponse', 'satoriStatus'], (result) => {
+  showSavedResponse(result.latestGoogleResponse);
   showAiStatus(result.satoriStatus);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.latestGeminiResponse) showSavedResponse(changes.latestGeminiResponse.newValue);
+  if (area === 'local' && changes.latestGoogleResponse) showSavedResponse(changes.latestGoogleResponse.newValue);
   if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
 });
 
@@ -73,9 +73,9 @@ $('extract').addEventListener('click', async () => {
 $('gemini').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_GEMINI', prompt });
-    if (!result?.ok) throw new Error('Could not open Gemini.');
-    status(result.reused ? 'Reused Gemini and sent the prompt.' : 'Opened Gemini and sent the prompt.');
+    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt });
+    if (!result?.ok) throw new Error('Could not open Google Search.');
+    status('Google Search opened in the background. Checking for AI Overview…');
   } catch (e) { status(e.message, true); }
 });
 

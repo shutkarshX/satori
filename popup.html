@@ -14,17 +14,17 @@
   <textarea id="question" placeholder="Select question text on the page, or click Read current question."></textarea>
   <label for="extra">Optional instructions</label>
   <input id="extra" placeholder="e.g. use Python 3.11">
-  <button id="gemini" class="primary">Ask Gemini & show result</button>
+  <button id="gemini" class="primary">Search Google & show AI result</button>
   <div id="aiStatus" class="ai-status idle">Idle — ready for a question</div>
-  <label for="response">Latest Gemini response</label>
-  <textarea id="response" readonly placeholder="Your latest Gemini answer will appear here after the response finishes."></textarea>
+  <label for="response">Latest Google AI Overview</label>
+  <textarea id="response" readonly placeholder="The Google AI Overview will appear here after the search finishes."></textarea>
   <hr>
   <label for="draft">Reviewed answer/code to type into the assignment</label>
   <textarea id="draft" placeholder="Click the assignment editor first, then put reviewed text here."></textarea>
   <label class="check"><input type="checkbox" id="append"> append instead of replace</label>
   <button id="type">Type into focused assignment editor</button>
   <p id="status" role="status"></p>
-  <small>Gemini's response appears in the Chrome side panel. Final review and submission stay manual.</small>
+  <small>Google Search runs in the background. Final review and submission stay manual.</small>
   <script src="popup.js"></script>
 </body>
 </html>
