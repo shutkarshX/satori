@@ -34,6 +34,10 @@ async function readGeminiResponse(tabId) {
           const nodes = [...document.querySelectorAll(selector)].filter((n) => (n.innerText || n.textContent || '').trim());
           if (!nodes.length) continue;
           const latest = nodes[nodes.length - 1];
+          const codeBlocks = [...latest.querySelectorAll('pre code, pre')]
+            .map((node) => (node.textContent || node.innerText || '').replace(/\r\n?/g, '\n').trim())
+            .filter((text) => text.length > 20);
+          if (codeBlocks.length) return codeBlocks.sort((a, b) => b.length - a.length)[0];
           const parts = [latest, ...latest.querySelectorAll('.markdown, [class*="markdown" i], [class*="response" i], message-content')];
           return parts.map((n) => clean((n.innerText || n.textContent || '').trim()))
             .filter((text) => text.length > 20)
