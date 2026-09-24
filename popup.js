@@ -7,7 +7,7 @@ const status = (message, error = false) => {
 function showSavedResponse(response) {
   if (response) {
     $('response').value = response;
-    status('Latest Google AI Overview loaded.');
+    status('Latest Google AI Mode response loaded.');
   }
 }
 
@@ -75,7 +75,7 @@ $('googleSearch').addEventListener('click', async () => {
     const prompt = buildPrompt();
     const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt });
     if (!result?.ok) throw new Error('Could not open Google Search.');
-    status('Google Search opened in the background. Checking for AI Overview…');
+    status('Google AI Mode opened in the background. Checking for its response…');
   } catch (e) { status(e.message, true); }
 });
 

@@ -30,17 +30,17 @@ async function pollGoogleAIOverview(tabId, before, attempts = 60) {
   const text = reading.text || '';
   if (text && text !== before) {
     chrome.storage.local.set({ latestGoogleResponse: text, latestGoogleAt: Date.now() });
-    setStatus('Google AI Overview ready — open Satori to review it.', 'ready');
+    setStatus('Google AI Mode response ready — open Satori to review it.', 'ready');
     return;
   }
   if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, attempts - 1), 1000);
-  else setStatus('No Google AI Overview was detected. Try a more specific question or check the search tab.', 'error');
+  else setStatus('No Google AI Mode response was detected. Check the search tab or try again.', 'error');
 }
 
 async function startGoogleSearch(prompt) {
-  const url = `https://www.google.com/search?q=${encodeURIComponent(prompt)}`;
+  const url = `https://www.google.com/search?q=${encodeURIComponent(prompt)}&udm=50`;
   chrome.storage.local.remove('latestGoogleResponse');
-  setStatus('Opening Google Search in the background…', 'waiting');
+  setStatus('Opening Google AI Mode in the background…', 'waiting');
   chrome.tabs.create({ url, active: false }, (tab) => {
     if (chrome.runtime.lastError || !tab?.id) {
       setStatus(`Could not open Google Search: ${chrome.runtime.lastError?.message || 'Chrome did not create the tab.'}`, 'error');
@@ -49,7 +49,7 @@ async function startGoogleSearch(prompt) {
     const listener = async (tabId, changeInfo) => {
       if (tabId !== tab.id || changeInfo.status !== 'complete') return;
       chrome.tabs.onUpdated.removeListener(listener);
-      setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
+      setStatus('Google AI Mode loaded — checking for its response…', 'waiting');
       const before = (await readGoogleAIOverview(tab.id)).text || '';
       pollGoogleAIOverview(tab.id, before);
     };
