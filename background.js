@@ -95,6 +95,13 @@ async function getReusableGoogleTab(windowId) {
       addDiagnostic('tab', 'saved Google tab no longer exists');
     }
   }
+  const tabs = await chrome.tabs.query({ windowId });
+  const inactiveGoogleTab = tabs.find((tab) => !tab.active && /^https:\/\/(www\.)?google\./i.test(tab.url || ''));
+  if (inactiveGoogleTab?.id) {
+    await chrome.storage.local.set({ satoriGoogleTabId: inactiveGoogleTab.id, satoriGoogleWindowId: windowId });
+    addDiagnostic('tab', `adopted existing inactive Google tab ${inactiveGoogleTab.id}`);
+    return inactiveGoogleTab;
+  }
   return null;
 }
 
