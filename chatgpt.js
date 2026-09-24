@@ -124,10 +124,36 @@
 
   const submitPrompt = (attempt = 0) => {
     if (!state.requestId) return;
+
+    // Prefer Enter: this matches the normal ChatGPT composer interaction.
+    // If the synthetic keyboard event is not accepted by the page, fall back
+    // to the Send button after verification.
+    if (attempt === 0) {
+      const input = findInput();
+      if (input && composerHasPrompt()) {
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          bubbles: true,
+          cancelable: true
+        }));
+        input.dispatchEvent(new KeyboardEvent('keyup', {
+          key: 'Enter',
+          code: 'Enter',
+          bubbles: true,
+          cancelable: true
+        }));
+        report('CHATGPT_SUBMITTED', 'prompt submission attempted using Enter');
+        setTimeout(() => verifySubmission(0), 1200);
+        return;
+      }
+    }
+
     const button = findSendButton();
     if (button) {
       button.click();
-      report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button');
+      report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button fallback');
       setTimeout(() => verifySubmission(0), 1200);
       return;
     }
@@ -140,13 +166,7 @@
       return;
     }
 
-    const method = clickSend();
-    if (method === 'keyboard-attempt') {
-      report('CHATGPT_DIAGNOSTIC', 'Send button unavailable after retries; keyboard submit attempted');
-      setTimeout(() => verifySubmission(0), 1200);
-    } else {
-      report('CHATGPT_DIAGNOSTIC', 'ChatGPT composer was unavailable for submission');
-    }
+    report('CHATGPT_DIAGNOSTIC', 'ChatGPT composer was unavailable for submission');
   };
 
   const composerHasPrompt = () => {
