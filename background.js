@@ -271,7 +271,12 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   setStatus('Opening ChatGPT in the background…', 'waiting');
   try {
     const url = 'https://chatgpt.com/';
-    if (tab?.id) { activeChatGPTRequest.tabId = tab.id; await chrome.tabs.update(tab.id, { url, active: false }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400); }
+    if (tab?.id) {
+      activeChatGPTRequest.tabId = tab.id;
+      const ready = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '') && tab.status === 'complete';
+      if (!ready) { await chrome.tabs.update(tab.id, { url, active: false }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400); }
+      else { await chrome.tabs.update(tab.id, { active: false }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 200); }
+    }
     else { tab = await chrome.tabs.create({ url, active: false, windowId }); if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.'); activeChatGPTRequest.tabId = tab.id; await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2000); }
   } catch (error) { setStatus(`Could not open ChatGPT: ${error.message}`, 'error'); addDiagnostic('chatgpt-error', error.message); }
 }
