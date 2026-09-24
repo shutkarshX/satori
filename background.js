@@ -258,7 +258,17 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
     const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', requestId, prompt, mode });
     if (result?.ok) { addDiagnostic('chatgpt-input', `prompt dispatched; baseline responses=${result.baselineCount ?? 'unknown'}`); setStatus('ChatGPT prompt sent — waiting for a new response…', 'waiting'); return; }
     addDiagnostic('chatgpt-input', result?.error || 'ChatGPT adapter rejected the prompt');
-  } catch (error) { addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`); }
+  } catch (error) {
+    addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`);
+    if (retries === 15) {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['chatgpt.js'] });
+        addDiagnostic('chatgpt-recovery', 'injected ChatGPT adapter into the reused tab');
+      } catch (injectError) {
+        addDiagnostic('chatgpt-recovery', `adapter injection failed (${injectError.message})`);
+      }
+    }
+  }
   if (retries > 0) setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
   else { setStatus('ChatGPT composer was not ready. Open ChatGPT once, then try again.', 'error'); addDiagnostic('chatgpt-error', 'composer not found after retries'); }
 }
