@@ -12,6 +12,11 @@ function showSavedResponse(response) {
   }
 }
 
+function showSelectedProviderResponse(result) {
+  const response = $('provider').value === 'gemini' ? result.latestGeminiResponse : result.latestGoogleResponse;
+  showSavedResponse(response);
+}
+
 function showAiStatus(value) {
   if (!value) return;
   const el = $('aiStatus');
@@ -33,18 +38,24 @@ function updateProviderUI() {
   $('googleSearch').textContent = labels[$('provider').value] || labels.google;
 }
 
-chrome.storage.local.get(['latestGoogleResponse', 'satoriStatus', 'satoriDiagnostics'], (result) => {
-  showSavedResponse(result.latestGoogleResponse);
+chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'satoriStatus', 'satoriDiagnostics'], (result) => {
+  showSelectedProviderResponse(result);
   showAiStatus(result.satoriStatus);
   showDiagnostics(result.satoriDiagnostics);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.latestGoogleResponse) showSavedResponse(changes.latestGoogleResponse.newValue);
+  if (area === 'local' && (changes.latestGoogleResponse || changes.latestGeminiResponse)) {
+    chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse'], showSelectedProviderResponse);
+  }
   if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
   if (area === 'local' && changes.satoriDiagnostics) showDiagnostics(changes.satoriDiagnostics.newValue);
 });
 updateProviderUI();
 $('provider').addEventListener('change', updateProviderUI);
+$('provider').addEventListener('change', async () => {
+  const result = await chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse']);
+  showSelectedProviderResponse(result);
+});
 
 async function activeTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -79,7 +90,13 @@ async function extract() {
   else status(`Read ${result.text.length.toLocaleString()} characters from the page.`);
 }
 
-function buildPrompt() {
+function buildGoogleQuery() {
+  const question = $('question').value.trim();
+  if (!question) throw new Error('Read or enter a question first.');
+  return fullPageContext || question;
+}
+
+function buildGeminiPrompt() {
   const question = $('question').value.trim();
   if (!question) throw new Error('Read or enter a question first.');
   const extra = $('extra').value.trim();
@@ -87,9 +104,19 @@ function buildPrompt() {
     ? `\n\nFULL PAGE CONTEXT (use this to recover omitted problem details; solve only the coding problem):\n${fullPageContext}`
     : '';
   if ($('mode').value === 'mcq') {
-    return `You are helping me study a practice assignment. Analyze the MCQ below. Explain the reasoning, evaluate every option, and then state the best answer clearly as: ANSWER: <option letter/text>. If the question is ambiguous or information is missing, say so instead of pretending certainty. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}${context}`;
+    return `You are helping me study a practice assignment. Analyze the MCQ below and evaluate the options briefly. Finish your response with exactly this format:\nANSWER: <option letter or exact option text>\nCONFIDENCE: High, Medium, or Low\nIf the question is ambiguous or information is missing, say so instead of pretending certainty. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}${context}`;
   }
-  return `You are helping me with a practice coding assignment. Solve the problem below. Return ONLY ONE complete, compilable, submission-ready source file. Finish writing the entire program before responding; never return a fragment, partial draft, or code that begins in the middle of a function. Include every required import or header, all global variables and helper methods, the entry point, and the required class wrapper. If the language is Java, use import java.util.*; and public class Main with public static void main(String[] args). If the language is C++, include the required headers and a complete main function. Preserve normal source formatting: put each statement and declaration on appropriate separate lines, preserve indentation, and do not minify, compress, or remove whitespace. Do not include an explanation, algorithm, complexity analysis, headings, comments outside the code, markdown fences, or any text before or after the code. Use the requested programming language and exact input/output format. Do not provide alternative solutions.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}${context}`;
+  return `Solve this practice coding problem. Your entire response must contain exactly one code editor block containing one complete, compilable, submission-ready source file. Do not provide an explanation, algorithm, complexity analysis, headings, markdown outside the code block, multiple solutions, partial code, or any text before or after the code. Include every required import or header, helper functions, global declarations, the complete entry point, and the required class wrapper. If the language is Java, use import java.util.*; and public class Main with public static void main(String[] args). If the language is C++, include required headers and a complete main function. Preserve normal source formatting and indentation. Use the exact input/output format and requested language.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}${context}`;
+}
+
+function buildChatGPTPrompt() {
+  const question = $('question').value.trim();
+  if (!question) throw new Error('Read or enter a question first.');
+  const extra = $('extra').value.trim();
+  if ($('mode').value === 'mcq') {
+    return `Help me solve this practice MCQ. Explain the choice briefly and end with exactly: FINAL ANSWER: <option letter or exact option text>. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}`;
+  }
+  return `Solve this practice coding problem for the requested language. Return exactly one complete compilable source file in a single code block. Include all imports, helpers, and the entry point. Do not include explanation, headings, multiple solutions, or text outside the code block. Match the exact input and output format.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}`;
 }
 
 $('extract').addEventListener('click', async () => {
@@ -98,12 +125,16 @@ $('extract').addEventListener('click', async () => {
 
 $('googleSearch').addEventListener('click', async () => {
   try {
-    const prompt = buildPrompt();
     const provider = $('provider').value;
-    const googleQuery = provider === 'google' ? (fullPageContext || $('question').value.trim()) : prompt;
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt, googleQuery, provider, mode: $('mode').value });
-    if (!result?.ok) throw new Error('Could not open Google Search.');
-    status('Google Search opened in the background. Checking for AI Overview…');
+    const mode = $('mode').value;
+    const message = provider === 'google'
+      ? { type: 'OPEN_GOOGLE_SEARCH', googleQuery: buildGoogleQuery(), mode }
+      : provider === 'gemini'
+        ? { type: 'OPEN_GEMINI_REQUEST', prompt: buildGeminiPrompt(), mode }
+        : { type: 'OPEN_CHATGPT_REQUEST', prompt: buildChatGPTPrompt(), mode };
+    const result = await chrome.runtime.sendMessage(message);
+    if (!result?.ok) throw new Error(`Could not start ${provider}.`);
+    status(`${provider === 'google' ? 'Google Search' : provider === 'gemini' ? 'Gemini' : 'ChatGPT'} opened in the background. Waiting for its response…`);
   } catch (e) { status(e.message, true); }
 });
 

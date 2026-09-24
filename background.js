@@ -226,7 +226,7 @@ function handleGeminiResponse(message) {
     addDiagnostic('gemini-parser', activeGeminiRequest.mode === 'coding' ? 'response found but code block missing' : 'empty response');
     return;
   }
-  chrome.storage.local.set({ latestGoogleResponse: selected, latestGoogleRawResponse: raw, latestGoogleAt: Date.now(), latestProvider: 'gemini' });
+  chrome.storage.local.set({ latestGeminiResponse: selected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
   const warning = activeGeminiRequest.mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('gemini-complete', `${selected.length} chars captured${activeGeminiRequest.mode === 'coding' ? ' as code' : ''}`);
@@ -245,10 +245,10 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     addDiagnostic('gemini-submit', message.detail || 'Gemini prompt submitted');
     return;
   }
-  if (message.type !== 'OPEN_GOOGLE_SEARCH') return;
+  if (!['OPEN_GOOGLE_SEARCH', 'OPEN_GEMINI_REQUEST', 'OPEN_CHATGPT_REQUEST'].includes(message.type)) return;
   activeRequestId += 1;
   const requestId = activeRequestId;
-  const provider = message.provider || 'google';
+  const provider = message.type === 'OPEN_GEMINI_REQUEST' ? 'gemini' : message.type === 'OPEN_CHATGPT_REQUEST' ? 'chatgpt' : 'google';
   chrome.storage.local.set({ satoriDiagnostics: [{ time: new Date().toLocaleTimeString(), step: 'request', detail: `provider=${provider}` }] });
   const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
   addDiagnostic('prompt', `${provider} query length=${query.length}`);
