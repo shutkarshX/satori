@@ -7,7 +7,7 @@ const status = (message, error = false) => {
 function showSavedResponse(response) {
   if (response) {
     $('response').value = response;
-    status('Latest Google AI Mode response loaded.');
+    status('Latest Google AI Overview loaded.');
   }
 }
 
@@ -23,6 +23,15 @@ function showDiagnostics(entries) {
   $('diagnosticLog').textContent = lines.join('\n') || 'No request yet.';
 }
 
+function updateProviderUI() {
+  const labels = {
+    google: 'Search Google AI Mode & show result',
+    gemini: 'Ask Gemini & show result',
+    chatgpt: 'Ask ChatGPT & show result'
+  };
+  $('googleSearch').textContent = labels[$('provider').value] || labels.google;
+}
+
 chrome.storage.local.get(['latestGoogleResponse', 'satoriStatus', 'satoriDiagnostics'], (result) => {
   showSavedResponse(result.latestGoogleResponse);
   showAiStatus(result.satoriStatus);
@@ -33,6 +42,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
   if (area === 'local' && changes.satoriDiagnostics) showDiagnostics(changes.satoriDiagnostics.newValue);
 });
+updateProviderUI();
+$('provider').addEventListener('change', updateProviderUI);
 
 async function activeTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -81,9 +92,9 @@ $('googleSearch').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
     const provider = $('provider').value;
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt, provider });
+    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt, provider, mode: $('mode').value });
     if (!result?.ok) throw new Error('Could not open Google Search.');
-    status('Google AI Mode opened in the background. Checking for its response…');
+    status('Google Search opened in the background. Checking for AI Overview…');
   } catch (e) { status(e.message, true); }
 });
 

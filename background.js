@@ -1,4 +1,5 @@
 const setStatus = (text, kind = 'waiting') => chrome.storage.local.set({ satoriStatus: { text, kind, at: Date.now() } });
+let activeRequestId = 0;
 const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnostics', (result) => {
   const entries = Array.isArray(result.satoriDiagnostics) ? result.satoriDiagnostics : [];
   entries.push({ time: new Date().toLocaleTimeString(), step, detail });
@@ -30,25 +31,35 @@ async function readGoogleAIOverview(tabId) {
   } catch (_error) { return { text: '', loading: false }; }
 }
 
-async function pollGoogleAIOverview(tabId, before, attempts = 60) {
+async function pollGoogleAIOverview(tabId, before, requestId, mode, attempts = 60) {
+  if (requestId !== activeRequestId) return;
   const reading = await readGoogleAIOverview(tabId);
   const text = reading.text || '';
   addDiagnostic('response-check', text ? `candidate found (${text.length} chars)` : 'no AI response candidate');
   if (text && text !== before) {
     chrome.storage.local.set({ latestGoogleResponse: text, latestGoogleAt: Date.now() });
-    setStatus('Google AI Mode response ready — open Satori to review it.', 'ready');
-    addDiagnostic('complete', 'response captured and stored');
+    let quality = 'response captured and stored';
+    let warning = '';
+    if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\-]/i.test(text)) {
+      warning = ' Response captured, but no explicit MCQ answer was found.';
+      quality += '; MCQ answer marker missing';
+    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(text)) {
+      warning = ' Response captured, but it does not look like a complete program.';
+      quality += '; code completeness warning';
+    }
+    setStatus(`Google AI Overview captured.${warning}`, warning ? 'error' : 'ready');
+    addDiagnostic('complete', quality);
     return;
   }
-  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, attempts - 1), 1000);
-  else setStatus('No Google AI Mode response was detected. Check the search tab or try again.', 'error');
+  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, attempts - 1), 1000);
+  else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
 }
 
-async function startGoogleSearch(prompt) {
-  const url = `https://www.google.com/search?q=${encodeURIComponent(prompt)}&udm=50`;
+async function startGoogleSearch(prompt, requestId, mode) {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(prompt)}`;
   chrome.storage.local.remove('latestGoogleResponse');
-  addDiagnostic('tab', 'creating Google AI Mode tab');
-  setStatus('Opening Google AI Mode in the background…', 'waiting');
+  addDiagnostic('tab', 'creating Google Search tab');
+  setStatus('Opening Google Search for AI Overview in the background…', 'waiting');
   chrome.tabs.create({ url, active: false }, (tab) => {
     if (chrome.runtime.lastError || !tab?.id) {
       setStatus(`Could not open Google Search: ${chrome.runtime.lastError?.message || 'Chrome did not create the tab.'}`, 'error');
@@ -57,10 +68,10 @@ async function startGoogleSearch(prompt) {
     const listener = async (tabId, changeInfo) => {
       if (tabId !== tab.id || changeInfo.status !== 'complete') return;
       chrome.tabs.onUpdated.removeListener(listener);
-      setStatus('Google AI Mode loaded — checking for its response…', 'waiting');
-      addDiagnostic('page', 'Google AI Mode page loaded');
+      setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
+      addDiagnostic('page', 'Google Search page loaded');
       const before = (await readGoogleAIOverview(tab.id)).text || '';
-      pollGoogleAIOverview(tab.id, before);
+      pollGoogleAIOverview(tab.id, before, requestId, mode);
     };
     chrome.tabs.onUpdated.addListener(listener);
   });
@@ -68,6 +79,8 @@ async function startGoogleSearch(prompt) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type !== 'OPEN_GOOGLE_SEARCH') return;
+  activeRequestId += 1;
+  const requestId = activeRequestId;
   const provider = message.provider || 'google';
   chrome.storage.local.set({ satoriDiagnostics: [{ time: new Date().toLocaleTimeString(), step: 'request', detail: `provider=${provider}` }] });
   if (provider !== 'google') {
@@ -77,6 +90,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
   addDiagnostic('prompt', `query length=${(message.prompt || '').length}`);
-  startGoogleSearch(message.prompt);
+  if (provider === 'google') startGoogleSearch(message.prompt, requestId, message.mode || 'text');
   sendResponse({ ok: true });
 });
