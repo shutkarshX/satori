@@ -23,7 +23,9 @@ async function readGeminiResponse(tabId) {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => [...document.querySelectorAll('model-response, message-content, [data-message-author-role="model"], [data-test-id*="model" i]')]
-        .map((n) => (n.innerText || n.textContent || '').trim()).filter(Boolean).pop() || ''
+        .map((n) => (n.innerText || n.textContent || '').trim())
+        .filter(Boolean)
+        .reduce((longest, text) => text.length > longest.length ? text : longest, '')
     });
     return result?.[0]?.result || '';
   } catch (_error) { return ''; }
