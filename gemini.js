@@ -22,6 +22,13 @@
 
   let lastResponse = '';
   let quietTimer;
+  const sendResponseToSatori = (text) => {
+    try {
+      chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text }).catch(() => {});
+    } catch (_error) {
+      // The page may still contain an old script after the extension reloads.
+    }
+  };
   const readLatestResponse = () => {
     const nodes = [...document.querySelectorAll('model-response, message-content, [data-message-author-role="model"], [data-test-id*="model" i]')];
     const text = nodes.map((n) => n.innerText || n.textContent || '').map((s) => s.trim()).filter(Boolean).pop() || '';
@@ -31,7 +38,7 @@
         const finalText = (nodes.map((n) => n.innerText || n.textContent || '').map((s) => s.trim()).filter(Boolean).pop() || '').trim();
         if (finalText && finalText !== lastResponse) {
           lastResponse = finalText;
-          chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text: finalText });
+          sendResponseToSatori(finalText);
         }
       }, 1200);
     }
