@@ -44,32 +44,31 @@
     element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
   };
-  const clickSend = () => {
-    const buttons = [...document.querySelectorAll(
-      'button[data-testid="send-button"], button[data-testid*="send" i], button[aria-label*="send" i], button[aria-label*="submit" i], button[type="submit"]'
-    )];
-    const button = buttons.find((candidate) =>
+  const findSendButton = () => {
+    const selectors = [
+      'button[data-testid="send-button"]',
+      'button[data-testid*="send" i]',
+      'button[aria-label*="send" i]',
+      'button[title*="send" i]',
+      'button[type="submit"]'
+    ];
+    const candidates = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
+    const input = findInput();
+    const composer = input?.closest('form') || input?.parentElement?.parentElement?.parentElement;
+    if (composer) candidates.push(...composer.querySelectorAll('button'));
+    return candidates.find((candidate) =>
       !candidate.disabled &&
       candidate.getAttribute('aria-disabled') !== 'true' &&
-      candidate.offsetParent !== null
-    );
+      candidate.offsetParent !== null &&
+      !/stop|cancel/i.test(`${candidate.getAttribute('aria-label') || ''} ${candidate.innerText || ''}`)
+    ) || null;
+  };
+
+  const clickSend = () => {
+    const button = findSendButton();
     if (button) { button.click(); return 'button'; }
 
     const input = findInput();
-    const form = input?.closest('form');
-    const formButton = form?.querySelector(
-      'button[type="submit"], button[data-testid*="send" i], button[aria-label*="send" i]'
-    );
-    if (formButton &&
-        !formButton.disabled &&
-        formButton.getAttribute('aria-disabled') !== 'true') {
-      formButton.click();
-      return 'form-button';
-    }
-
-    // Do not use form.requestSubmit() as a fallback. On some ChatGPT UI
-    // states it clears/submits the composer without reliably creating the
-    // assistant turn. Prefer the same Enter action a user would perform.
     if (input) {
       input.focus();
       input.dispatchEvent(new KeyboardEvent('keydown', {
@@ -87,6 +86,33 @@
       return 'keyboard-attempt';
     }
     return '';
+  };
+
+  const submitPrompt = (attempt = 0) => {
+    if (!state.requestId) return;
+    const button = findSendButton();
+    if (button) {
+      button.click();
+      report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button');
+      setTimeout(() => verifySubmission(0), 1200);
+      return;
+    }
+
+    if (attempt < 12) {
+      if (attempt === 0 || attempt % 3 === 0) {
+        report('CHATGPT_DIAGNOSTIC', `Send button not ready; retrying button detection ${attempt + 1}/12`);
+      }
+      setTimeout(() => submitPrompt(attempt + 1), 300);
+      return;
+    }
+
+    const method = clickSend();
+    if (method === 'keyboard-attempt') {
+      report('CHATGPT_DIAGNOSTIC', 'Send button unavailable after retries; keyboard submit attempted');
+      setTimeout(() => verifySubmission(0), 1200);
+    } else {
+      report('CHATGPT_DIAGNOSTIC', 'ChatGPT composer was unavailable for submission');
+    }
   };
 
   const composerHasPrompt = () => {
@@ -275,15 +301,7 @@
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
 
-    setTimeout(() => {
-      const method = clickSend();
-      if (method === 'button') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button');
-      else if (method === 'form-button') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT composer submit button');
-      else if (method === 'form') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT composer form');
-      else if (method === 'keyboard-attempt') report('CHATGPT_DIAGNOSTIC', 'Send button unavailable; keyboard submit attempted but not confirmed');
-      else report('CHATGPT_DIAGNOSTIC', 'ChatGPT Send button, form, and composer were unavailable');
-      setTimeout(verifySubmission, 2500);
-    }, 700);
+    setTimeout(() => submitPrompt(0), 700);
 
     sendResponse({ ok: true, baselineCount: state.baseline.size });
     return true;
