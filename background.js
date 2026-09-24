@@ -55,20 +55,21 @@ async function pollChatGPTResponse(tabId, before, attempts = 90, stable = 0, pre
   else setStatus('ChatGPT did not return a response. Open ChatGPT and check it.', 'error');
 }
 
-async function waitForChatGPT(tabId, prompt, attempts = 20) {
+async function waitForChatGPT(tabId, prompt, returnTabId, attempts = 20) {
   const ready = await ensureChatGPTScript(tabId);
   if (ready) {
     try {
       const before = await readChatGPTResponse(tabId);
       const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', prompt });
       if (result?.ok) {
+        if (returnTabId) chrome.tabs.update(returnTabId, { active: true });
         setStatus('Prompt sent — waiting for ChatGPT response…', 'waiting');
         pollChatGPTResponse(tabId, before);
         return;
       }
     } catch (_error) { /* retry while the page finishes loading */ }
   }
-  if (attempts > 0) setTimeout(() => waitForChatGPT(tabId, prompt, attempts - 1), 500);
+  if (attempts > 0) setTimeout(() => waitForChatGPT(tabId, prompt, returnTabId, attempts - 1), 500);
   else setStatus('ChatGPT input was not ready. Log in to ChatGPT and try again.', 'error');
 }
 
@@ -84,9 +85,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://www.chatgpt.com/*', 'https://chat.openai.com/*'] }, (tabs) => {
     const existing = tabs[0];
     const activate = (tab) => {
-      // Keep the assignment tab in front. ChatGPT is used as an inactive helper tab.
-      chrome.tabs.update(tab.id, { active: false }, () => {
-        waitForChatGPT(tab.id, message.prompt);
+      // Briefly activate ChatGPT so its editor initializes, then return to the assignment.
+      chrome.tabs.update(tab.id, { active: true }, () => {
+        waitForChatGPT(tab.id, message.prompt, message.returnTabId);
       });
     };
     if (existing) {
@@ -94,11 +95,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ ok: true, reused: true });
       return;
     }
-    chrome.tabs.create({ url: 'https://chatgpt.com/', active: false }, (tab) => {
+    chrome.tabs.create({ url: 'https://chatgpt.com/', active: true }, (tab) => {
       const listener = (tabId, changeInfo) => {
         if (tabId === tab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
-          waitForChatGPT(tab.id, message.prompt);
+          waitForChatGPT(tab.id, message.prompt, message.returnTabId);
         }
       };
       chrome.tabs.onUpdated.addListener(listener);

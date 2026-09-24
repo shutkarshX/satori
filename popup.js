@@ -73,7 +73,8 @@ $('extract').addEventListener('click', async () => {
 $('chatgpt').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_CHATGPT', prompt });
+    const sourceTab = await activeTab();
+    const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_CHATGPT', prompt, returnTabId: sourceTab.id });
     if (!result?.ok) throw new Error('Could not open ChatGPT.');
     status(result.reused ? 'Reused ChatGPT and sent the prompt.' : 'Opened ChatGPT in the background and sent the prompt.');
   } catch (e) { status(e.message, true); }
