@@ -27,7 +27,9 @@ async function readGeminiResponse(tabId) {
           const fenced = [...value.matchAll(/```[^\n]*\n?([\s\S]*?)```/g)].map((m) => m[1].trim());
           return (fenced.sort((a, b) => b.length - a.length)[0] || value).trim();
         };
-        const responseSelectors = ['model-response', '[data-message-author-role="model"]', 'message-content', '[data-test-id*="model" i]'];
+        // Keep selectors narrow: broad class/data-test selectors can match Gemini's
+        // whole application shell and make an old page look like a new answer.
+        const responseSelectors = ['model-response', '[data-message-author-role="model"]', 'message-content', '.markdown'];
         for (const selector of responseSelectors) {
           const nodes = [...document.querySelectorAll(selector)].filter((n) => (n.innerText || n.textContent || '').trim());
           if (!nodes.length) continue;
