@@ -29,9 +29,12 @@ async function readGeminiResponse(tabId) {
         };
         // Keep selectors narrow: broad class/data-test selectors can match Gemini's
         // whole application shell and make an old page look like a new answer.
-        const responseSelectors = ['model-response', '[data-message-author-role="model"]', 'message-content', '.markdown'];
+        const responseSelectors = ['model-response', '[data-message-author-role="model"]', 'message-content'];
         for (const selector of responseSelectors) {
-          const nodes = [...document.querySelectorAll(selector)].filter((n) => (n.innerText || n.textContent || '').trim());
+          const nodes = [...document.querySelectorAll(selector)].filter((n) => {
+            const value = (n.innerText || n.textContent || '').trim();
+            return value.length > 20 && value.toLowerCase() !== 'gemini said';
+          });
           if (!nodes.length) continue;
           const latest = nodes[nodes.length - 1];
           const parts = [latest, ...latest.querySelectorAll('.markdown, [class*="markdown" i], [class*="response" i], message-content')];
