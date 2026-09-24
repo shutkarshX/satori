@@ -104,18 +104,19 @@
     return domCode.sort((a, b) => b.score - a.score || b.index - a.index)[0]?.text || '';
   };
 
+  const isGenerating = () => [...document.querySelectorAll('button')].some((button) =>
+    /stop|cancel/i.test(`${button.getAttribute('aria-label') || ''} ${button.getAttribute('data-tooltip') || ''} ${button.innerText || ''}`) &&
+    !button.disabled && button.offsetParent !== null
+  );
+
   const inspectForNewResponse = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
-    const generating = [...document.querySelectorAll('button')].some((button) =>
-      /stop|cancel/i.test(`${button.getAttribute('aria-label') || ''} ${button.getAttribute('data-tooltip') || ''}`) &&
-      !button.disabled && button.offsetParent !== null
-    );
     const candidates = responseSnapshot().filter((item) => !state.baseline.has(item.signature));
     const latest = candidates[candidates.length - 1];
     if (!latest || latest.signature === state.lastResponseSignature) return;
     clearTimeout(state.quietTimer);
     state.quietTimer = setTimeout(() => {
-      if (generating) {
+      if (isGenerating()) {
         report('GEMINI_DIAGNOSTIC', 'generation still in progress; waiting for completion');
         inspectForNewResponse();
         return;
