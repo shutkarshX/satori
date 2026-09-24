@@ -63,7 +63,7 @@ function buildPrompt() {
   if ($('mode').value === 'mcq') {
     return `You are helping me study a practice assignment. Analyze the MCQ below. Explain the reasoning, evaluate every option, and then state the best answer clearly as: ANSWER: <option letter/text>. If the question is ambiguous or information is missing, say so instead of pretending certainty. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}`;
   }
-  return `You are helping me study a practice coding assignment. Solve the problem below. First explain the algorithm, proof idea, edge cases, and time/space complexity. Then provide complete code in the requested language, respecting the exact input/output format. Check the examples and mention any assumptions. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}`;
+  return `You are helping me study a practice coding assignment. Solve the problem below and follow this exact response structure:\n\n1. ALGORITHM: concise step-by-step approach.\n2. CORRECTNESS: brief proof or reasoning.\n3. COMPLEXITY: time and space complexity.\n4. EDGE_CASES: important cases to test.\n5. FINAL_CODE: provide exactly one complete submission-ready code block, with no explanation inside the code block. Put the required language immediately after the opening code fence. Do not include alternative solutions or multiple code blocks. Respect the exact input/output format, constraints, and requested language. Check the examples and mention assumptions outside the code block. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}`;
 }
 
 $('extract').addEventListener('click', async () => {
