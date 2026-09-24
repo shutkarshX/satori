@@ -24,10 +24,14 @@ async function readGeminiResponse(tabId) {
       target: { tabId },
       func: () => {
         const selectors = 'model-response, message-content, .markdown, [data-message-author-role="model"], [data-test-id*="model" i], [class*="response" i]';
+        const clean = (value) => {
+          const fenced = [...value.matchAll(/```[^\n]*\n?([\s\S]*?)```/g)].map((m) => m[1].trim());
+          return (fenced.sort((a, b) => b.length - a.length)[0] || value).trim();
+        };
         const candidates = [...document.querySelectorAll(selectors)]
-          .map((n) => (n.innerText || n.textContent || '').trim()).filter(Boolean);
+          .map((n) => clean((n.innerText || n.textContent || '').trim())).filter(Boolean);
         const bodyText = (document.body?.innerText || '').trim();
-        if (bodyText) candidates.push(bodyText);
+        if (bodyText) candidates.push(clean(bodyText));
         return candidates.reduce((longest, text) => text.length > longest.length ? text : longest, '');
       }
     });
