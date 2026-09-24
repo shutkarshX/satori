@@ -11,9 +11,20 @@ function showSavedResponse(response) {
   }
 }
 
-chrome.storage.local.get(['latestGeminiResponse'], (result) => showSavedResponse(result.latestGeminiResponse));
+function showAiStatus(value) {
+  if (!value) return;
+  const el = $('aiStatus');
+  el.textContent = value.text || value;
+  el.className = `ai-status ${value.kind || 'idle'}`;
+}
+
+chrome.storage.local.get(['latestGeminiResponse', 'satoriStatus'], (result) => {
+  showSavedResponse(result.latestGeminiResponse);
+  showAiStatus(result.satoriStatus);
+});
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.latestGeminiResponse) showSavedResponse(changes.latestGeminiResponse.newValue);
+  if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
 });
 
 async function activeTab() {
