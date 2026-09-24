@@ -9,7 +9,8 @@
     stableSignature: '',
     stableChecks: 0,
     quietTimer: null,
-    stabilityTimer: null
+    stabilityTimer: null,
+    promptText: ''
   };
   const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
   const normalizeSource = (value) => clean(value)
@@ -44,20 +45,82 @@
     element.dispatchEvent(new Event('change', { bubbles: true }));
   };
   const clickSend = () => {
-    const buttons = [...document.querySelectorAll('button[data-testid="send-button"], button[data-testid*="send" i], button[aria-label*="send" i], button[aria-label*="submit" i], button[type="submit"]')];
-    const button = buttons.find((candidate) => !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true' && candidate.offsetParent !== null);
+    const buttons = [...document.querySelectorAll(
+      'button[data-testid="send-button"], button[data-testid*="send" i], button[aria-label*="send" i], button[aria-label*="submit" i], button[type="submit"]'
+    )];
+    const button = buttons.find((candidate) =>
+      !candidate.disabled &&
+      candidate.getAttribute('aria-disabled') !== 'true' &&
+      candidate.offsetParent !== null
+    );
     if (button) { button.click(); return 'button'; }
+
     const input = findInput();
     const form = input?.closest('form');
-    const formButton = form?.querySelector('button[type="submit"], button[data-testid*="send" i], button[aria-label*="send" i]');
-    if (formButton && !formButton.disabled && formButton.getAttribute('aria-disabled') !== 'true') { formButton.click(); return 'form-button'; }
-    if (form?.requestSubmit) { form.requestSubmit(); return 'form'; }
+    const formButton = form?.querySelector(
+      'button[type="submit"], button[data-testid*="send" i], button[aria-label*="send" i]'
+    );
+    if (formButton &&
+        !formButton.disabled &&
+        formButton.getAttribute('aria-disabled') !== 'true') {
+      formButton.click();
+      return 'form-button';
+    }
+
+    // Do not use form.requestSubmit() as a fallback. On some ChatGPT UI
+    // states it clears/submits the composer without reliably creating the
+    // assistant turn. Prefer the same Enter action a user would perform.
     if (input) {
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-      input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true
+      }));
+      input.dispatchEvent(new KeyboardEvent('keyup', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true
+      }));
       return 'keyboard-attempt';
     }
     return '';
+  };
+
+  const composerHasPrompt = () => {
+    const input = findInput();
+    if (!input) return false;
+    const value = input.matches('textarea, input')
+      ? input.value
+      : clean(input.innerText || input.textContent || '');
+    return state.promptText.length > 0 && value.trim().length > 0;
+  };
+
+  const verifySubmission = () => {
+    if (!state.requestId) return;
+    if (composerHasPrompt()) {
+      report('CHATGPT_DIAGNOSTIC', 'composer still contains the prompt after submit; retrying Enter submission');
+      const input = findInput();
+      if (input) {
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          bubbles: true,
+          cancelable: true
+        }));
+        input.dispatchEvent(new KeyboardEvent('keyup', {
+          key: 'Enter',
+          code: 'Enter',
+          bubbles: true,
+          cancelable: true
+        }));
+      }
+      return;
+    }
+    report('CHATGPT_DIAGNOSTIC', `post-submit verification: composer cleared, assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
   };
   const extractCode = (text, node) => {
     const fenced = [...text.matchAll(/\`\`\`(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)\`\`\`/g)]
@@ -175,6 +238,7 @@
 
     state.requestId = message.requestId || Date.now();
     state.mode = message.mode || 'text';
+    state.promptText = String(message.prompt || '');
     state.baseline = new Set(snapshot().map((item) => item.signature));
     state.lastSignature = '';
     resetStability();
@@ -189,7 +253,7 @@
       else if (method === 'form') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT composer form');
       else if (method === 'keyboard-attempt') report('CHATGPT_DIAGNOSTIC', 'Send button unavailable; keyboard submit attempted but not confirmed');
       else report('CHATGPT_DIAGNOSTIC', 'ChatGPT Send button, form, and composer were unavailable');
-      setTimeout(() => report('CHATGPT_DIAGNOSTIC', `post-submit assistant nodes=${responseNodes().length}, generating=${isGenerating()}`), 3500);
+      setTimeout(verifySubmission, 2500);
     }, 700);
 
     sendResponse({ ok: true, baselineCount: state.baseline.size });
