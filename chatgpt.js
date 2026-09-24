@@ -98,29 +98,58 @@
     return state.promptText.length > 0 && value.trim().length > 0;
   };
 
-  const verifySubmission = () => {
+  const userMessageNodes = () => {
+    const primary = [...document.querySelectorAll('[data-message-author-role="user"]')];
+    const fallback = [...document.querySelectorAll('[data-testid*="conversation-turn" i]')];
+    return primary.length ? primary : fallback;
+  };
+
+  const hasSubmittedUserMessage = () => {
+    const prompt = clean(state.promptText);
+    if (!prompt) return false;
+    return userMessageNodes().some((node) => {
+      const text = clean(node.innerText || node.textContent || '');
+      return text === prompt || text.includes(prompt.slice(0, Math.min(160, prompt.length)));
+    });
+  };
+
+  const submitWithEnter = () => {
+    const input = findInput();
+    if (!input) return false;
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true,
+      cancelable: true
+    }));
+    input.dispatchEvent(new KeyboardEvent('keyup', {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true,
+      cancelable: true
+    }));
+    return true;
+  };
+
+  const verifySubmission = (attempt = 0) => {
     if (!state.requestId) return;
-    if (composerHasPrompt()) {
-      report('CHATGPT_DIAGNOSTIC', 'composer still contains the prompt after submit; retrying Enter submission');
-      const input = findInput();
-      if (input) {
-        input.focus();
-        input.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'Enter',
-          code: 'Enter',
-          bubbles: true,
-          cancelable: true
-        }));
-        input.dispatchEvent(new KeyboardEvent('keyup', {
-          key: 'Enter',
-          code: 'Enter',
-          bubbles: true,
-          cancelable: true
-        }));
-      }
+
+    if (hasSubmittedUserMessage()) {
+      report('CHATGPT_DIAGNOSTIC', `prompt submission verified; user message detected, assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
       return;
     }
-    report('CHATGPT_DIAGNOSTIC', `post-submit verification: composer cleared, assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
+
+    if (attempt < 3) {
+      report('CHATGPT_DIAGNOSTIC', `prompt not visible as a user message after submit; retry ${attempt + 1}/3`);
+      setTimeout(() => {
+        if (!hasSubmittedUserMessage()) submitWithEnter();
+        verifySubmission(attempt + 1);
+      }, 1200);
+      return;
+    }
+
+    report('CHATGPT_DIAGNOSTIC', `prompt submission could not be verified after 3 attempts; assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
   };
   const extractCode = (text, node) => {
     const fenced = [...text.matchAll(/\`\`\`(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)\`\`\`/g)]
