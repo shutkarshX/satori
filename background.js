@@ -23,18 +23,21 @@ async function readGeminiResponse(tabId) {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
-        const selectors = 'model-response, message-content, .markdown, [data-message-author-role="model"], [data-test-id*="model" i], [class*="response" i], [class*="message-content" i], [class*="markdown" i]';
         const clean = (value) => {
           const fenced = [...value.matchAll(/```[^\n]*\n?([\s\S]*?)```/g)].map((m) => m[1].trim());
           return (fenced.sort((a, b) => b.length - a.length)[0] || value).trim();
         };
-        const roots = [document];
-        for (let i = 0; i < roots.length; i++) {
-          roots[i].querySelectorAll('*').forEach((n) => { if (n.shadowRoot) roots.push(n.shadowRoot); });
+        const responseSelectors = ['model-response', '[data-message-author-role="model"]', 'message-content', '[data-test-id*="model" i]'];
+        for (const selector of responseSelectors) {
+          const nodes = [...document.querySelectorAll(selector)].filter((n) => (n.innerText || n.textContent || '').trim());
+          if (!nodes.length) continue;
+          const latest = nodes[nodes.length - 1];
+          const parts = [latest, ...latest.querySelectorAll('.markdown, [class*="markdown" i], [class*="response" i], message-content')];
+          return parts.map((n) => clean((n.innerText || n.textContent || '').trim()))
+            .filter((text) => text.length > 20)
+            .reduce((longest, text) => text.length > longest.length ? text : longest, '');
         }
-        const candidates = roots.flatMap((root) => [...root.querySelectorAll(selectors)])
-          .map((n) => clean((n.innerText || n.textContent || '').trim())).filter((text) => text.length > 20);
-        return candidates.reduce((longest, text) => text.length > longest.length ? text : longest, '');
+        return '';
       }
     });
     return result?.[0]?.result || '';
