@@ -36,13 +36,47 @@
   const findInput = () => document.querySelector('textarea[data-id], textarea[placeholder], textarea, [contenteditable="true"][role="textbox"], [contenteditable="true"]');
   const setInput = (element, text) => {
     element.focus();
+
     if (element.matches('textarea, input')) {
-      const proto = element.tagName.toLowerCase() === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const proto = element.tagName.toLowerCase() === 'textarea'
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
       const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-      if (setter) setter.call(element, text); else element.value = text;
-    } else element.textContent = text;
-    element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+      if (setter) setter.call(element, text);
+      else element.value = text;
+      element.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: text
+      }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+
+    // ChatGPT's rich composer is a React-controlled contenteditable.
+    // Mutating textContent alone can leave React's composer state empty,
+    // which keeps the Send button disabled. Use the browser editing
+    // command first so the page receives a real input mutation.
+    try {
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, text);
+    } catch (_error) {}
+
+    if (clean(element.innerText || element.textContent || '') !== clean(text)) {
+      element.textContent = text;
+    }
+
+    element.dispatchEvent(new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: text
+    }));
+    element.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertText',
+      data: text
+    }));
   };
   const findSendButton = () => {
     const selectors = [
