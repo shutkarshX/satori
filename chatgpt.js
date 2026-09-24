@@ -1,5 +1,5 @@
 (() => {
-  const state = { requestId: 0, baseline: new Set(), lastSentAt: 0, lastSignature: '', quietTimer: null };
+  const state = { requestId: 0, mode: 'text', baseline: new Set(), lastSentAt: 0, lastSignature: '', quietTimer: null };
   const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
   const normalizeSource = (value) => clean(value)
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
@@ -49,6 +49,9 @@
     const elements = [...(node?.querySelectorAll?.('pre code, pre') || []), ...document.querySelectorAll('pre code, pre')];
     return elements.map((element) => normalizeSource(element.innerText || element.textContent)).filter((value) => value.length > 20).sort((a, b) => b.length - a.length)[0] || '';
   };
+  const looksComplete = (code) => code.length >= 220 &&
+    /#include|public\s+class\s+Main|\bint\s+main\s*\(|\bmain\s*\(/i.test(code) &&
+    /return\b|printf\s*\(|System\.out|cout\s*<</.test(code) && code.includes('}');
   const isGenerating = () => [...document.querySelectorAll('button')].some((button) => /stop generating|stop/i.test(`${button.getAttribute('aria-label') || ''} ${button.innerText || ''}`) && !button.disabled && button.offsetParent !== null);
   const inspect = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
@@ -59,8 +62,15 @@
       if (isGenerating()) { report('CHATGPT_DIAGNOSTIC', 'generation still in progress; waiting for completion'); inspect(); return; }
       const final = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
       if (!final || final.signature === state.lastSignature) return;
+      const code = extractCode(final.text, final.node);
+      if (state.mode === 'coding' && !looksComplete(code)) {
+        report('CHATGPT_DIAGNOSTIC', `candidate incomplete (${code.length} chars); waiting for final code`);
+        state.lastSignature = final.signature;
+        setTimeout(inspect, 1000);
+        return;
+      }
       state.lastSignature = final.signature;
-      report('CHATGPT_RESPONSE', { text: final.text, code: extractCode(final.text, final.node), capturedAt: Date.now() });
+      report('CHATGPT_RESPONSE', { text: final.text, code, capturedAt: Date.now() });
     }, 1200);
   };
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
@@ -70,6 +80,7 @@
     const input = findInput();
     if (!input) { report('CHATGPT_DIAGNOSTIC', 'composer not found'); sendResponse({ ok: false, error: 'ChatGPT composer is not ready yet.' }); return true; }
     state.requestId = message.requestId || Date.now();
+    state.mode = message.mode || 'text';
     state.baseline = new Set(snapshot().map((item) => item.signature));
     state.lastSignature = '';
     state.lastSentAt = Date.now();
