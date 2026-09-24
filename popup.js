@@ -70,7 +70,7 @@ $('extract').addEventListener('click', async () => {
   try { await extract(); } catch (e) { status(e.message, true); }
 });
 
-$('gemini').addEventListener('click', async () => {
+$('googleSearch').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
     const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt });

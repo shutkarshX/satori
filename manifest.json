@@ -3,10 +3,9 @@
   "name": "Satori",
   "version": "0.3.0",
   "description": "A practice-study assistant for MCQs and coding questions using Google Search AI results.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "host_permissions": ["https://www.google.com/*", "https://google.com/*", "https://www.google.co.in/*", "https://google.co.in/*"],
   "background": { "service_worker": "background.js" },
-  "side_panel": { "default_path": "sidepanel.html" },
   "action": {
     "default_title": "Satori",
     "default_popup": "popup.html"
