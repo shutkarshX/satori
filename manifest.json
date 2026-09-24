@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Practice Assistant",
-  "version": "0.2.0",
-  "description": "Extract practice questions, prepare Gemini prompts, and type reviewed text into the assignment editor without clipboard paste.",
-  "permissions": ["activeTab", "scripting", "storage", "clipboardWrite", "tabs"],
+  "name": "Satori",
+  "version": "0.3.0",
+  "description": "A practice-study assistant for MCQs and coding questions using Gemini in the browser.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel"],
   "host_permissions": ["https://gemini.google.com/*"],
   "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
   "action": {
-    "default_title": "Gemini Practice Assistant",
+    "default_title": "Satori",
     "default_popup": "popup.html"
   },
   "content_scripts": [
