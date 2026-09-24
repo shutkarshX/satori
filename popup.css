@@ -7,6 +7,7 @@ select, input, textarea, button { width: 100%; border: 1px solid #c8cdd3; border
 select, input { height: 34px; padding: 6px 8px; }
 textarea { min-height: 92px; padding: 8px; resize: vertical; }
 #question { min-height: 125px; }
+#response { min-height: 150px; background: #f8fafc; }
 #draft { min-height: 95px; }
 button { margin-top: 9px; padding: 8px 10px; cursor: pointer; background: #f6f7f8; }
 button:hover { background: #eceff1; }

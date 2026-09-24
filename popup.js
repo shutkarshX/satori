@@ -4,6 +4,18 @@ const status = (message, error = false) => {
   $('status').style.color = error ? '#b3261e' : '#4a5560';
 };
 
+function showSavedResponse(response) {
+  if (response) {
+    $('response').value = response;
+    status('Latest Gemini response loaded.');
+  }
+}
+
+chrome.storage.local.get(['latestGeminiResponse'], (result) => showSavedResponse(result.latestGeminiResponse));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.latestGeminiResponse) showSavedResponse(changes.latestGeminiResponse.newValue);
+});
+
 async function activeTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tabs[0]?.id) throw new Error('No active tab found.');
