@@ -292,9 +292,11 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
 async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
   const windowId = assignmentTab?.windowId;
-  let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
+  // ChatGPT conversation state can retain an earlier answer or fail to create a
+  // new assistant turn. Use a fresh background conversation for correctness.
+  let tab = null;
   activeChatGPTRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
-  addDiagnostic('chatgpt-tab', tab ? `reusing ChatGPT tab ${tab.id}` : 'creating reusable ChatGPT tab');
+  addDiagnostic('chatgpt-tab', 'creating fresh ChatGPT conversation');
   setStatus('Opening ChatGPT in the background…', 'waiting');
   try {
     const url = 'https://chatgpt.com/';
