@@ -22,12 +22,18 @@
     element.dispatchEvent(new Event('change', { bubbles: true }));
   };
   const clickSend = () => {
-    const buttons = [...document.querySelectorAll('button[data-testid*="send" i], button[aria-label*="send" i], button[aria-label*="submit" i]')];
-    const button = buttons.find((candidate) => !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true');
-    if (button) { button.click(); return true; }
+    const buttons = [...document.querySelectorAll('button[data-testid="send-button"], button[data-testid*="send" i], button[aria-label*="send" i], button[aria-label*="submit" i], button[type="submit"]')];
+    const button = buttons.find((candidate) => !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true' && candidate.offsetParent !== null);
+    if (button) { button.click(); return 'button'; }
     const input = findInput();
-    if (input) { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true })); return true; }
-    return false;
+    const form = input?.closest('form');
+    if (form?.requestSubmit) { form.requestSubmit(); return 'form'; }
+    if (input) {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+      input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+      return 'keyboard-attempt';
+    }
+    return '';
   };
   const extractCode = (text, node) => {
     const fenced = [...text.matchAll(/```(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/g)].map((match) => clean(match[1])).filter((value) => value.length > 20);
@@ -61,7 +67,13 @@
     state.lastSentAt = Date.now();
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
-    setTimeout(() => { if (clickSend()) report('CHATGPT_SUBMITTED', 'prompt submitted'); else report('CHATGPT_DIAGNOSTIC', 'send button not found or disabled'); }, 500);
+    setTimeout(() => {
+      const method = clickSend();
+      if (method === 'button') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button');
+      else if (method === 'form') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT composer form');
+      else if (method === 'keyboard-attempt') report('CHATGPT_DIAGNOSTIC', 'Send button unavailable; keyboard submit attempted but not confirmed');
+      else report('CHATGPT_DIAGNOSTIC', 'ChatGPT Send button, form, and composer were unavailable');
+    }, 700);
     sendResponse({ ok: true, baselineCount: state.baseline.size });
     return true;
   });
