@@ -50,10 +50,10 @@ async function readGeminiResponse(tabId) {
   } catch (_error) { return ''; }
 }
 
-async function pollGeminiResponse(tabId, before, attempts = 90, stable = 0, previous = '') {
+async function pollGeminiResponse(tabId, before, attempts = 120, stable = 0, previous = '') {
   const text = await readGeminiResponse(tabId);
   if (text && text !== before && text === previous) stable += 1; else stable = 0;
-  if (text && text !== before && stable >= 2) {
+  if (text && text !== before && stable >= 5) {
     chrome.storage.local.set({ latestGeminiResponse: text, latestGeminiAt: Date.now() });
     setStatus('Response ready — open Satori to review it.', 'ready');
     chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text }).catch(() => {});
