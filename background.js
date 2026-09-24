@@ -22,16 +22,20 @@ async function readGeminiResponse(tabId) {
   try {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => [...document.querySelectorAll('model-response, message-content, [data-message-author-role="model"], [data-test-id*="model" i]')]
-        .map((n) => (n.innerText || n.textContent || '').trim())
-        .filter(Boolean)
-        .reduce((longest, text) => text.length > longest.length ? text : longest, '')
+      func: () => {
+        const selectors = 'model-response, message-content, .markdown, [data-message-author-role="model"], [data-test-id*="model" i], [class*="response" i]';
+        const candidates = [...document.querySelectorAll(selectors)]
+          .map((n) => (n.innerText || n.textContent || '').trim()).filter(Boolean);
+        const bodyText = (document.body?.innerText || '').trim();
+        if (bodyText) candidates.push(bodyText);
+        return candidates.reduce((longest, text) => text.length > longest.length ? text : longest, '');
+      }
     });
     return result?.[0]?.result || '';
   } catch (_error) { return ''; }
 }
 
-async function pollGeminiResponse(tabId, before, attempts = 30, stable = 0, previous = '') {
+async function pollGeminiResponse(tabId, before, attempts = 90, stable = 0, previous = '') {
   const text = await readGeminiResponse(tabId);
   if (text && text !== before && text === previous) stable += 1; else stable = 0;
   if (text && text !== before && stable >= 2) {
