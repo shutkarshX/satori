@@ -57,6 +57,26 @@
   };
 
   const extractCode = (text, node) => {
+    const codeScore = (value, distance = 0) =>
+      (/#include|\bint\s+main\s*\(|public\s+class\s+Main|\bdef\s+main\s*\(|import\s+java\b/.test(value) ? 100 : 0) +
+      (/[{}();]|\breturn\b|\bfor\s*\(|\bwhile\s*\(/.test(value) ? 30 : 0) +
+      Math.min(value.length / 1000, 20) - distance;
+    const copyAnchored = [];
+    const copyButtons = [...document.querySelectorAll(
+      'button[aria-label*="copy" i], button[title*="copy" i], [data-tooltip*="copy" i], [aria-label*="copy code" i]'
+    )].filter((button) => button.offsetParent !== null);
+    copyButtons.forEach((button) => {
+      let current = button.parentElement;
+      for (let distance = 1; current && distance <= 8; distance += 1, current = current.parentElement) {
+        const descendants = [...current.querySelectorAll('pre, code, [class*="code" i], [data-code-block]')]
+          .map((element) => clean(element.innerText || element.textContent))
+          .filter((value) => value.length > 20 && !state.baselineCode.has(signature(value)));
+        descendants.forEach((value) => copyAnchored.push({ value, score: codeScore(value, distance) + 120 }));
+        if (descendants.length) break;
+      }
+    });
+    const anchored = copyAnchored.sort((a, b) => b.score - a.score)[0]?.value || '';
+    if (anchored) return anchored;
     const fenced = [...text.matchAll(/```(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/g)]
       .map((match) => clean(match[1])).filter((value) => value.length > 20);
     if (fenced.length) return fenced.sort((a, b) => b.length - a.length)[0];
@@ -71,9 +91,7 @@
       .filter((candidate) => candidate.text.length > 20 && !state.baselineCode.has(signature(candidate.text)))
       .map((candidate) => ({
         ...candidate,
-        score: (/#include|\bint\s+main\s*\(|public\s+class\s+Main|\bdef\s+main\s*\(|import\s+java\b/.test(candidate.text) ? 80 : 0) +
-          (/[{}();]|\breturn\b|\bfor\s*\(/.test(candidate.text) ? 25 : 0) +
-          Math.min(candidate.text.length / 1000, 20)
+        score: codeScore(candidate.text, candidate.index)
       }));
     return domCode.sort((a, b) => b.score - a.score || b.index - a.index)[0]?.text || '';
   };
