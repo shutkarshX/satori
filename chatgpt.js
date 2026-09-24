@@ -1,5 +1,5 @@
 (() => {
-  const state = { requestId: 0, mode: 'text', baseline: new Set(), lastSentAt: 0, lastSignature: '', quietTimer: null };
+  const state = { requestId: 0, mode: 'text', baseline: new Set(), lastSentAt: 0, lastSignature: '', pendingSignature: '', stableSignature: '', stableChecks: 0, quietTimer: null };
   const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
   const normalizeSource = (value) => clean(value)
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
@@ -65,9 +65,20 @@
       const code = extractCode(final.text, final.node);
       if (state.mode === 'coding' && !looksComplete(code)) {
         report('CHATGPT_DIAGNOSTIC', `candidate incomplete (${code.length} chars); waiting for final code`);
-        state.lastSignature = final.signature;
+        state.pendingSignature = final.signature;
+        state.stableSignature = '';
+        state.stableChecks = 0;
         setTimeout(inspect, 1000);
         return;
+      }
+      if (state.mode === 'coding') {
+        if (state.stableSignature === final.signature) state.stableChecks += 1;
+        else { state.stableSignature = final.signature; state.stableChecks = 1; }
+        if (state.stableChecks < 2) {
+          report('CHATGPT_DIAGNOSTIC', `complete candidate detected (${code.length} chars); confirming stability`);
+          setTimeout(inspect, 1000);
+          return;
+        }
       }
       state.lastSignature = final.signature;
       report('CHATGPT_RESPONSE', { text: final.text, code, capturedAt: Date.now() });
@@ -83,6 +94,9 @@
     state.mode = message.mode || 'text';
     state.baseline = new Set(snapshot().map((item) => item.signature));
     state.lastSignature = '';
+    state.pendingSignature = '';
+    state.stableSignature = '';
+    state.stableChecks = 0;
     state.lastSentAt = Date.now();
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
