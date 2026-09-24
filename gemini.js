@@ -22,6 +22,7 @@
 
   let lastResponse = '';
   let quietTimer;
+  let observer;
   const sendResponseToSatori = (text) => {
     try {
       chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text }).catch(() => {});
@@ -30,20 +31,28 @@
     }
   };
   const readLatestResponse = () => {
-    const nodes = [...document.querySelectorAll('model-response, message-content, [data-message-author-role="model"], [data-test-id*="model" i]')];
-    const text = nodes.map((n) => n.innerText || n.textContent || '').map((s) => s.trim()).filter(Boolean).pop() || '';
-    if (text && text !== lastResponse) {
+    try {
+      const nodes = [...document.querySelectorAll('model-response, message-content, [data-message-author-role="model"], [data-test-id*="model" i]')];
+      const text = nodes.map((n) => n.innerText || n.textContent || '').map((s) => s.trim()).filter(Boolean).pop() || '';
+      if (text && text !== lastResponse) {
+        clearTimeout(quietTimer);
+        quietTimer = setTimeout(() => {
+          try {
+            const finalText = (nodes.map((n) => n.innerText || n.textContent || '').map((s) => s.trim()).filter(Boolean).pop() || '').trim();
+            if (finalText && finalText !== lastResponse) {
+              lastResponse = finalText;
+              sendResponseToSatori(finalText);
+            }
+          } catch (_error) { observer?.disconnect(); }
+        }, 1200);
+      }
+    } catch (_error) {
       clearTimeout(quietTimer);
-      quietTimer = setTimeout(() => {
-        const finalText = (nodes.map((n) => n.innerText || n.textContent || '').map((s) => s.trim()).filter(Boolean).pop() || '').trim();
-        if (finalText && finalText !== lastResponse) {
-          lastResponse = finalText;
-          sendResponseToSatori(finalText);
-        }
-      }, 1200);
+      observer?.disconnect();
     }
   };
-  new MutationObserver(readLatestResponse).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  observer = new MutationObserver(readLatestResponse);
+  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'PING_GEMINI') { sendResponse({ ok: true }); return true; }
