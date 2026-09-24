@@ -12,7 +12,7 @@ function showSavedResponse(response) {
 
 function showSelectedProviderResponse(result) {
   const provider = $('provider').value;
-  const response = provider === 'gemini' ? result.latestGeminiResponse : provider === 'google' ? result.latestGoogleResponse : '';
+  const response = provider === 'gemini' ? result.latestGeminiResponse : provider === 'google' ? result.latestGoogleResponse : result.latestChatGPTResponse;
   const label = provider === 'gemini' ? 'Latest Gemini response' : provider === 'google' ? 'Latest Google AI response' : 'Latest ChatGPT response';
   $('responseLabel').textContent = label;
   showSavedResponse(response);
@@ -39,14 +39,14 @@ function updateProviderUI() {
   $('googleSearch').textContent = labels[$('provider').value] || labels.google;
 }
 
-chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'satoriStatus', 'satoriDiagnostics'], (result) => {
+chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse', 'satoriStatus', 'satoriDiagnostics'], (result) => {
   showSelectedProviderResponse(result);
   showAiStatus(result.satoriStatus);
   showDiagnostics(result.satoriDiagnostics);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.latestGoogleResponse || changes.latestGeminiResponse)) {
-    chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse'], showSelectedProviderResponse);
+  if (area === 'local' && (changes.latestGoogleResponse || changes.latestGeminiResponse || changes.latestChatGPTResponse)) {
+    chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse'], showSelectedProviderResponse);
   }
   if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
   if (area === 'local' && changes.satoriDiagnostics) showDiagnostics(changes.satoriDiagnostics.newValue);
@@ -54,7 +54,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 updateProviderUI();
 $('provider').addEventListener('change', updateProviderUI);
 $('provider').addEventListener('change', async () => {
-  const result = await chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse']);
+  const result = await chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse']);
   showSelectedProviderResponse(result);
 });
 

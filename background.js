@@ -234,6 +234,59 @@ function handleGeminiResponse(message) {
   addDiagnostic('gemini-complete', `${selected.length} chars captured${activeGeminiRequest.mode === 'coding' ? ' as code' : ''}`);
 }
 
+let activeChatGPTRequest = null;
+async function getReusableChatGPTTab(windowId) {
+  const stored = await chrome.storage.local.get(['satoriChatGPTTabId', 'satoriChatGPTWindowId']);
+  if (stored.satoriChatGPTTabId && stored.satoriChatGPTWindowId === windowId) {
+    try {
+      const tab = await chrome.tabs.get(stored.satoriChatGPTTabId);
+      if (tab?.windowId === windowId && /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '')) return tab;
+    } catch (_error) { addDiagnostic('chatgpt-tab', 'saved ChatGPT tab no longer exists'); }
+  }
+  const tabs = await chrome.tabs.query({ windowId });
+  const inactive = tabs.find((tab) => !tab.active && /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || ''));
+  if (inactive?.id) {
+    await chrome.storage.local.set({ satoriChatGPTTabId: inactive.id, satoriChatGPTWindowId: windowId });
+    addDiagnostic('chatgpt-tab', `adopted existing inactive ChatGPT tab ${inactive.id}`);
+    return inactive;
+  }
+  return null;
+}
+async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
+  if (requestId !== activeRequestId) return;
+  try {
+    const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', requestId, prompt, mode });
+    if (result?.ok) { addDiagnostic('chatgpt-input', `prompt dispatched; baseline responses=${result.baselineCount ?? 'unknown'}`); setStatus('ChatGPT prompt sent — waiting for a new response…', 'waiting'); return; }
+    addDiagnostic('chatgpt-input', result?.error || 'ChatGPT adapter rejected the prompt');
+  } catch (error) { addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`); }
+  if (retries > 0) setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
+  else { setStatus('ChatGPT composer was not ready. Open ChatGPT once, then try again.', 'error'); addDiagnostic('chatgpt-error', 'composer not found after retries'); }
+}
+async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
+  await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
+  const windowId = assignmentTab?.windowId;
+  let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
+  activeChatGPTRequest = { requestId, mode, tabId: null };
+  addDiagnostic('chatgpt-tab', tab ? `reusing ChatGPT tab ${tab.id}` : 'creating reusable ChatGPT tab');
+  setStatus('Opening ChatGPT in the background…', 'waiting');
+  try {
+    const url = 'https://chatgpt.com/';
+    if (tab?.id) { activeChatGPTRequest.tabId = tab.id; await chrome.tabs.update(tab.id, { url, active: false }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400); }
+    else { tab = await chrome.tabs.create({ url, active: false, windowId }); if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.'); activeChatGPTRequest.tabId = tab.id; await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2000); }
+  } catch (error) { setStatus(`Could not open ChatGPT: ${error.message}`, 'error'); addDiagnostic('chatgpt-error', error.message); }
+}
+function handleChatGPTResponse(message) {
+  if (!activeChatGPTRequest || message.requestId !== activeChatGPTRequest.requestId) { addDiagnostic('chatgpt-stale', 'ignored response from an older ChatGPT request'); return; }
+  const responsePayload = message.detail ?? message.text;
+  const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
+  const raw = String(payload.text || '').trim();
+  const selected = activeChatGPTRequest.mode === 'coding' ? String(payload.code || '').trim() : raw;
+  if (!selected) { setStatus(activeChatGPTRequest.mode === 'coding' ? 'ChatGPT responded, but no code block was found.' : 'ChatGPT returned an empty response.', 'error'); addDiagnostic('chatgpt-parser', 'response found but selected output missing'); return; }
+  chrome.storage.local.set({ latestChatGPTResponse: selected, latestChatGPTRawResponse: raw, latestChatGPTAt: Date.now(), latestProvider: 'chatgpt' });
+  setStatus('ChatGPT response captured.', 'ready');
+  addDiagnostic('chatgpt-complete', `${selected.length} chars captured${activeChatGPTRequest.mode === 'coding' ? ' as code' : ''}`);
+}
+
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type === 'GEMINI_RESPONSE') {
     handleGeminiResponse(message);
@@ -247,6 +300,9 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     addDiagnostic('gemini-submit', message.detail || 'Gemini prompt submitted');
     return;
   }
+  if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
+  if (message.type === 'CHATGPT_DIAGNOSTIC') { addDiagnostic('chatgpt', message.detail || 'ChatGPT adapter diagnostic'); return; }
+  if (message.type === 'CHATGPT_SUBMITTED') { addDiagnostic('chatgpt-submit', message.detail || 'ChatGPT prompt submitted'); return; }
   if (!['OPEN_GOOGLE_SEARCH', 'OPEN_GEMINI_REQUEST', 'OPEN_CHATGPT_REQUEST'].includes(message.type)) return;
   activeRequestId += 1;
   const requestId = activeRequestId;
@@ -265,10 +321,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   } else if (provider === 'gemini') {
     startGeminiSearch(query, requestId, message.mode || 'text', assignmentTab);
   } else {
-    setStatus('ChatGPT adapter is not enabled yet. Select Google or Gemini for this version.', 'error');
-    addDiagnostic('provider', 'ChatGPT adapter not enabled');
-    sendResponse({ ok: false });
-    return;
+    startChatGPTSearch(query, requestId, message.mode || 'text', assignmentTab);
   }
   sendResponse({ ok: true });
 });

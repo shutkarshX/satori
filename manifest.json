@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "description": "A practice-study assistant for MCQs and coding questions using Google Search AI results.",
   "permissions": ["activeTab", "scripting", "storage", "tabs"],
-  "host_permissions": ["https://www.google.com/*", "https://google.com/*", "https://www.google.co.in/*", "https://google.co.in/*", "https://gemini.google.com/*"],
+  "host_permissions": ["https://www.google.com/*", "https://google.com/*", "https://www.google.co.in/*", "https://google.co.in/*", "https://gemini.google.com/*", "https://chatgpt.com/*", "https://chat.openai.com/*"],
   "background": { "service_worker": "background.js" },
   "action": {
     "default_title": "Satori",
@@ -24,6 +24,11 @@
     {
       "matches": ["https://gemini.google.com/*"],
       "js": ["gemini.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["chatgpt.js"],
       "run_at": "document_idle"
     }
   ]
