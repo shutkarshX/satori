@@ -82,8 +82,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type !== 'OPEN_OR_REUSE_CHATGPT') return;
   chrome.storage.local.remove('latestChatGPTResponse');
   setStatus('Opening ChatGPT in the background…', 'waiting');
-  chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://www.chatgpt.com/*', 'https://chat.openai.com/*'] }, (tabs) => {
-    const existing = tabs[0];
+  chrome.tabs.query({}, (allTabs) => {
+    const existing = allTabs.find((tab) => /^(https:\/\/chatgpt\.com|https:\/\/www\.chatgpt\.com|https:\/\/chat\.openai\.com)\//.test(tab.url || ''));
     const activate = (tab) => {
       // Briefly activate ChatGPT so its editor initializes, then return to the assignment.
       chrome.tabs.update(tab.id, { active: true }, () => {
@@ -96,6 +96,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
     chrome.tabs.create({ url: 'https://chatgpt.com/', active: true }, (tab) => {
+      if (chrome.runtime.lastError || !tab?.id) {
+        setStatus(`Could not open ChatGPT: ${chrome.runtime.lastError?.message || 'Chrome did not create the tab.'}`, 'error');
+        return;
+      }
       const listener = (tabId, changeInfo) => {
         if (tabId === tab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
