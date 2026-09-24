@@ -16,12 +16,35 @@ async function ensureGeminiScript(tabId) {
   }
 }
 
+async function readGeminiResponse(tabId) {
+  try {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => [...document.querySelectorAll('model-response, message-content, [data-message-author-role="model"], [data-test-id*="model" i]')]
+        .map((n) => (n.innerText || n.textContent || '').trim()).filter(Boolean).pop() || ''
+    });
+    return result?.[0]?.result || '';
+  } catch (_error) { return ''; }
+}
+
+async function pollGeminiResponse(tabId, before, attempts = 30, stable = 0, previous = '') {
+  const text = await readGeminiResponse(tabId);
+  if (text && text !== before && text === previous) stable += 1; else stable = 0;
+  if (text && text !== before && stable >= 2) {
+    chrome.storage.local.set({ latestGeminiResponse: text, latestGeminiAt: Date.now() });
+    chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text }).catch(() => {});
+    return;
+  }
+  if (attempts > 0) setTimeout(() => pollGeminiResponse(tabId, before, attempts - 1, stable, text), 1000);
+}
+
 async function waitForGemini(tabId, prompt, attempts = 20) {
   const ready = await ensureGeminiScript(tabId);
   if (ready) {
     try {
+      const before = await readGeminiResponse(tabId);
       const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', prompt });
-      if (result?.ok) return;
+      if (result?.ok) { pollGeminiResponse(tabId, before); return; }
     } catch (_error) { /* retry while the page finishes loading */ }
   }
   if (attempts > 0) setTimeout(() => waitForGemini(tabId, prompt, attempts - 1), 500);
