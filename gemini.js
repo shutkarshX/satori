@@ -17,7 +17,11 @@
 
   const responseNodes = () => [...document.querySelectorAll(
     'model-response, message-content, [data-message-author-role="model"], [data-testid*="model" i], [data-test-id*="model" i]'
-  )].filter((node) => clean(node.innerText || node.textContent).length > 0);
+  )].filter((node) => {
+    const text = clean(node.innerText || node.textContent);
+    const userAncestor = node.closest?.('[data-message-author-role="user"], [data-message-author-role="human"], [data-author="user"]');
+    return text.length > 0 && !userAncestor && !/^You said\b|^You asked\b/i.test(text);
+  });
 
   const nodeText = (node) => clean(node.innerText || node.textContent || '');
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
