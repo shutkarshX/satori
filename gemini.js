@@ -68,13 +68,21 @@
     copyButtons.forEach((button) => {
       let current = button.parentElement;
       for (let distance = 1; current && distance <= 8; distance += 1, current = current.parentElement) {
-        const descendants = [...current.querySelectorAll('pre, code, [class*="code" i], [data-code-block]')]
+        const descendants = [...current.querySelectorAll('pre, code, code-block, [class*="code" i], [data-code-block]')]
           .map((element) => clean(element.innerText || element.textContent))
           .filter((value) => value.length > 20 && !state.baselineCode.has(signature(value)));
         descendants.forEach((value) => copyAnchored.push({ value, score: codeScore(value, distance) + 120 }));
+        const containerText = clean(current.innerText || current.textContent || '')
+          .replace(/^\s*copy\s*$/gim, '').trim();
+        if (!descendants.length && containerText.length > 40 &&
+          /#include|\bpublic\s+class\s+Main\b|\bclass\s+Main\b|\bint\s+main\s*\(|\bstatic\s+void\s+main\b|\bdef\s+main\s*\(/i.test(containerText) &&
+          !state.baselineCode.has(signature(containerText))) {
+          copyAnchored.push({ value: containerText, score: codeScore(containerText, distance) + 100 });
+        }
         if (descendants.length) break;
       }
     });
+    report('GEMINI_DIAGNOSTIC', `visible copy buttons=${copyButtons.length}, anchored code candidates=${copyAnchored.length}`);
     const anchored = copyAnchored.sort((a, b) => b.score - a.score)[0]?.value || '';
     if (anchored) return anchored;
     const fenced = [...text.matchAll(/```(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/g)]
