@@ -3,10 +3,9 @@
   "name": "Satori",
   "version": "0.3.0",
   "description": "A practice-study assistant for MCQs and coding questions using ChatGPT in the browser.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "host_permissions": ["https://chatgpt.com/*", "https://www.chatgpt.com/*", "https://chat.openai.com/*"],
   "background": { "service_worker": "background.js" },
-  "side_panel": { "default_path": "sidepanel.html" },
   "action": {
     "default_title": "Satori",
     "default_popup": "popup.html"

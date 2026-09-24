@@ -18,12 +18,12 @@ function showAiStatus(value) {
   el.className = `ai-status ${value.kind || 'idle'}`;
 }
 
-chrome.storage.local.get(['latestGeminiResponse', 'satoriStatus'], (result) => {
-  showSavedResponse(result.latestGeminiResponse);
+chrome.storage.local.get(['latestChatGPTResponse', 'satoriStatus'], (result) => {
+  showSavedResponse(result.latestChatGPTResponse);
   showAiStatus(result.satoriStatus);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.latestGeminiResponse) showSavedResponse(changes.latestGeminiResponse.newValue);
+  if (area === 'local' && changes.latestChatGPTResponse) showSavedResponse(changes.latestChatGPTResponse.newValue);
   if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
 });
 
@@ -70,11 +70,11 @@ $('extract').addEventListener('click', async () => {
   try { await extract(); } catch (e) { status(e.message, true); }
 });
 
-$('gemini').addEventListener('click', async () => {
+$('chatgpt').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_GEMINI', prompt });
-    if (!result?.ok) throw new Error('Could not open Gemini.');
+    const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_CHATGPT', prompt });
+    if (!result?.ok) throw new Error('Could not open ChatGPT.');
     status(result.reused ? 'Reused ChatGPT and sent the prompt.' : 'Opened ChatGPT in the background and sent the prompt.');
   } catch (e) { status(e.message, true); }
 });
