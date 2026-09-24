@@ -13,6 +13,9 @@ function showSavedResponse(response) {
 
 function showAiStatus(value) {
   if (!value) return;
+  if (value.at && Date.now() - value.at > 120000 && value.kind === 'waiting') {
+    value = { text: 'Idle — ready for a question', kind: 'idle' };
+  }
   const el = $('aiStatus');
   el.textContent = value.text || value;
   el.className = `ai-status ${value.kind || 'idle'}`;
