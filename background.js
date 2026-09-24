@@ -23,13 +23,17 @@ async function readGeminiResponse(tabId) {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
-        const selectors = 'model-response, message-content, .markdown, [data-message-author-role="model"], [data-test-id*="model" i], [class*="response" i]';
+        const selectors = 'model-response, message-content, .markdown, [data-message-author-role="model"], [data-test-id*="model" i], [class*="response" i], [class*="message-content" i], [class*="markdown" i]';
         const clean = (value) => {
           const fenced = [...value.matchAll(/```[^\n]*\n?([\s\S]*?)```/g)].map((m) => m[1].trim());
           return (fenced.sort((a, b) => b.length - a.length)[0] || value).trim();
         };
-        const candidates = [...document.querySelectorAll(selectors)]
-          .map((n) => clean((n.innerText || n.textContent || '').trim())).filter(Boolean);
+        const roots = [document];
+        for (let i = 0; i < roots.length; i++) {
+          roots[i].querySelectorAll('*').forEach((n) => { if (n.shadowRoot) roots.push(n.shadowRoot); });
+        }
+        const candidates = roots.flatMap((root) => [...root.querySelectorAll(selectors)])
+          .map((n) => clean((n.innerText || n.textContent || '').trim())).filter((text) => text.length > 20);
         return candidates.reduce((longest, text) => text.length > longest.length ? text : longest, '');
       }
     });
