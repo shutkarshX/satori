@@ -11,10 +11,9 @@
   }, true);
 
   const visibleText = (node) => {
-    if (!node) return '';
-    const clone = node.cloneNode(true);
-    clone.querySelectorAll('script,style,noscript,svg,nav,header,footer,button,[aria-hidden="true"]').forEach((el) => el.remove());
-    return (clone.innerText || clone.textContent || '').replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (!node || node.namespaceURI === 'http://www.w3.org/2000/svg') return '';
+    // Do not clone arbitrary portal elements: cloning can re-render malformed SVG charts.
+    return (node.innerText || node.textContent || '').replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   };
 
   function extractQuestion() {
