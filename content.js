@@ -47,7 +47,9 @@
   }
 
   function typeIntoEditor(text, append = false) {
-    const target = lastEditable || document.activeElement;
+    const fallback = [...document.querySelectorAll('textarea, [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea')]
+      .find((element) => isEditable(element) && element.offsetParent !== null) || null;
+    const target = lastEditable || (isEditable(document.activeElement) ? document.activeElement : fallback);
     if (!isEditable(target)) throw new Error('Click inside the assignment answer box first, then try again.');
     if (target.isContentEditable || target.matches('[contenteditable="true"]')) {
       const existing = append ? target.innerText : '';

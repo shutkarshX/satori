@@ -6,6 +6,22 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
   chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
 });
 
+async function autoFillAssignment(tabId, text, provider) {
+  if (!tabId || !text) return;
+  try {
+    let result;
+    try { result = await chrome.tabs.sendMessage(tabId, { type: 'TYPE_INTO_EDITOR', text, append: false }); }
+    catch (_error) {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      result = await chrome.tabs.sendMessage(tabId, { type: 'TYPE_INTO_EDITOR', text, append: false });
+    }
+    if (result?.ok) {
+      addDiagnostic(`${provider}-autofill`, 'answer placed into the assignment editor');
+      setStatus(`${provider} answer placed in the editor. Review before submitting.`, 'ready');
+    } else addDiagnostic(`${provider}-autofill`, result?.error || 'assignment editor was not found');
+  } catch (error) { addDiagnostic(`${provider}-autofill`, `could not place answer (${error.message})`); }
+}
+
 async function readGoogleAIOverview(tabId) {
   try {
     const result = await chrome.scripting.executeScript({
@@ -192,7 +208,7 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
   await chrome.storage.local.remove(['latestGeminiResponse', 'latestGeminiRawResponse']);
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableGeminiTab(windowId) : null;
-  activeGeminiRequest = { requestId, mode, tabId: null };
+  activeGeminiRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
   addDiagnostic('gemini-tab', tab ? `reusing Gemini tab ${tab.id}` : 'creating reusable Gemini tab');
   setStatus('Opening Gemini in the background…', 'waiting');
   try {
@@ -229,6 +245,7 @@ function handleGeminiResponse(message) {
     return;
   }
   chrome.storage.local.set({ latestGeminiResponse: selected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
+  autoFillAssignment(activeGeminiRequest.assignmentTabId, selected, 'Gemini');
   const warning = activeGeminiRequest.mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('gemini-complete', `${selected.length} chars captured${activeGeminiRequest.mode === 'coding' ? ' as code' : ''}`);
@@ -276,7 +293,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
-  activeChatGPTRequest = { requestId, mode, tabId: null };
+  activeChatGPTRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
   addDiagnostic('chatgpt-tab', tab ? `reusing ChatGPT tab ${tab.id}` : 'creating reusable ChatGPT tab');
   setStatus('Opening ChatGPT in the background…', 'waiting');
   try {
@@ -298,6 +315,7 @@ function handleChatGPTResponse(message) {
   const selected = activeChatGPTRequest.mode === 'coding' ? String(payload.code || '').trim() : raw;
   if (!selected) { setStatus(activeChatGPTRequest.mode === 'coding' ? 'ChatGPT responded, but no code block was found.' : 'ChatGPT returned an empty response.', 'error'); addDiagnostic('chatgpt-parser', 'response found but selected output missing'); return; }
   chrome.storage.local.set({ latestChatGPTResponse: selected, latestChatGPTRawResponse: raw, latestChatGPTAt: Date.now(), latestProvider: 'chatgpt' });
+  autoFillAssignment(activeChatGPTRequest.assignmentTabId, selected, 'ChatGPT');
   setStatus('ChatGPT response captured.', 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${activeChatGPTRequest.mode === 'coding' ? ' as code' : ''}`);
 }
