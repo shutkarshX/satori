@@ -203,7 +203,7 @@
     if (attempt < 3) {
       report('CHATGPT_DIAGNOSTIC', `prompt not visible as a user message after submit; retry ${attempt + 1}/3`);
       setTimeout(() => {
-        if (!hasSubmittedUserMessage()) submitWithEnter();
+        if (!hasSubmittedUserMessage()) clickSend();
         verifySubmission(attempt + 1);
       }, 1200);
       return;
