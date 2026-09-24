@@ -296,6 +296,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   // new assistant turn. Use a fresh background conversation for correctness.
   let tab = null;
   activeChatGPTRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
+  await chrome.storage.local.set({ activeChatGPTRequest });
   addDiagnostic('chatgpt-tab', 'creating fresh ChatGPT conversation');
   setStatus('Opening ChatGPT in the background…', 'waiting');
   try {
