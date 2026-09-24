@@ -18,13 +18,20 @@ function showAiStatus(value) {
   el.className = `ai-status ${value.kind || 'idle'}`;
 }
 
-chrome.storage.local.get(['latestGoogleResponse', 'satoriStatus'], (result) => {
+function showDiagnostics(entries) {
+  const lines = Array.isArray(entries) ? entries.map((entry) => `[${entry.time}] ${entry.step}: ${entry.detail}`) : [];
+  $('diagnosticLog').textContent = lines.join('\n') || 'No request yet.';
+}
+
+chrome.storage.local.get(['latestGoogleResponse', 'satoriStatus', 'satoriDiagnostics'], (result) => {
   showSavedResponse(result.latestGoogleResponse);
   showAiStatus(result.satoriStatus);
+  showDiagnostics(result.satoriDiagnostics);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.latestGoogleResponse) showSavedResponse(changes.latestGoogleResponse.newValue);
   if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
+  if (area === 'local' && changes.satoriDiagnostics) showDiagnostics(changes.satoriDiagnostics.newValue);
 });
 
 async function activeTab() {
@@ -73,7 +80,8 @@ $('extract').addEventListener('click', async () => {
 $('googleSearch').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt });
+    const provider = $('provider').value;
+    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt, provider });
     if (!result?.ok) throw new Error('Could not open Google Search.');
     status('Google AI Mode opened in the background. Checking for its response…');
   } catch (e) { status(e.message, true); }

@@ -1,4 +1,9 @@
 const setStatus = (text, kind = 'waiting') => chrome.storage.local.set({ satoriStatus: { text, kind, at: Date.now() } });
+const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnostics', (result) => {
+  const entries = Array.isArray(result.satoriDiagnostics) ? result.satoriDiagnostics : [];
+  entries.push({ time: new Date().toLocaleTimeString(), step, detail });
+  chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
+});
 
 async function readGoogleAIOverview(tabId) {
   try {
@@ -28,9 +33,11 @@ async function readGoogleAIOverview(tabId) {
 async function pollGoogleAIOverview(tabId, before, attempts = 60) {
   const reading = await readGoogleAIOverview(tabId);
   const text = reading.text || '';
+  addDiagnostic('response-check', text ? `candidate found (${text.length} chars)` : 'no AI response candidate');
   if (text && text !== before) {
     chrome.storage.local.set({ latestGoogleResponse: text, latestGoogleAt: Date.now() });
     setStatus('Google AI Mode response ready — open Satori to review it.', 'ready');
+    addDiagnostic('complete', 'response captured and stored');
     return;
   }
   if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, attempts - 1), 1000);
@@ -40,6 +47,7 @@ async function pollGoogleAIOverview(tabId, before, attempts = 60) {
 async function startGoogleSearch(prompt) {
   const url = `https://www.google.com/search?q=${encodeURIComponent(prompt)}&udm=50`;
   chrome.storage.local.remove('latestGoogleResponse');
+  addDiagnostic('tab', 'creating Google AI Mode tab');
   setStatus('Opening Google AI Mode in the background…', 'waiting');
   chrome.tabs.create({ url, active: false }, (tab) => {
     if (chrome.runtime.lastError || !tab?.id) {
@@ -50,6 +58,7 @@ async function startGoogleSearch(prompt) {
       if (tabId !== tab.id || changeInfo.status !== 'complete') return;
       chrome.tabs.onUpdated.removeListener(listener);
       setStatus('Google AI Mode loaded — checking for its response…', 'waiting');
+      addDiagnostic('page', 'Google AI Mode page loaded');
       const before = (await readGoogleAIOverview(tab.id)).text || '';
       pollGoogleAIOverview(tab.id, before);
     };
@@ -59,6 +68,15 @@ async function startGoogleSearch(prompt) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type !== 'OPEN_GOOGLE_SEARCH') return;
+  const provider = message.provider || 'google';
+  chrome.storage.local.set({ satoriDiagnostics: [{ time: new Date().toLocaleTimeString(), step: 'request', detail: `provider=${provider}` }] });
+  if (provider !== 'google') {
+    setStatus(`${provider === 'gemini' ? 'Gemini' : 'ChatGPT'} adapter is not enabled yet. Select Google AI Mode for this version.`, 'error');
+    addDiagnostic('provider', 'adapter not enabled');
+    sendResponse({ ok: false });
+    return;
+  }
+  addDiagnostic('prompt', `query length=${(message.prompt || '').length}`);
   startGoogleSearch(message.prompt);
   sendResponse({ ok: true });
 });

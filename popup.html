@@ -10,12 +10,15 @@
   <header><strong>Satori</strong><span class="badge">practice only</span></header>
   <label for="mode">Question type</label>
   <select id="mode"><option value="mcq">MCQ</option><option value="coding">Coding</option></select>
+  <label for="provider">AI provider</label>
+  <select id="provider"><option value="google">Google AI Mode</option><option value="gemini">Gemini (next adapter)</option><option value="chatgpt">ChatGPT (next adapter)</option></select>
   <button id="extract">Read current question</button>
   <textarea id="question" placeholder="Select question text on the page, or click Read current question."></textarea>
   <label for="extra">Optional instructions</label>
   <input id="extra" placeholder="e.g. use Python 3.11">
   <button id="googleSearch" class="primary">Search Google AI Mode & show result</button>
   <div id="aiStatus" class="ai-status idle">Idle — ready for a question</div>
+  <details id="diagnostics"><summary>Diagnostics</summary><pre id="diagnosticLog">No request yet.</pre></details>
   <label for="response">Latest Google AI Mode response</label>
   <textarea id="response" readonly placeholder="The Google AI Mode response will appear here after the search finishes."></textarea>
   <hr>

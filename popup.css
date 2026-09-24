@@ -13,6 +13,9 @@ textarea { min-height: 92px; padding: 8px; resize: vertical; }
 .ai-status.waiting { color: #8a5300; background: #fff4d6; }
 .ai-status.ready { color: #176b3a; background: #e7f5ec; }
 .ai-status.error { color: #b3261e; background: #fce8e6; }
+#diagnostics { margin-top: 9px; border: 1px solid #e4e6e8; border-radius: 6px; padding: 6px 8px; }
+#diagnostics summary { cursor: pointer; font-weight: 600; }
+#diagnosticLog { max-height: 150px; overflow: auto; white-space: pre-wrap; font: 11px/1.4 ui-monospace, monospace; color: #4a5560; }
 #draft { min-height: 95px; }
 button { margin-top: 9px; padding: 8px 10px; cursor: pointer; background: #f6f7f8; }
 button:hover { background: #eceff1; }
