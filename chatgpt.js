@@ -6,12 +6,14 @@
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\n(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
     .trim();
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
-  const responseNodes = () => [...document.querySelectorAll(
-    '[data-message-author-role="assistant"], [data-testid*="conversation-turn" i] [data-message-author-role="assistant"], [data-testid*="conversation-turn" i] .markdown, .markdown, article'
-  )].filter((node) => {
+  const responseNodes = () => {
+    const primary = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
+    const nodes = primary.length ? primary : [...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown, .markdown, article')];
+    return nodes.filter((node) => {
     const text = clean(node.innerText || node.textContent);
     return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
-  });
+    });
+  };
   const snapshot = () => responseNodes().map((node) => ({ node, text: clean(node.innerText || node.textContent), signature: signature(clean(node.innerText || node.textContent)) }));
   const report = (type, detail) => { try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {} };
   const findInput = () => document.querySelector('textarea[data-id], textarea[placeholder], textarea, [contenteditable="true"][role="textbox"], [contenteditable="true"]');
