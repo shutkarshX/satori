@@ -34,26 +34,32 @@ async function readGeminiResponse(tabId) {
           const nodes = [...document.querySelectorAll(selector)].filter((n) => (n.innerText || n.textContent || '').trim());
           if (!nodes.length) continue;
           const latest = nodes[nodes.length - 1];
+          const parts = [latest, ...latest.querySelectorAll('.markdown, [class*="markdown" i], [class*="response" i], message-content')];
           const codeBlocks = [...latest.querySelectorAll('pre code, pre')]
             .map((node) => (node.textContent || node.innerText || '').replace(/\r\n?/g, '\n').trim())
             .filter((text) => text.length > 20);
-          if (codeBlocks.length) return codeBlocks.sort((a, b) => b.length - a.length)[0];
-          const parts = [latest, ...latest.querySelectorAll('.markdown, [class*="markdown" i], [class*="response" i], message-content')];
-          return parts.map((n) => clean((n.innerText || n.textContent || '').trim()))
-            .filter((text) => text.length > 20)
-            .reduce((longest, text) => text.length > longest.length ? text : longest, '');
+          const text = codeBlocks.length
+            ? codeBlocks.sort((a, b) => b.length - a.length)[0]
+            : parts.map((n) => clean((n.innerText || n.textContent || '').trim()))
+              .filter((value) => value.length > 20)
+              .reduce((longest, value) => value.length > longest.length ? value : longest, '');
+          const generating = Boolean(document.querySelector(
+            'button[aria-label*="stop" i], button[data-tooltip*="stop" i], [aria-label*="generating" i]'
+          ));
+          return { text, generating };
         }
         return '';
       }
     });
-    return result?.[0]?.result || '';
+    return result?.[0]?.result || { text: '', generating: false };
   } catch (_error) { return ''; }
 }
 
 async function pollGeminiResponse(tabId, before, attempts = 120, stable = 0, previous = '') {
-  const text = await readGeminiResponse(tabId);
-  if (text && text !== before && text === previous) stable += 1; else stable = 0;
-  if (text && text !== before && stable >= 5) {
+  const reading = await readGeminiResponse(tabId);
+  const text = reading.text || '';
+  if (!reading.generating && text && text !== before && text === previous) stable += 1; else stable = 0;
+  if (!reading.generating && text && text !== before && stable >= 5) {
     chrome.storage.local.set({ latestGeminiResponse: text, latestGeminiAt: Date.now() });
     setStatus('Response ready — open Satori to review it.', 'ready');
     chrome.runtime.sendMessage({ type: 'GEMINI_RESPONSE', text }).catch(() => {});
@@ -67,7 +73,7 @@ async function waitForGemini(tabId, prompt, attempts = 20) {
   const ready = await ensureGeminiScript(tabId);
   if (ready) {
     try {
-      const before = await readGeminiResponse(tabId);
+      const before = (await readGeminiResponse(tabId)).text || '';
       const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', prompt });
       if (result?.ok && result.sent) {
         setStatus('Prompt sent — waiting for Gemini response…', 'waiting');
