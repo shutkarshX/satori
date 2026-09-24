@@ -100,7 +100,8 @@ $('googleSearch').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
     const provider = $('provider').value;
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt, provider, mode: $('mode').value });
+    const googleQuery = provider === 'google' ? (fullPageContext || $('question').value.trim()) : prompt;
+    const result = await chrome.runtime.sendMessage({ type: 'OPEN_GOOGLE_SEARCH', prompt, googleQuery, provider, mode: $('mode').value });
     if (!result?.ok) throw new Error('Could not open Google Search.');
     status('Google Search opened in the background. Checking for AI Overview…');
   } catch (e) { status(e.message, true); }

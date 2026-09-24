@@ -55,8 +55,8 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, attempts = 6
   else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
 }
 
-async function startGoogleSearch(prompt, requestId, mode) {
-  const url = `https://www.google.com/search?q=${encodeURIComponent(prompt)}`;
+async function startGoogleSearch(query, requestId, mode) {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
   chrome.storage.local.remove('latestGoogleResponse');
   addDiagnostic('tab', 'creating Google Search tab');
   setStatus('Opening Google Search for AI Overview in the background…', 'waiting');
@@ -89,7 +89,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: false });
     return;
   }
-  addDiagnostic('prompt', `query length=${(message.prompt || '').length}`);
-  if (provider === 'google') startGoogleSearch(message.prompt, requestId, message.mode || 'text');
+  const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
+  addDiagnostic('prompt', `Google raw-page query length=${query.length}`);
+  if (provider === 'google') startGoogleSearch(query, requestId, message.mode || 'text');
   sendResponse({ ok: true });
 });
