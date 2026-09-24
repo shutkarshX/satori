@@ -69,11 +69,12 @@ async function waitForGemini(tabId, prompt, attempts = 20) {
     try {
       const before = await readGeminiResponse(tabId);
       const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', prompt });
-      if (result?.ok) {
+      if (result?.ok && result.sent) {
         setStatus('Prompt sent — waiting for Gemini response…', 'waiting');
         pollGeminiResponse(tabId, before);
         return;
       }
+      if (result?.error) setStatus(result.error, 'error');
     } catch (_error) { /* retry while the page finishes loading */ }
   }
   if (attempts > 0) setTimeout(() => waitForGemini(tabId, prompt, attempts - 1), 500);

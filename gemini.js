@@ -6,7 +6,10 @@
       const proto = element.tagName.toLowerCase() === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
       const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
       if (setter) setter.call(element, text); else element.value = text;
-    } else element.textContent = text;
+    } else {
+      document.execCommand('selectAll', false);
+      document.execCommand('insertText', false, text);
+    }
     element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
   };
@@ -22,8 +25,14 @@
     const input = findInput();
     if (!input) { sendResponse({ ok: false, error: 'Gemini input is not ready yet.' }); return true; }
     setInput(input, message.prompt || '');
-    setTimeout(clickSend, 500);
-    sendResponse({ ok: true });
+    let tries = 0;
+    const sendWhenReady = () => {
+      if (clickSend()) { sendResponse({ ok: true, sent: true }); return; }
+      tries += 1;
+      if (tries < 20) { setTimeout(sendWhenReady, 500); return; }
+      sendResponse({ ok: false, error: 'Gemini input was filled, but its Send button did not become available.' });
+    };
+    setTimeout(sendWhenReady, 700);
     return true;
   });
 })();
