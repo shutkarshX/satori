@@ -30,8 +30,6 @@ async function readGeminiResponse(tabId) {
         };
         const candidates = [...document.querySelectorAll(selectors)]
           .map((n) => clean((n.innerText || n.textContent || '').trim())).filter(Boolean);
-        const bodyText = (document.body?.innerText || '').trim();
-        if (bodyText) candidates.push(clean(bodyText));
         return candidates.reduce((longest, text) => text.length > longest.length ? text : longest, '');
       }
     });
@@ -75,6 +73,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
   if (message.type !== 'OPEN_OR_REUSE_GEMINI') return;
+  chrome.storage.local.remove('latestGeminiResponse');
   setStatus('Opening Gemini in the background…', 'waiting');
   chrome.tabs.query({ url: 'https://gemini.google.com/*' }, (tabs) => {
     const existing = tabs[0];
