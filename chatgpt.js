@@ -7,7 +7,7 @@
     .trim();
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
   const responseNodes = () => [...document.querySelectorAll(
-    '[data-message-author-role="assistant"], [data-testid*="conversation-turn" i] [data-message-author-role="assistant"], article'
+    '[data-message-author-role="assistant"], [data-testid*="conversation-turn" i] [data-message-author-role="assistant"], [data-testid*="conversation-turn" i] .markdown, .markdown, article'
   )].filter((node) => {
     const text = clean(node.innerText || node.textContent);
     return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
@@ -31,6 +31,8 @@
     if (button) { button.click(); return 'button'; }
     const input = findInput();
     const form = input?.closest('form');
+    const formButton = form?.querySelector('button[type="submit"], button[data-testid*="send" i], button[aria-label*="send" i]');
+    if (formButton && !formButton.disabled && formButton.getAttribute('aria-disabled') !== 'true') { formButton.click(); return 'form-button'; }
     if (form?.requestSubmit) { form.requestSubmit(); return 'form'; }
     if (input) {
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
@@ -74,9 +76,11 @@
     setTimeout(() => {
       const method = clickSend();
       if (method === 'button') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button');
+      else if (method === 'form-button') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT composer submit button');
       else if (method === 'form') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT composer form');
       else if (method === 'keyboard-attempt') report('CHATGPT_DIAGNOSTIC', 'Send button unavailable; keyboard submit attempted but not confirmed');
       else report('CHATGPT_DIAGNOSTIC', 'ChatGPT Send button, form, and composer were unavailable');
+      setTimeout(() => report('CHATGPT_DIAGNOSTIC', `post-submit assistant nodes=${responseNodes().length}, generating=${isGenerating()}`), 3500);
     }, 700);
     sendResponse({ ok: true, baselineCount: state.baseline.size });
     return true;
