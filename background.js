@@ -12,6 +12,17 @@ async function readGoogleAIOverview(tabId) {
       target: { tabId },
       func: () => {
         const clean = (value) => value.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
+        const codeScore = (text, node) => {
+          let score = 0;
+          if (node?.matches?.('pre, pre code')) score += 100;
+          if (node?.closest?.('pre')) score += 80;
+          if (node?.parentElement?.querySelector?.('button[aria-label*="copy" i], button[title*="copy" i]')) score += 80;
+          if (/#include|\bint\s+main\s*\(|public\s+class\s+Main|\bdef\s+main\s*\(|if\s+__name__/.test(text)) score += 35;
+          if (/[{}();]|\bfor\s*\(|\bwhile\s*\(|\breturn\b/.test(text)) score += 20;
+          if (/^(Here|This|The|Explanation|Algorithm|Complexity|Note|Would you)/im.test(text)) score -= 60;
+          if (text.split('\n').length > 2) score += 10;
+          return score;
+        };
         const selectors = ['[data-attrid="wa"]', '[data-attrid="AIOverview"]', '[data-mce-source]', 'div[jsname="N760b"]'];
         const nodes = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
         const candidates = nodes
@@ -32,8 +43,16 @@ async function readGoogleAIOverview(tabId) {
           if (nearby.length > 40) candidates.push(nearby);
         }
         const text = candidates.sort((a, b) => b.length - a.length)[0] || '';
+        const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
+          .map((node) => ({ text: clean(node.innerText || node.textContent || ''), score: 0, node }))
+          .filter((candidate) => candidate.text.length > 20)
+          .map((candidate) => ({ ...candidate, score: codeScore(candidate.text, candidate.node) }));
+        const fenced = [...document.body.innerText.matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
+          .map((match) => ({ text: clean(match[1]), score: 70, node: null }))
+          .filter((candidate) => candidate.text.length > 20);
+        const code = [...codeCandidates, ...fenced].sort((a, b) => b.score - a.score || b.text.length - a.text.length)[0]?.text || '';
         const loading = /generating|loading/i.test(document.body?.innerText || '') && !text;
-        return { text, loading };
+        return { text, code, loading };
       }
     });
     return result?.[0]?.result || { text: '', loading: false };
@@ -44,15 +63,16 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, attempts = 6
   if (requestId !== activeRequestId) return;
   const reading = await readGoogleAIOverview(tabId);
   const text = reading.text || '';
-  addDiagnostic('response-check', text ? `candidate found (${text.length} chars)` : 'no AI response candidate');
-  if (text && text !== before) {
-    chrome.storage.local.set({ latestGoogleResponse: text, latestGoogleAt: Date.now() });
+  const selected = mode === 'coding' ? (reading.code || '') : text;
+  addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
+  if (selected && selected !== before) {
+    chrome.storage.local.set({ latestGoogleResponse: selected, latestGoogleRawResponse: text, latestGoogleAt: Date.now() });
     let quality = 'response captured and stored';
     let warning = '';
     if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\-]/i.test(text)) {
       warning = ' Response captured, but no explicit MCQ answer was found.';
       quality += '; MCQ answer marker missing';
-    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(text)) {
+    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected)) {
       warning = ' Response captured, but it does not look like a complete program.';
       quality += '; code completeness warning';
     }
@@ -60,6 +80,7 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, attempts = 6
     addDiagnostic('complete', quality);
     return;
   }
+  if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
   if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, attempts - 1), 1000);
   else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
 }
