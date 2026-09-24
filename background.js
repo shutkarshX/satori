@@ -219,7 +219,8 @@ function handleGeminiResponse(message) {
     addDiagnostic('gemini-stale', 'ignored response from an older Gemini request');
     return;
   }
-  const payload = typeof message.text === 'string' ? { text: message.text, code: '' } : (message.text || {});
+  const responsePayload = message.detail ?? message.text;
+  const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
   const raw = String(payload.text || '').trim();
   const selected = activeGeminiRequest.mode === 'coding' ? String(payload.code || '').trim() : raw;
   if (!selected) {
