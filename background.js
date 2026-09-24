@@ -146,28 +146,127 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab) {
   }
 }
 
+let activeGeminiRequest = null;
+
+async function getReusableGeminiTab(windowId) {
+  const stored = await chrome.storage.local.get(['satoriGeminiTabId', 'satoriGeminiWindowId']);
+  if (stored.satoriGeminiTabId && stored.satoriGeminiWindowId === windowId) {
+    try {
+      const tab = await chrome.tabs.get(stored.satoriGeminiTabId);
+      if (tab?.windowId === windowId && /^https:\/\/gemini\.google\.com\//i.test(tab.url || '')) return tab;
+    } catch (_error) {
+      addDiagnostic('gemini-tab', 'saved Gemini tab no longer exists');
+    }
+  }
+  const tabs = await chrome.tabs.query({ windowId });
+  const inactive = tabs.find((tab) => !tab.active && /^https:\/\/gemini\.google\.com\//i.test(tab.url || ''));
+  if (inactive?.id) {
+    await chrome.storage.local.set({ satoriGeminiTabId: inactive.id, satoriGeminiWindowId: windowId });
+    addDiagnostic('gemini-tab', `adopted existing inactive Gemini tab ${inactive.id}`);
+    return inactive;
+  }
+  return null;
+}
+
+async function sendGeminiPrompt(tabId, requestId, prompt, mode, retries = 15) {
+  if (requestId !== activeRequestId) return;
+  try {
+    const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', requestId, prompt, mode });
+    if (result?.ok) {
+      addDiagnostic('gemini-input', `prompt dispatched; baseline responses=${result.baselineCount ?? 'unknown'}`);
+      setStatus('Gemini prompt sent — waiting for a new response…', 'waiting');
+      return;
+    }
+    addDiagnostic('gemini-input', result?.error || 'Gemini adapter rejected the prompt');
+  } catch (error) {
+    addDiagnostic('gemini-input', `adapter not ready (${error.message})`);
+  }
+  if (retries > 0) setTimeout(() => sendGeminiPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
+  else {
+    setStatus('Gemini input was not ready. Open Gemini once, then try again.', 'error');
+    addDiagnostic('gemini-error', 'input not found after retries');
+  }
+}
+
+async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
+  const windowId = assignmentTab?.windowId;
+  let tab = windowId ? await getReusableGeminiTab(windowId) : null;
+  activeGeminiRequest = { requestId, mode, tabId: null };
+  addDiagnostic('gemini-tab', tab ? `reusing Gemini tab ${tab.id}` : 'creating reusable Gemini tab');
+  setStatus('Opening Gemini in the background…', 'waiting');
+  try {
+    const url = 'https://gemini.google.com/app';
+    if (tab?.id) {
+      activeGeminiRequest.tabId = tab.id;
+      await chrome.tabs.update(tab.id, { url, active: false });
+      setTimeout(() => sendGeminiPrompt(tab.id, requestId, prompt, mode), 1200);
+    } else {
+      tab = await chrome.tabs.create({ url, active: false, windowId });
+      if (!tab?.id) throw new Error('Chrome did not create the Gemini tab.');
+      activeGeminiRequest.tabId = tab.id;
+      await chrome.storage.local.set({ satoriGeminiTabId: tab.id, satoriGeminiWindowId: tab.windowId });
+      setTimeout(() => sendGeminiPrompt(tab.id, requestId, prompt, mode), 1800);
+    }
+  } catch (error) {
+    setStatus(`Could not open Gemini: ${error.message}`, 'error');
+    addDiagnostic('gemini-error', error.message);
+  }
+}
+
+function handleGeminiResponse(message) {
+  if (!activeGeminiRequest || message.requestId !== activeGeminiRequest.requestId) {
+    addDiagnostic('gemini-stale', 'ignored response from an older Gemini request');
+    return;
+  }
+  const payload = typeof message.text === 'string' ? { text: message.text, code: '' } : (message.text || {});
+  const raw = String(payload.text || '').trim();
+  const selected = activeGeminiRequest.mode === 'coding' ? String(payload.code || '').trim() : raw;
+  if (!selected) {
+    setStatus(activeGeminiRequest.mode === 'coding' ? 'Gemini responded, but no reliable code block was found.' : 'Gemini returned an empty response.', 'error');
+    addDiagnostic('gemini-parser', activeGeminiRequest.mode === 'coding' ? 'response found but code block missing' : 'empty response');
+    return;
+  }
+  chrome.storage.local.set({ latestGoogleResponse: selected, latestGoogleRawResponse: raw, latestGoogleAt: Date.now(), latestProvider: 'gemini' });
+  const warning = activeGeminiRequest.mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
+  setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
+  addDiagnostic('gemini-complete', `${selected.length} chars captured${activeGeminiRequest.mode === 'coding' ? ' as code' : ''}`);
+}
+
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  if (message.type === 'GEMINI_RESPONSE') {
+    handleGeminiResponse(message);
+    return;
+  }
+  if (message.type === 'GEMINI_DIAGNOSTIC') {
+    addDiagnostic('gemini', message.detail || 'Gemini adapter diagnostic');
+    return;
+  }
+  if (message.type === 'GEMINI_SUBMITTED') {
+    addDiagnostic('gemini-submit', message.detail || 'Gemini prompt submitted');
+    return;
+  }
   if (message.type !== 'OPEN_GOOGLE_SEARCH') return;
   activeRequestId += 1;
   const requestId = activeRequestId;
   const provider = message.provider || 'google';
   chrome.storage.local.set({ satoriDiagnostics: [{ time: new Date().toLocaleTimeString(), step: 'request', detail: `provider=${provider}` }] });
-  if (provider !== 'google') {
-    setStatus(`${provider === 'gemini' ? 'Gemini' : 'ChatGPT'} adapter is not enabled yet. Select Google AI Mode for this version.`, 'error');
-    addDiagnostic('provider', 'adapter not enabled');
+  const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
+  addDiagnostic('prompt', `${provider} query length=${query.length}`);
+  let assignmentTab = sender.tab;
+  if (!assignmentTab?.windowId) {
+    const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    assignmentTab = activeTabs.find((tab) => tab.id && !/^https:\/\/(www\.)?google\./i.test(tab.url || '') && !/^https:\/\/gemini\.google\.com\//i.test(tab.url || '')) || activeTabs[0];
+  }
+  addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId}` : 'assignment window unavailable');
+  if (provider === 'google') {
+    startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab);
+  } else if (provider === 'gemini') {
+    startGeminiSearch(query, requestId, message.mode || 'text', assignmentTab);
+  } else {
+    setStatus('ChatGPT adapter is not enabled yet. Select Google or Gemini for this version.', 'error');
+    addDiagnostic('provider', 'ChatGPT adapter not enabled');
     sendResponse({ ok: false });
     return;
-  }
-  const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
-  addDiagnostic('prompt', `Google raw-page query length=${query.length}`);
-  if (provider === 'google') {
-    let assignmentTab = sender.tab;
-    if (!assignmentTab?.windowId) {
-      const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      assignmentTab = activeTabs.find((tab) => tab.id && !/^https:\/\/(www\.)?google\./i.test(tab.url || '')) || activeTabs[0];
-    }
-    addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId}` : 'assignment window unavailable');
-    startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab);
   }
   sendResponse({ ok: true });
 });

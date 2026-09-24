@@ -8,7 +8,7 @@ const status = (message, error = false) => {
 function showSavedResponse(response) {
   if (response) {
     $('response').value = response;
-    status('Latest Google AI Overview loaded.');
+    status('Latest AI response loaded.');
   }
 }
 
