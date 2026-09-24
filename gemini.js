@@ -15,6 +15,11 @@
     .replace(/[ \t]+\n/g, '\n')
     .trim();
 
+  const normalizeSource = (value) => clean(value)
+    .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
+    .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\n(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
+    .trim();
+
   const responseNodes = () => [...document.querySelectorAll(
     'model-response, message-content, [data-message-author-role="model"], [data-testid*="model" i], [data-test-id*="model" i]'
   )].filter((node) => {
@@ -73,10 +78,10 @@
       let current = button.parentElement;
       for (let distance = 1; current && distance <= 8; distance += 1, current = current.parentElement) {
         const descendants = [...current.querySelectorAll('pre, code, code-block, [class*="code" i], [data-code-block]')]
-          .map((element) => clean(element.innerText || element.textContent))
+          .map((element) => normalizeSource(element.innerText || element.textContent))
           .filter((value) => value.length > 20 && !state.baselineCode.has(signature(value)));
         descendants.forEach((value) => copyAnchored.push({ value, score: codeScore(value, distance) + 120 }));
-        const containerText = clean(current.innerText || current.textContent || '')
+        const containerText = normalizeSource(current.innerText || current.textContent || '')
           .replace(/^\s*copy\s*$/gim, '').trim();
         if (!descendants.length && containerText.length > 40 &&
           /#include|\bpublic\s+class\s+Main\b|\bclass\s+Main\b|\bint\s+main\s*\(|\bstatic\s+void\s+main\b|\bdef\s+main\s*\(/i.test(containerText) &&
@@ -90,13 +95,13 @@
     const anchored = copyAnchored.sort((a, b) => b.score - a.score)[0]?.value || '';
     if (anchored) return anchored;
     const fenced = [...text.matchAll(/```(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/g)]
-      .map((match) => clean(match[1])).filter((value) => value.length > 20);
+      .map((match) => normalizeSource(match[1])).filter((value) => value.length > 20);
     if (fenced.length) return fenced.sort((a, b) => b.length - a.length)[0];
     const selectors = 'pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]';
     const elements = [...(node?.querySelectorAll?.(selectors) || []), ...document.querySelectorAll(selectors)];
     const domCode = elements
       .map((element, index) => ({
-        text: clean(element.innerText || element.textContent),
+        text: normalizeSource(element.innerText || element.textContent),
         index,
         score: 0
       }))
@@ -157,7 +162,7 @@
     state.requestId = message.requestId || Date.now();
     state.baseline = new Set(responseSnapshot().map((item) => item.signature));
     state.baselineCode = new Set([...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
-      .map((element) => clean(element.innerText || element.textContent))
+      .map((element) => normalizeSource(element.innerText || element.textContent))
       .filter((text) => text.length > 20)
       .map(signature));
     state.baselineCount = state.baseline.size;
