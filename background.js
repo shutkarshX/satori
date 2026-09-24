@@ -139,7 +139,7 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type !== 'OPEN_GOOGLE_SEARCH') return;
   activeRequestId += 1;
   const requestId = activeRequestId;
@@ -153,6 +153,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
   addDiagnostic('prompt', `Google raw-page query length=${query.length}`);
-  if (provider === 'google') startGoogleSearch(query, requestId, message.mode || 'text', sender.tab);
+  if (provider === 'google') {
+    let assignmentTab = sender.tab;
+    if (!assignmentTab?.windowId) {
+      const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      assignmentTab = activeTabs.find((tab) => tab.id && !/^https:\/\/(www\.)?google\./i.test(tab.url || '')) || activeTabs[0];
+    }
+    addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId}` : 'assignment window unavailable');
+    startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab);
+  }
   sendResponse({ ok: true });
 });
