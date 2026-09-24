@@ -19,15 +19,15 @@
   <button id="googleSearch" class="primary">Search Google & show AI Overview</button>
   <div id="aiStatus" class="ai-status idle">Idle — ready for a question</div>
   <details id="diagnostics"><summary>Diagnostics</summary><pre id="diagnosticLog">No request yet.</pre></details>
-  <label for="response">Latest Google AI Overview</label>
-  <textarea id="response" readonly placeholder="The Google AI Overview will appear here after the search finishes."></textarea>
+  <label id="responseLabel" for="response">Latest AI response</label>
+  <textarea id="response" readonly placeholder="The selected provider response will appear here."></textarea>
   <hr>
   <label for="draft">Reviewed answer/code to type into the assignment</label>
   <textarea id="draft" placeholder="Click the assignment editor first, then put reviewed text here."></textarea>
   <label class="check"><input type="checkbox" id="append"> append instead of replace</label>
   <button id="type">Type into focused assignment editor</button>
   <p id="status" role="status"></p>
-  <small>Google Search runs in the background. Final review and submission stay manual.</small>
+  <small>AI providers run in the background. Final review and submission stay manual.</small>
   <script src="popup.js"></script>
 </body>
 </html>

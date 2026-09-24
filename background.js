@@ -189,6 +189,7 @@ async function sendGeminiPrompt(tabId, requestId, prompt, mode, retries = 15) {
 }
 
 async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
+  await chrome.storage.local.remove(['latestGeminiResponse', 'latestGeminiRawResponse']);
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableGeminiTab(windowId) : null;
   activeGeminiRequest = { requestId, mode, tabId: null };

@@ -2,6 +2,7 @@
   const state = {
     requestId: 0,
     baseline: new Set(),
+    baselineCode: new Set(),
     baselineCount: 0,
     lastSentAt: 0,
     lastResponseSignature: '',
@@ -59,9 +60,22 @@
     const fenced = [...text.matchAll(/```(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/g)]
       .map((match) => clean(match[1])).filter((value) => value.length > 20);
     if (fenced.length) return fenced.sort((a, b) => b.length - a.length)[0];
-    const domCode = node ? [...node.querySelectorAll('pre code, pre')]
-      .map((element) => clean(element.innerText || element.textContent)).filter((value) => value.length > 20) : [];
-    return domCode.sort((a, b) => b.length - a.length)[0] || '';
+    const selectors = 'pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]';
+    const elements = [...(node?.querySelectorAll?.(selectors) || []), ...document.querySelectorAll(selectors)];
+    const domCode = elements
+      .map((element, index) => ({
+        text: clean(element.innerText || element.textContent),
+        index,
+        score: 0
+      }))
+      .filter((candidate) => candidate.text.length > 20 && !state.baselineCode.has(signature(candidate.text)))
+      .map((candidate) => ({
+        ...candidate,
+        score: (/#include|\bint\s+main\s*\(|public\s+class\s+Main|\bdef\s+main\s*\(|import\s+java\b/.test(candidate.text) ? 80 : 0) +
+          (/[{}();]|\breturn\b|\bfor\s*\(/.test(candidate.text) ? 25 : 0) +
+          Math.min(candidate.text.length / 1000, 20)
+      }));
+    return domCode.sort((a, b) => b.score - a.score || b.index - a.index)[0]?.text || '';
   };
 
   const inspectForNewResponse = () => {
@@ -111,6 +125,10 @@
     }
     state.requestId = message.requestId || Date.now();
     state.baseline = new Set(responseSnapshot().map((item) => item.signature));
+    state.baselineCode = new Set([...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
+      .map((element) => clean(element.innerText || element.textContent))
+      .filter((text) => text.length > 20)
+      .map(signature));
     state.baselineCount = state.baseline.size;
     state.lastResponseSignature = '';
     state.lastSentAt = Date.now();

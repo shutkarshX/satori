@@ -6,14 +6,15 @@ const status = (message, error = false) => {
 };
 
 function showSavedResponse(response) {
-  if (response) {
-    $('response').value = response;
-    status('Latest AI response loaded.');
-  }
+  $('response').value = response || '';
+  if (response) status('Latest AI response loaded.');
 }
 
 function showSelectedProviderResponse(result) {
-  const response = $('provider').value === 'gemini' ? result.latestGeminiResponse : result.latestGoogleResponse;
+  const provider = $('provider').value;
+  const response = provider === 'gemini' ? result.latestGeminiResponse : provider === 'google' ? result.latestGoogleResponse : '';
+  const label = provider === 'gemini' ? 'Latest Gemini response' : provider === 'google' ? 'Latest Google AI response' : 'Latest ChatGPT response';
+  $('responseLabel').textContent = label;
   showSavedResponse(response);
 }
 
