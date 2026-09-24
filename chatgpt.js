@@ -1,5 +1,16 @@
 (() => {
-  const state = { requestId: 0, mode: 'text', baseline: new Set(), lastSentAt: 0, lastSignature: '', pendingSignature: '', stableSignature: '', stableChecks: 0, quietTimer: null };
+  const state = {
+    requestId: 0,
+    mode: 'text',
+    baseline: new Set(),
+    lastSentAt: 0,
+    lastSignature: '',
+    pendingSignature: '',
+    stableSignature: '',
+    stableChecks: 0,
+    quietTimer: null,
+    stabilityTimer: null
+  };
   const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
   const normalizeSource = (value) => clean(value)
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
@@ -10,12 +21,17 @@
     const primary = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
     const nodes = primary.length ? primary : [...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown, .markdown, article')];
     return nodes.filter((node) => {
-    const text = clean(node.innerText || node.textContent);
-    return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
+      const text = clean(node.innerText || node.textContent);
+      return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
     });
   };
-  const snapshot = () => responseNodes().map((node) => ({ node, text: clean(node.innerText || node.textContent), signature: signature(clean(node.innerText || node.textContent)) }));
-  const report = (type, detail) => { try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {} };
+  const snapshot = () => responseNodes().map((node) => {
+    const text = clean(node.innerText || node.textContent);
+    return { node, text, signature: signature(text) };
+  });
+  const report = (type, detail) => {
+    try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {}
+  };
   const findInput = () => document.querySelector('textarea[data-id], textarea[placeholder], textarea, [contenteditable="true"][role="textbox"], [contenteditable="true"]');
   const setInput = (element, text) => {
     element.focus();
@@ -44,62 +60,128 @@
     return '';
   };
   const extractCode = (text, node) => {
-    const fenced = [...text.matchAll(/```(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/g)].map((match) => normalizeSource(match[1])).filter((value) => value.length > 20);
+    const fenced = [...text.matchAll(/\`\`\`(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)\`\`\`/g)]
+      .map((match) => normalizeSource(match[1]))
+      .filter((value) => value.length > 20);
     if (fenced.length) return fenced.sort((a, b) => b.length - a.length)[0];
     const elements = [...(node?.querySelectorAll?.('pre code, pre') || []), ...document.querySelectorAll('pre code, pre')];
-    return elements.map((element) => normalizeSource(element.innerText || element.textContent)).filter((value) => value.length > 20).sort((a, b) => b.length - a.length)[0] || '';
+    return elements.map((element) => normalizeSource(element.innerText || element.textContent))
+      .filter((value) => value.length > 20)
+      .sort((a, b) => b.length - a.length)[0] || '';
   };
-  const looksComplete = (code) => code.length >= 220 &&
-    /#include|public\s+class\s+Main|\bint\s+main\s*\(|\bmain\s*\(/i.test(code) &&
-    /return\b|printf\s*\(|System\.out|cout\s*<</.test(code) && code.includes('}');
-  const isGenerating = () => [...document.querySelectorAll('button')].some((button) => /stop generating|stop/i.test(`${button.getAttribute('aria-label') || ''} ${button.innerText || ''}`) && !button.disabled && button.offsetParent !== null);
+  const looksComplete = (code) => {
+    if (code.length < 220) return false;
+    const hasEntryPoint = /#include|public\s+class\s+Main|\bint\s+main\s*\(|\bmain\s*\(/i.test(code);
+    const hasOutputOrReturn = /return\b|printf\s*\(|System\.out|cout\s*<<|console\.log|print\s*\(/i.test(code);
+    const hasBalancedBraces = (code.match(/{/g) || []).length === (code.match(/}/g) || []).length;
+    const hasClosingStructure = /}\s*$/.test(code);
+    return hasEntryPoint && hasOutputOrReturn && hasBalancedBraces && hasClosingStructure;
+  };
+  const isGenerating = () => [...document.querySelectorAll('button')].some((button) =>
+    /stop generating|stop/i.test(`${button.getAttribute('aria-label') || ''} ${button.innerText || ''}`) &&
+    !button.disabled &&
+    button.offsetParent !== null
+  );
+
+  const resetStability = () => {
+    state.pendingSignature = '';
+    state.stableSignature = '';
+    state.stableChecks = 0;
+    clearTimeout(state.stabilityTimer);
+  };
+
+  const emitStableResponse = (final, code) => {
+    if (state.lastSignature === final.signature) return;
+    state.lastSignature = final.signature;
+    report('CHATGPT_RESPONSE', { text: final.text, code, capturedAt: Date.now() });
+  };
+
+  const confirmCodingResponse = () => {
+    if (!state.requestId || state.mode !== 'coding') return;
+    const latest = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
+    if (!latest || latest.signature === state.lastSignature) return;
+    if (isGenerating()) {
+      resetStability();
+      report('CHATGPT_DIAGNOSTIC', 'generation still in progress; resetting code stability');
+      return;
+    }
+
+    const code = extractCode(latest.text, latest.node);
+    if (!looksComplete(code)) {
+      resetStability();
+      report('CHATGPT_DIAGNOSTIC', `candidate incomplete (${code.length} chars); waiting for final code`);
+      return;
+    }
+
+    if (state.stableSignature === latest.signature) {
+      state.stableChecks += 1;
+    } else {
+      state.stableSignature = latest.signature;
+      state.stableChecks = 1;
+    }
+
+    if (state.stableChecks < 3) {
+      report('CHATGPT_DIAGNOSTIC', `complete candidate detected (${code.length} chars); stability check ${state.stableChecks}/3`);
+      clearTimeout(state.stabilityTimer);
+      state.stabilityTimer = setTimeout(confirmCodingResponse, 1200);
+      return;
+    }
+
+    emitStableResponse(latest, code);
+  };
+
   const inspect = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
     const latest = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
+
     clearTimeout(state.quietTimer);
     state.quietTimer = setTimeout(() => {
-      if (isGenerating()) { report('CHATGPT_DIAGNOSTIC', 'generation still in progress; waiting for completion'); inspect(); return; }
-      const final = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
-      if (!final || final.signature === state.lastSignature) return;
-      const code = extractCode(final.text, final.node);
-      if (state.mode === 'coding' && !looksComplete(code)) {
-        report('CHATGPT_DIAGNOSTIC', `candidate incomplete (${code.length} chars); waiting for final code`);
-        state.pendingSignature = final.signature;
-        state.stableSignature = '';
-        state.stableChecks = 0;
-        setTimeout(inspect, 1000);
+      if (isGenerating()) {
+        resetStability();
+        report('CHATGPT_DIAGNOSTIC', 'generation still in progress; waiting for completion');
         return;
       }
+
+      const final = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
+      if (!final || final.signature === state.lastSignature) return;
+
       if (state.mode === 'coding') {
-        if (state.stableSignature === final.signature) state.stableChecks += 1;
-        else { state.stableSignature = final.signature; state.stableChecks = 1; }
-        if (state.stableChecks < 2) {
-          report('CHATGPT_DIAGNOSTIC', `complete candidate detected (${code.length} chars); confirming stability`);
-          setTimeout(inspect, 1000);
-          return;
-        }
+        confirmCodingResponse();
+        return;
       }
+
       state.lastSignature = final.signature;
-      report('CHATGPT_RESPONSE', { text: final.text, code, capturedAt: Date.now() });
+      report('CHATGPT_RESPONSE', { text: final.text, code: extractCode(final.text, final.node), capturedAt: Date.now() });
     }, 1200);
   };
+
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message.type === 'PING_CHATGPT') { sendResponse({ ok: true, input: Boolean(findInput()), responses: responseNodes().length }); return true; }
+    if (message.type === 'PING_CHATGPT') {
+      sendResponse({ ok: true, input: Boolean(findInput()), responses: responseNodes().length });
+      return true;
+    }
+
     if (message.type !== 'FILL_AND_SEND_CHATGPT') return;
+
     const input = findInput();
-    if (!input) { report('CHATGPT_DIAGNOSTIC', 'composer not found'); sendResponse({ ok: false, error: 'ChatGPT composer is not ready yet.' }); return true; }
+    if (!input) {
+      report('CHATGPT_DIAGNOSTIC', 'composer not found');
+      sendResponse({ ok: false, error: 'ChatGPT composer is not ready yet.' });
+      return true;
+    }
+
     state.requestId = message.requestId || Date.now();
     state.mode = message.mode || 'text';
     state.baseline = new Set(snapshot().map((item) => item.signature));
     state.lastSignature = '';
-    state.pendingSignature = '';
-    state.stableSignature = '';
-    state.stableChecks = 0;
+    resetStability();
     state.lastSentAt = Date.now();
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
+
     setTimeout(() => {
       const method = clickSend();
       if (method === 'button') report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button');
@@ -109,6 +191,7 @@
       else report('CHATGPT_DIAGNOSTIC', 'ChatGPT Send button, form, and composer were unavailable');
       setTimeout(() => report('CHATGPT_DIAGNOSTIC', `post-submit assistant nodes=${responseNodes().length}, generating=${isGenerating()}`), 3500);
     }, 700);
+
     sendResponse({ ok: true, baselineCount: state.baseline.size });
     return true;
   });
