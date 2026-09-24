@@ -310,8 +310,18 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
     else { tab = await chrome.tabs.create({ url, active: false, windowId }); if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.'); activeChatGPTRequest.tabId = tab.id; await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2000); }
   } catch (error) { setStatus(`Could not open ChatGPT: ${error.message}`, 'error'); addDiagnostic('chatgpt-error', error.message); }
 }
-function handleChatGPTResponse(message) {
-  if (!activeChatGPTRequest || message.requestId !== activeChatGPTRequest.requestId) { addDiagnostic('chatgpt-stale', 'ignored response from an older ChatGPT request'); return; }
+async function handleChatGPTResponse(message) {
+  if (!activeChatGPTRequest || message.requestId !== activeChatGPTRequest.requestId) {
+    const stored = await chrome.storage.local.get('activeChatGPTRequest');
+    const recovered = stored.activeChatGPTRequest;
+    if (recovered && message.requestId === recovered.requestId) {
+      activeChatGPTRequest = recovered;
+      addDiagnostic('chatgpt-recovery', 'restored active ChatGPT request state');
+    } else {
+      addDiagnostic('chatgpt-stale', 'ignored response from an older ChatGPT request');
+      return;
+    }
+  }
   const responsePayload = message.detail ?? message.text;
   const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
   const raw = String(payload.text || '').trim();
