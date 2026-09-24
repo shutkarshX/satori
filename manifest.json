@@ -2,10 +2,11 @@
   "manifest_version": 3,
   "name": "Satori",
   "version": "0.3.0",
-  "description": "A practice-study assistant for MCQs and coding questions using ChatGPT in the browser.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
-  "host_permissions": ["https://chatgpt.com/*", "https://www.chatgpt.com/*", "https://chat.openai.com/*"],
+  "description": "A practice-study assistant for MCQs and coding questions using Gemini in the browser.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "sidePanel"],
+  "host_permissions": ["https://gemini.google.com/*"],
   "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
   "action": {
     "default_title": "Satori",
     "default_popup": "popup.html"
@@ -17,8 +18,8 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chatgpt.com/*", "https://www.chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["chatgpt.js"],
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["gemini.js"],
       "run_at": "document_idle"
     }
   ]

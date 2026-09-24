@@ -7,26 +7,23 @@ const status = (message, error = false) => {
 function showSavedResponse(response) {
   if (response) {
     $('response').value = response;
-    status('Latest ChatGPT response loaded.');
+    status('Latest Gemini response loaded.');
   }
 }
 
 function showAiStatus(value) {
   if (!value) return;
-  if (value.at && Date.now() - value.at > 120000 && value.kind === 'waiting') {
-    value = { text: 'Idle — ready for a question', kind: 'idle' };
-  }
   const el = $('aiStatus');
   el.textContent = value.text || value;
   el.className = `ai-status ${value.kind || 'idle'}`;
 }
 
-chrome.storage.local.get(['latestChatGPTResponse', 'satoriStatus'], (result) => {
-  showSavedResponse(result.latestChatGPTResponse);
+chrome.storage.local.get(['latestGeminiResponse', 'satoriStatus'], (result) => {
+  showSavedResponse(result.latestGeminiResponse);
   showAiStatus(result.satoriStatus);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.latestChatGPTResponse) showSavedResponse(changes.latestChatGPTResponse.newValue);
+  if (area === 'local' && changes.latestGeminiResponse) showSavedResponse(changes.latestGeminiResponse.newValue);
   if (area === 'local' && changes.satoriStatus) showAiStatus(changes.satoriStatus.newValue);
 });
 
@@ -73,17 +70,12 @@ $('extract').addEventListener('click', async () => {
   try { await extract(); } catch (e) { status(e.message, true); }
 });
 
-$('chatgpt').addEventListener('click', async () => {
+$('gemini').addEventListener('click', async () => {
   try {
     const prompt = buildPrompt();
-    const sourceTab = await activeTab();
-    const allTabs = await chrome.tabs.query({});
-    let chatTab = allTabs.find((tab) => /^(https:\/\/chatgpt\.com|https:\/\/www\.chatgpt\.com|https:\/\/chat\.openai\.com)\//.test(tab.url || ''));
-    if (!chatTab) chatTab = await chrome.tabs.create({ url: 'https://chatgpt.com/', active: true });
-    if (!chatTab?.id) throw new Error('Chrome could not create the ChatGPT tab.');
-    const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_CHATGPT', prompt, returnTabId: sourceTab.id, chatTabId: chatTab.id });
-    if (!result?.ok) throw new Error('Could not open ChatGPT.');
-    status(result.reused ? 'Reused ChatGPT and sent the prompt.' : 'Opened ChatGPT in the background and sent the prompt.');
+    const result = await chrome.runtime.sendMessage({ type: 'OPEN_OR_REUSE_GEMINI', prompt });
+    if (!result?.ok) throw new Error('Could not open Gemini.');
+    status(result.reused ? 'Reused Gemini and sent the prompt.' : 'Opened Gemini and sent the prompt.');
   } catch (e) { status(e.message, true); }
 });
 
