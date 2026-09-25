@@ -292,24 +292,48 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
 async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
   const windowId = assignmentTab?.windowId;
-  // ChatGPT conversation state can retain an earlier answer or fail to create a
-  // new assistant turn. Use a fresh background conversation for correctness.
-  let tab = null;
-  activeChatGPTRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
+  let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
+  activeChatGPTRequest = { requestId, mode, tabId: tab?.id || null, assignmentTabId: assignmentTab?.id };
   await chrome.storage.local.set({ activeChatGPTRequest });
-  addDiagnostic('chatgpt-tab', 'creating fresh ChatGPT conversation');
-  setStatus('Opening ChatGPT in the background…', 'waiting');
+
+  addDiagnostic('chatgpt-tab', tab ? `reusing ChatGPT conversation tab ${tab.id}` : 'creating reusable ChatGPT conversation');
+  setStatus('Sending to ChatGPT in the background…', 'waiting');
+
   try {
     const url = 'https://chatgpt.com/';
+
     if (tab?.id) {
-      activeChatGPTRequest.tabId = tab.id;
       const ready = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '') && tab.status === 'complete';
-      if (!ready) { await chrome.tabs.update(tab.id, { url, active: false }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400); }
-      else { await chrome.tabs.update(tab.id, { active: false }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 200); }
+      await chrome.tabs.update(tab.id, { active: false });
+
+      if (!ready) {
+        await chrome.tabs.update(tab.id, { url, active: false });
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400);
+      } else {
+        // Keep the existing conversation. The ChatGPT adapter snapshots the
+        // current turns and only accepts the new assistant response.
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 300);
+      }
+      return;
     }
-    else { tab = await chrome.tabs.create({ url, active: false, windowId }); if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.'); activeChatGPTRequest.tabId = tab.id; await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId }); setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2000); }
-  } catch (error) { setStatus(`Could not open ChatGPT: ${error.message}`, 'error'); addDiagnostic('chatgpt-error', error.message); }
+
+    tab = await chrome.tabs.create({ url, active: false, windowId });
+    if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.');
+
+    activeChatGPTRequest.tabId = tab.id;
+    await chrome.storage.local.set({
+      satoriChatGPTTabId: tab.id,
+      satoriChatGPTWindowId: tab.windowId,
+      activeChatGPTRequest
+    });
+
+    setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2000);
+  } catch (error) {
+    setStatus(`Could not open ChatGPT: ${error.message}`, 'error');
+    addDiagnostic('chatgpt-error', error.message);
+  }
 }
+
 async function handleChatGPTResponse(message) {
   if (!activeChatGPTRequest || message.requestId !== activeChatGPTRequest.requestId) {
     const stored = await chrome.storage.local.get('activeChatGPTRequest');
