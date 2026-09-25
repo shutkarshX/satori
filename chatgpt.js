@@ -1,4 +1,7 @@
 (() => {
+  if (window.__satoriChatGPTAdapterInitialized) return;
+  window.__satoriChatGPTAdapterInitialized = true;
+
   // Marker used by the background service to verify that an injected adapter
   // survived page loading before sending the request.
   window.__satoriChatGPTAdapterLoaded = true;
