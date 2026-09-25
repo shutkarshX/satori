@@ -362,6 +362,8 @@ async function handleChatGPTResponse(message) {
   if (!selected) { setStatus(activeChatGPTRequest.mode === 'coding' ? 'ChatGPT responded, but no code block was found.' : 'ChatGPT returned an empty response.', 'error'); addDiagnostic('chatgpt-parser', 'response found but selected output missing'); return; }
   chrome.storage.local.set({ latestChatGPTResponse: selected, latestChatGPTRawResponse: raw, latestChatGPTAt: Date.now(), latestProvider: 'chatgpt' });
   autoFillAssignment(activeChatGPTRequest.assignmentTabId, selected, 'ChatGPT');
+  activeChatGPTRequest = null;
+  await chrome.storage.local.remove('activeChatGPTRequest');
   setStatus('ChatGPT response captured.', 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${activeChatGPTRequest.mode === 'coding' ? ' as code' : ''}`);
 }
