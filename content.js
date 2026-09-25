@@ -10,6 +10,11 @@
     if (isEditable(event.target)) lastEditable = event.target;
   }, true);
 
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || !event.isTrusted) return;
+    try { chrome.runtime.sendMessage({ type: 'CHATGPT_ASSIGNMENT_ENTER' }); } catch (_error) {}
+  }, true);
+
   const visibleText = (node) => {
     if (!node || node.namespaceURI === 'http://www.w3.org/2000/svg') return '';
     // Do not clone arbitrary portal elements: cloning can re-render malformed SVG charts.
