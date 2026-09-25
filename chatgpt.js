@@ -70,11 +70,23 @@
         else element.value = text;
       }
 
-      element.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: text
-      }));
+      try {
+        element.dispatchEvent(new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: text
+        }));
+      } catch (_error) {}
+      try {
+        element.dispatchEvent(new InputEvent('input', {
+          bubbles: true,
+          inputType: 'insertText',
+          data: text
+        }));
+      } catch (_error) {
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+      }
       element.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
