@@ -213,11 +213,7 @@
     return state.promptText.length > 0 && value.trim().length > 0;
   };
 
-  const userMessageNodes = () => {
-    const primary = [...document.querySelectorAll('[data-message-author-role="user"]')];
-    const fallback = [...document.querySelectorAll('[data-testid*="conversation-turn" i]')];
-    return primary.length ? primary : fallback;
-  };
+  const userMessageNodes = () => [...document.querySelectorAll('[data-message-author-role="user"]')];
 
   const hasSubmittedUserMessage = () => {
     const prompt = clean(state.promptText);
