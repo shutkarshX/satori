@@ -408,6 +408,29 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
   if (message.type === 'CHATGPT_DIAGNOSTIC') { addDiagnostic('chatgpt', message.detail || 'ChatGPT adapter diagnostic'); return; }
   if (message.type === 'CHATGPT_SUBMITTED') { addDiagnostic('chatgpt-submit', message.detail || 'ChatGPT prompt submitted'); return; }
+  if (message.type === 'CHATGPT_FOREGROUND_SUBMIT') {
+    const tabId = sender.tab?.id;
+    const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
+    try {
+      if (tabId) {
+        await chrome.tabs.update(tabId, { active: true });
+        addDiagnostic('chatgpt-submit', 'temporarily activated ChatGPT tab for real UI submission');
+      }
+      sendResponse({ ok: true, assignmentTabId: assignmentTabId || null });
+    } catch (error) {
+      sendResponse({ ok: false, error: error.message });
+    }
+    return true;
+  }
+  if (message.type === 'CHATGPT_BACKGROUND_AFTER_SUBMIT') {
+    try {
+      const target = message.assignmentTabId || activeChatGPTRequest?.assignmentTabId;
+      if (target) await chrome.tabs.update(target, { active: true });
+      else if (sender.tab?.id) await chrome.tabs.update(sender.tab.id, { active: false });
+      addDiagnostic('chatgpt-submit', 'returned focus to assignment tab after ChatGPT submission attempt');
+    } catch (error) { addDiagnostic('chatgpt-submit', 'could not restore assignment tab (' + error.message + ')'); }
+    return;
+  }
   if (!['OPEN_GOOGLE_SEARCH', 'OPEN_GEMINI_REQUEST', 'OPEN_CHATGPT_REQUEST'].includes(message.type)) return;
   activeRequestId += 1;
   const requestId = activeRequestId;
