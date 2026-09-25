@@ -175,48 +175,41 @@
     return '';
   };
 
-  const submitPrompt = (attempt = 0) => {
+  const submitPrompt = async (attempt = 0) => {
     if (!state.requestId) return;
 
-    // Prefer the native composer form when ChatGPT exposes one. Synthetic
-    // keyboard events can clear the textarea without actually submitting it
-    // on some React builds, while requestSubmit() reaches the same form
-    // handler used by the real composer.
+    // ChatGPT does not reliably process synthetic submission events while
+    // the tab is hidden. Temporarily activate the existing tab, perform the
+    // normal UI submission, then return focus to the assignment tab.
     if (attempt === 0) {
       const input = findInput();
       if (input && composerHasPrompt()) {
-        const form = input.closest('form');
-        if (form) {
+        try {
+          const foreground = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ type: 'CHATGPT_FOREGROUND_SUBMIT' }, resolve);
+          });
+          if (!foreground?.ok) throw new Error(foreground?.error || 'could not activate ChatGPT');
+          const liveInput = findInput();
+          liveInput?.focus();
+          const button = findSendButton();
+          if (button) {
+            button.click();
+            report('CHATGPT_SUBMITTED', 'prompt submitted using visible ChatGPT Send button');
+          } else {
+            submitWithEnter();
+            report('CHATGPT_SUBMITTED', 'prompt submitted using Enter while ChatGPT tab was active');
+          }
           setTimeout(() => {
-            if (!state.requestId || !composerHasPrompt()) return;
-            try {
-              form.requestSubmit();
-              report('CHATGPT_SUBMITTED', 'prompt submitted using native ChatGPT composer form');
-            } catch (_error) {
-              submitWithEnter();
-              report('CHATGPT_SUBMITTED', 'native form submission failed; Enter fallback attempted');
-            }
-          }, 100);
-          setTimeout(() => verifySubmission(0), 1500);
+            chrome.runtime.sendMessage({
+              type: 'CHATGPT_BACKGROUND_AFTER_SUBMIT',
+              assignmentTabId: foreground.assignmentTabId
+            });
+          }, 300);
+          setTimeout(() => verifySubmission(0), 1200);
           return;
+        } catch (error) {
+          report('CHATGPT_DIAGNOSTIC', 'foreground submission failed: ' + error.message);
         }
-
-        input.focus();
-        input.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'Enter',
-          code: 'Enter',
-          bubbles: true,
-          cancelable: true
-        }));
-        input.dispatchEvent(new KeyboardEvent('keyup', {
-          key: 'Enter',
-          code: 'Enter',
-          bubbles: true,
-          cancelable: true
-        }));
-        report('CHATGPT_SUBMITTED', 'prompt submission attempted using Enter');
-        setTimeout(() => verifySubmission(0), 1200);
-        return;
       }
     }
 
