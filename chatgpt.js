@@ -270,6 +270,22 @@
       return true;
     }
 
+    if (message.type === 'SUBMIT_CHATGPT_PROMPT') {
+      const input = findInput();
+      const form = input?.closest('form');
+      if (!input || !form || !composerHasPrompt()) {
+        sendResponse({ ok: false, error: 'ChatGPT composer is not ready for submission.' });
+        return true;
+      }
+      try {
+        form.requestSubmit();
+        sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message });
+      }
+      return true;
+    }
+
     if (message.type !== 'FILL_CHATGPT_PROMPT') return;
 
     const input = findInput();
