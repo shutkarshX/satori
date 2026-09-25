@@ -131,6 +131,23 @@
         bubbles: true,
         cancelable: true
       }));
+
+      // Some ChatGPT builds expose a textarea/form before rendering the Send
+      // button. Give the normal keyboard path a moment, then use the form's
+      // native submit as a fallback rather than depending on a synthetic Enter.
+      const form = input.closest('form');
+      if (form) {
+        setTimeout(() => {
+          if (!hasSubmittedUserMessage() && composerHasPrompt()) {
+            try {
+              form.requestSubmit();
+              report('CHATGPT_DIAGNOSTIC', 'Enter was not accepted; native composer form submission attempted');
+            } catch (_error) {}
+          }
+        }, 250);
+        return 'keyboard-form-fallback';
+      }
+
       return 'keyboard-attempt';
     }
     return '';
