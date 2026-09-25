@@ -282,26 +282,32 @@
         sendResponse({ ok: false, error: 'ChatGPT composer is empty.' });
         return true;
       }
+      let submitted = false;
       if (form) {
         try {
           form.requestSubmit();
-          sendResponse({ ok: true });
-        } catch (error) {
-          sendResponse({ ok: false, error: `ChatGPT form submission failed: ${error.message}` });
+          submitted = true;
+        } catch (_error) {}
+      }
+      if (!submitted) {
+        const sendButton = document.querySelector('button[data-testid="send-button"]');
+        if (sendButton && !sendButton.disabled && sendButton.offsetParent !== null) {
+          sendButton.click();
+          submitted = true;
         }
+      }
+      if (!submitted) {
+        sendResponse({ ok: false, error: 'ChatGPT composer could not be submitted.' });
         return true;
       }
-      const sendButton = [...document.querySelectorAll('button')].find((button) =>
-        !button.disabled &&
-        button.offsetParent !== null &&
-        /^(send|submit)$/i.test((button.getAttribute('aria-label') || button.getAttribute('data-testid') || button.innerText || '').trim())
-      );
-      if (sendButton) {
-        sendButton.click();
-        sendResponse({ ok: true });
-        return true;
-      }
-      sendResponse({ ok: false, error: 'ChatGPT composer found, but no native submit control is available.' });
+
+      state.lastSentAt = Date.now();
+      report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter submitted the existing ChatGPT composer; verifying new user message');
+      setTimeout(waitForPhysicalSubmission, 250);
+      setTimeout(waitForPhysicalSubmission, 700);
+      setTimeout(waitForPhysicalSubmission, 1400);
+      sendResponse({ ok: true });
+      return true;
       return true;
     }
 
