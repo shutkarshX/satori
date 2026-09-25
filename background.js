@@ -345,27 +345,40 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
 
 async function handleChatGPTResponse(message) {
   if (!activeChatGPTRequest || message.requestId !== activeChatGPTRequest.requestId) {
-    const stored = await chrome.storage.local.get('activeChatGPTRequest');
-    const recovered = stored.activeChatGPTRequest;
-    if (recovered && message.requestId === recovered.requestId) {
-      activeChatGPTRequest = recovered;
-      addDiagnostic('chatgpt-recovery', 'restored active ChatGPT request state');
-    } else {
-      addDiagnostic('chatgpt-stale', 'ignored response from an older ChatGPT request');
-      return;
-    }
+    addDiagnostic('chatgpt-stale', 'ignored response from an older ChatGPT request');
+    return;
   }
+
+  const mode = activeChatGPTRequest.mode;
   const responsePayload = message.detail ?? message.text;
   const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
   const raw = String(payload.text || '').trim();
-  const selected = activeChatGPTRequest.mode === 'coding' ? String(payload.code || '').trim() : raw;
-  if (!selected) { setStatus(activeChatGPTRequest.mode === 'coding' ? 'ChatGPT responded, but no code block was found.' : 'ChatGPT returned an empty response.', 'error'); addDiagnostic('chatgpt-parser', 'response found but selected output missing'); return; }
-  chrome.storage.local.set({ latestChatGPTResponse: selected, latestChatGPTRawResponse: raw, latestChatGPTAt: Date.now(), latestProvider: 'chatgpt' });
-  autoFillAssignment(activeChatGPTRequest.assignmentTabId, selected, 'ChatGPT');
+  const selected = mode === 'coding' ? String(payload.code || '').trim() : raw;
+
+  if (mode === 'coding' && !selected) {
+    setStatus('ChatGPT did not return a valid code answer. Check the ChatGPT response and try again.', 'error');
+    addDiagnostic('chatgpt-validation', 'coding response rejected: no complete code was extracted');
+    return;
+  }
+
+  if (mode !== 'coding' && !selected) {
+    setStatus('ChatGPT did not return a valid answer. Check the ChatGPT response and try again.', 'error');
+    addDiagnostic('chatgpt-validation', 'MCQ response rejected: empty answer');
+    return;
+  }
+
+  chrome.storage.local.set({
+    latestChatGPTResponse: selected,
+    latestChatGPTRawResponse: raw,
+    latestChatGPTAt: Date.now(),
+    latestProvider: 'chatgpt'
+  });
+  const assignmentTabId = activeChatGPTRequest.assignmentTabId;
   activeChatGPTRequest = null;
   await chrome.storage.local.remove('activeChatGPTRequest');
+  autoFillAssignment(assignmentTabId, selected, 'ChatGPT');
   setStatus('ChatGPT response captured.', 'ready');
-  addDiagnostic('chatgpt-complete', `${selected.length} chars captured${activeChatGPTRequest.mode === 'coding' ? ' as code' : ''}`);
+  addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
 }
 
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
