@@ -312,7 +312,7 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
           ]);
           if (result?.ok) {
             addDiagnostic('chatgpt-input', `prompt dispatched after adapter injection; baseline responses=${result.baselineCount ?? 'unknown'}`);
-            setStatus('ChatGPT prompt sent — waiting for a new response…', 'waiting');
+            setStatus('ChatGPT prompt ready — press Enter in the existing ChatGPT tab.', 'waiting');
             return;
           }
           addDiagnostic('chatgpt-input', result?.error || 'injected ChatGPT adapter rejected the prompt');
@@ -332,44 +332,33 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
 async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
   const windowId = assignmentTab?.windowId;
-  let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
-  activeChatGPTRequest = { requestId, mode, tabId: tab?.id || null, assignmentTabId: assignmentTab?.id };
+  const tab = windowId ? await getReusableChatGPTTab(windowId) : null;
+
+  if (!tab?.id) {
+    setStatus('Open ChatGPT once in this window, then try again.', 'error');
+    addDiagnostic('chatgpt-error', 'no existing ChatGPT conversation tab found; manual-Enter flow does not create a new tab');
+    return;
+  }
+
+  activeChatGPTRequest = { requestId, mode, tabId: tab.id, assignmentTabId: assignmentTab?.id };
   await chrome.storage.local.set({ activeChatGPTRequest });
 
-  addDiagnostic('chatgpt-tab', tab ? `reusing ChatGPT conversation tab ${tab.id}` : 'creating reusable ChatGPT conversation');
-  setStatus('Sending to ChatGPT in the background…', 'waiting');
+  addDiagnostic('chatgpt-tab', `reusing existing ChatGPT conversation tab ${tab.id}`);
+  setStatus('Preparing the prompt in the existing ChatGPT tab…', 'waiting');
 
   try {
-    const url = 'https://chatgpt.com/';
+    const ready = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '') && tab.status === 'complete';
 
-    if (tab?.id) {
-      const ready = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '') && tab.status === 'complete';
-      await chrome.tabs.update(tab.id, { active: false });
-
-      if (!ready) {
-        await chrome.tabs.update(tab.id, { url, active: false });
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400);
-      } else {
-        // Keep the existing conversation. The ChatGPT adapter snapshots the
-        // current turns and only accepts the new assistant response.
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 300);
-      }
-      return;
+    // Do not activate, deactivate, or switch tabs. The user stays in control
+    // of the existing ChatGPT conversation and presses Enter there.
+    if (!ready) {
+      await chrome.tabs.update(tab.id, { url: 'https://chatgpt.com/' });
+      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400);
+    } else {
+      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 300);
     }
-
-    tab = await chrome.tabs.create({ url, active: false, windowId });
-    if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.');
-
-    activeChatGPTRequest.tabId = tab.id;
-    await chrome.storage.local.set({
-      satoriChatGPTTabId: tab.id,
-      satoriChatGPTWindowId: tab.windowId,
-      activeChatGPTRequest
-    });
-
-    setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2000);
   } catch (error) {
-    setStatus(`Could not open ChatGPT: ${error.message}`, 'error');
+    setStatus(`Could not prepare ChatGPT: ${error.message}`, 'error');
     addDiagnostic('chatgpt-error', error.message);
   }
 }
@@ -413,29 +402,6 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
   if (message.type === 'CHATGPT_DIAGNOSTIC') { addDiagnostic('chatgpt', message.detail || 'ChatGPT adapter diagnostic'); return; }
   if (message.type === 'CHATGPT_SUBMITTED') { addDiagnostic('chatgpt-submit', message.detail || 'ChatGPT prompt submitted'); return; }
-  if (message.type === 'CHATGPT_FOREGROUND_SUBMIT') {
-    const tabId = sender.tab?.id;
-    const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
-    try {
-      if (tabId) {
-        await chrome.tabs.update(tabId, { active: true });
-        addDiagnostic('chatgpt-submit', 'temporarily activated ChatGPT tab for real UI submission');
-      }
-      sendResponse({ ok: true, assignmentTabId: assignmentTabId || null });
-    } catch (error) {
-      sendResponse({ ok: false, error: error.message });
-    }
-    return true;
-  }
-  if (message.type === 'CHATGPT_BACKGROUND_AFTER_SUBMIT') {
-    try {
-      const target = message.assignmentTabId || activeChatGPTRequest?.assignmentTabId;
-      if (target) await chrome.tabs.update(target, { active: true });
-      else if (sender.tab?.id) await chrome.tabs.update(sender.tab.id, { active: false });
-      addDiagnostic('chatgpt-submit', 'returned focus to assignment tab after ChatGPT submission attempt');
-    } catch (error) { addDiagnostic('chatgpt-submit', 'could not restore assignment tab (' + error.message + ')'); }
-    return;
-  }
   if (!['OPEN_GOOGLE_SEARCH', 'OPEN_GEMINI_REQUEST', 'OPEN_CHATGPT_REQUEST'].includes(message.type)) return;
   activeRequestId += 1;
   const requestId = activeRequestId;
