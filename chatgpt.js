@@ -3,6 +3,7 @@
     requestId: 0,
     mode: 'text',
     baseline: new Set(),
+    baselineUsers: new Set(),
     lastSentAt: 0,
     lastSignature: '',
     pendingSignature: '',
@@ -220,6 +221,8 @@
     if (!prompt) return false;
     return userMessageNodes().some((node) => {
       const text = clean(node.innerText || node.textContent || '');
+      const nodeSignature = signature(text);
+      if (state.baselineUsers.has(nodeSignature)) return false;
       return text === prompt || text.includes(prompt.slice(0, Math.min(160, prompt.length)));
     });
   };
@@ -404,6 +407,7 @@
     state.mode = message.mode || 'text';
     state.promptText = String(message.prompt || '');
     state.baseline = new Set(snapshot().map((item) => item.signature));
+    state.baselineUsers = new Set(userMessageNodes().map((node) => signature(clean(node.innerText || node.textContent || ''))));
     state.lastSignature = '';
     resetStability();
     state.lastSentAt = Date.now();
