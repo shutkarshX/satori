@@ -308,7 +308,7 @@
         ? currentInput.value
         : clean(currentInput.innerText || currentInput.textContent || ''))
       : '';
-    report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; send=${findSendButton() ? 'available' : 'none'}`);
+    report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; composerFilled=${composerHasPrompt() ? 'yes' : 'no'}`);
     report('CHATGPT_DIAGNOSTIC', 'prompt ready in the existing ChatGPT tab — press Enter to submit');
 
     sendResponse({ ok: true, baselineCount: state.baseline.size, awaitingUserSubmission: true });
