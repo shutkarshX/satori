@@ -53,6 +53,12 @@
       const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
       if (setter) setter.call(element, text);
       else element.value = text;
+      element.dispatchEvent(new InputEvent('beforeinput', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: text
+      }));
       element.dispatchEvent(new InputEvent('input', {
         bubbles: true,
         inputType: 'insertText',
@@ -161,12 +167,29 @@
   const submitPrompt = (attempt = 0) => {
     if (!state.requestId) return;
 
-    // Prefer Enter: this matches the normal ChatGPT composer interaction.
-    // If the synthetic keyboard event is not accepted by the page, fall back
-    // to the Send button after verification.
+    // Prefer the native composer form when ChatGPT exposes one. Synthetic
+    // keyboard events can clear the textarea without actually submitting it
+    // on some React builds, while requestSubmit() reaches the same form
+    // handler used by the real composer.
     if (attempt === 0) {
       const input = findInput();
       if (input && composerHasPrompt()) {
+        const form = input.closest('form');
+        if (form) {
+          setTimeout(() => {
+            if (!state.requestId || !composerHasPrompt()) return;
+            try {
+              form.requestSubmit();
+              report('CHATGPT_SUBMITTED', 'prompt submitted using native ChatGPT composer form');
+            } catch (_error) {
+              submitWithEnter();
+              report('CHATGPT_SUBMITTED', 'native form submission failed; Enter fallback attempted');
+            }
+          }, 100);
+          setTimeout(() => verifySubmission(0), 1500);
+          return;
+        }
+
         input.focus();
         input.dispatchEvent(new KeyboardEvent('keydown', {
           key: 'Enter',
