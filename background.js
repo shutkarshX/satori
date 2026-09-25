@@ -272,7 +272,7 @@ async function getReusableChatGPTTab(windowId) {
 async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
   if (requestId !== activeRequestId) return;
   try {
-    const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', requestId, prompt, mode });
+    const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_CHATGPT_PROMPT', requestId, prompt, mode });
     if (result?.ok) { addDiagnostic('chatgpt-input', `prompt ready; baseline responses=${result.baselineCount ?? 'unknown'}`); setStatus('ChatGPT prompt ready — press Enter in the existing ChatGPT tab.', 'waiting'); return; }
     addDiagnostic('chatgpt-input', result?.error || 'ChatGPT adapter rejected the prompt');
   } catch (error) {
