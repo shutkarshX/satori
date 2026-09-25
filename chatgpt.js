@@ -47,18 +47,25 @@
     element.focus();
 
     if (element.matches('textarea, input')) {
-      const proto = element.tagName.toLowerCase() === 'textarea'
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-      if (setter) setter.call(element, text);
-      else element.value = text;
-      element.dispatchEvent(new InputEvent('beforeinput', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: text
-      }));
+      // Prefer a browser editing operation for ChatGPT's React-controlled
+      // textarea. This updates the DOM and fires the input path that React
+      // uses to enable the Send control. Fall back to the native setter.
+      let edited = false;
+      try {
+        element.focus();
+        element.select();
+        edited = document.execCommand('insertText', false, text);
+      } catch (_error) {}
+
+      if (!edited || clean(element.value || '') !== clean(text)) {
+        const proto = element.tagName.toLowerCase() === 'textarea'
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) setter.call(element, text);
+        else element.value = text;
+      }
+
       element.dispatchEvent(new InputEvent('input', {
         bubbles: true,
         inputType: 'insertText',
