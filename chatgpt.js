@@ -282,27 +282,23 @@
         sendResponse({ ok: false, error: 'ChatGPT composer is empty.' });
         return true;
       }
-      let submitted = false;
-      if (form) {
+      const sendButton = document.querySelector('button[data-testid="send-button"]');
+      if (sendButton && !sendButton.disabled && sendButton.offsetParent !== null) {
+        sendButton.click();
+      } else if (form) {
         try {
           form.requestSubmit();
-          submitted = true;
-        } catch (_error) {}
-      }
-      if (!submitted) {
-        const sendButton = document.querySelector('button[data-testid="send-button"]');
-        if (sendButton && !sendButton.disabled && sendButton.offsetParent !== null) {
-          sendButton.click();
-          submitted = true;
+        } catch (error) {
+          sendResponse({ ok: false, error: `ChatGPT submission failed: ${error.message}` });
+          return true;
         }
-      }
-      if (!submitted) {
+      } else {
         sendResponse({ ok: false, error: 'ChatGPT composer could not be submitted.' });
         return true;
       }
 
       state.lastSentAt = Date.now();
-      report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter submitted the existing ChatGPT composer; verifying new user message');
+      report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered the existing ChatGPT submission control; verifying new user message');
       setTimeout(waitForPhysicalSubmission, 250);
       setTimeout(waitForPhysicalSubmission, 700);
       setTimeout(waitForPhysicalSubmission, 1400);
