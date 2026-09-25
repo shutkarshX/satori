@@ -262,7 +262,7 @@
   };
 
   const inspect = () => {
-    if (!state.requestId || Date.now() < state.lastSentAt) return;
+    if (!state.requestId || !state.submitted || Date.now() < state.lastSentAt) return;
     const latest = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
 
@@ -319,7 +319,7 @@
 
     clearInterval(state.responsePollTimer);
     state.responsePollTimer = setInterval(() => {
-      if (!state.requestId || Date.now() - state.lastSentAt > 45000) {
+      if (!state.requestId || (state.submitted && Date.now() - state.lastSentAt > 45000)) {
         clearInterval(state.responsePollTimer);
         state.responsePollTimer = null;
         return;
