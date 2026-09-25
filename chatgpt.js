@@ -95,7 +95,7 @@
 
     // ChatGPT's rich composer is a React-controlled contenteditable.
     // Mutating textContent alone can leave React's composer state empty,
-    // which keeps the Send button disabled. Use the browser editing
+    // which can leave ChatGPT's composer state empty. Use the browser editing
     // command first so the page receives a real input mutation.
     try {
       document.execCommand('selectAll', false, null);
@@ -118,31 +118,6 @@
       data: text
     }));
   };
-  const findSendButton = () => {
-    const input = findInput();
-    const composer = input?.closest('form');
-    const scopedSelectors = [
-      'button[data-testid="send-button"]',
-      'button[aria-label*="send" i]',
-      'button[type="submit"]'
-    ];
-    const scoped = composer
-      ? scopedSelectors.flatMap((selector) => [...composer.querySelectorAll(selector)])
-      : [];
-    const candidates = scoped.length ? scoped : [
-      ...document.querySelectorAll('button[data-testid="send-button"]'),
-      ...document.querySelectorAll('button[data-testid*="send" i]'),
-      ...document.querySelectorAll('button[aria-label*="send" i]'),
-      ...document.querySelectorAll('button[title*="send" i]')
-    ];
-    return candidates.find((candidate) =>
-      !candidate.disabled &&
-      candidate.getAttribute('aria-disabled') !== 'true' &&
-      candidate.offsetParent !== null &&
-      !/stop|cancel/i.test(`${candidate.getAttribute('aria-label') || ''} ${candidate.innerText || ''}`)
-    ) || null;
-  };
-
   const composerHasPrompt = () => {
     const input = findInput();
     if (!input) return false;
@@ -297,7 +272,7 @@
       return true;
     }
 
-    if (message.type !== 'FILL_AND_SEND_CHATGPT') return;
+    if (message.type !== 'FILL_CHATGPT_PROMPT') return;
 
     const input = findInput();
     if (!input) {
