@@ -146,8 +146,7 @@
     if (!prompt) return false;
     return userMessageNodes().some((node) => {
       const text = clean(node.innerText || node.textContent || '');
-      const nodeSignature = signature(text);
-      if (state.baselineUsers.has(nodeSignature)) return false;
+      if (state.baselineUsers.has(node)) return false;
       return text === prompt || text.includes(prompt.slice(0, Math.min(160, prompt.length)));
     });
   };
@@ -336,7 +335,7 @@
     state.baseline = new Set(baselineSnapshot.map((item) => item.signature));
     state.baselineNodes = new Set(baselineSnapshot.map((item) => item.node));
     state.baselineAssistantSignatures = new Map(baselineSnapshot.map((item) => [item.node, item.signature]));
-    state.baselineUsers = new Set(userMessageNodes().map((node) => signature(clean(node.innerText || node.textContent || ''))));
+    state.baselineUsers = new Set(userMessageNodes());
     state.lastSignature = '';
     resetStability();
     state.lastSentAt = 0;
