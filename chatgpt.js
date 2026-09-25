@@ -272,17 +272,36 @@
 
     if (message.type === 'SUBMIT_CHATGPT_PROMPT') {
       const input = findInput();
+      const hasPrompt = composerHasPrompt();
       const form = input?.closest('form');
-      if (!input || !form || !composerHasPrompt()) {
-        sendResponse({ ok: false, error: 'ChatGPT composer is not ready for submission.' });
+      if (!input) {
+        sendResponse({ ok: false, error: 'ChatGPT composer input was not found.' });
         return true;
       }
-      try {
-        form.requestSubmit();
-        sendResponse({ ok: true });
-      } catch (error) {
-        sendResponse({ ok: false, error: error.message });
+      if (!hasPrompt) {
+        sendResponse({ ok: false, error: 'ChatGPT composer is empty.' });
+        return true;
       }
+      if (form) {
+        try {
+          form.requestSubmit();
+          sendResponse({ ok: true });
+        } catch (error) {
+          sendResponse({ ok: false, error: `ChatGPT form submission failed: ${error.message}` });
+        }
+        return true;
+      }
+      const sendButton = [...document.querySelectorAll('button')].find((button) =>
+        !button.disabled &&
+        button.offsetParent !== null &&
+        /^(send|submit)$/i.test((button.getAttribute('aria-label') || button.getAttribute('data-testid') || button.innerText || '').trim())
+      );
+      if (sendButton) {
+        sendButton.click();
+        sendResponse({ ok: true });
+        return true;
+      }
+      sendResponse({ ok: false, error: 'ChatGPT composer found, but no native submit control is available.' });
       return true;
     }
 
