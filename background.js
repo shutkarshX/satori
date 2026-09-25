@@ -279,11 +279,25 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
     addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`);
     if (retries === 15) {
       try {
+        const currentTab = await chrome.tabs.get(tabId);
+        if (currentTab.status !== 'complete') {
+          addDiagnostic('chatgpt-recovery', `reused ChatGPT tab is still loading (status=${currentTab.status}); waiting before injection`);
+          setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries), 500);
+          return;
+        }
         await chrome.scripting.executeScript({ target: { tabId }, files: ['chatgpt.js'] });
         addDiagnostic('chatgpt-recovery', 'injected ChatGPT adapter into the reused tab');
-        // The injected script registers its runtime listener synchronously.
-        // Send the request directly in the same turn instead of relying on
-        // another timer that can race the MV3 service worker lifecycle.
+        // Confirm that the injected isolated-world adapter survived the
+        // injection before sending the real request.
+        try {
+          const marker = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => Boolean(window.__satoriChatGPTAdapterLoaded)
+          });
+          addDiagnostic('chatgpt-recovery', `adapter injection marker=${marker?.[0]?.result ? 'present' : 'missing'}`);
+        } catch (markerError) {
+          addDiagnostic('chatgpt-recovery', `adapter marker check failed (${markerError.message})`);
+        }
         try {
           const result = await chrome.tabs.sendMessage(tabId, {
             type: 'FILL_AND_SEND_CHATGPT',
