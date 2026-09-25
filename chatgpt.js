@@ -389,7 +389,17 @@
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
 
-    setTimeout(() => submitPrompt(0), 700);
+    setTimeout(() => {
+      const currentInput = findInput();
+      const sendButton = findSendButton();
+      const inputText = currentInput
+        ? (currentInput.matches('textarea, input')
+          ? currentInput.value
+          : clean(currentInput.innerText || currentInput.textContent || ''))
+        : '';
+      report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; send=${sendButton ? clean(sendButton.getAttribute('aria-label') || sendButton.getAttribute('data-testid') || sendButton.innerText || 'available') : 'none'}`);
+      submitPrompt(0);
+    }, 700);
 
     sendResponse({ ok: true, baselineCount: state.baseline.size });
     return true;
