@@ -33,7 +33,11 @@
   const report = (type, detail) => {
     try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {}
   };
-  const findInput = () => document.querySelector('textarea[data-id], textarea[placeholder], textarea, [contenteditable="true"][role="textbox"], [contenteditable="true"]');
+  const findInput = () => document.querySelector(
+    '#prompt-textarea, textarea[data-id], textarea[placeholder], textarea, ' +
+    '[contenteditable="true"][data-lexical-editor="true"], ' +
+    '[contenteditable="true"][role="textbox"], [contenteditable="true"]'
+  );
   const setInput = (element, text) => {
     element.focus();
 
@@ -79,17 +83,22 @@
     }));
   };
   const findSendButton = () => {
-    const selectors = [
+    const input = findInput();
+    const composer = input?.closest('form');
+    const scopedSelectors = [
       'button[data-testid="send-button"]',
-      'button[data-testid*="send" i]',
       'button[aria-label*="send" i]',
-      'button[title*="send" i]',
       'button[type="submit"]'
     ];
-    const candidates = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
-    const input = findInput();
-    const composer = input?.closest('form') || input?.parentElement?.parentElement?.parentElement;
-    if (composer) candidates.push(...composer.querySelectorAll('button'));
+    const scoped = composer
+      ? scopedSelectors.flatMap((selector) => [...composer.querySelectorAll(selector)])
+      : [];
+    const candidates = scoped.length ? scoped : [
+      ...document.querySelectorAll('button[data-testid="send-button"]'),
+      ...document.querySelectorAll('button[data-testid*="send" i]'),
+      ...document.querySelectorAll('button[aria-label*="send" i]'),
+      ...document.querySelectorAll('button[title*="send" i]')
+    ];
     return candidates.find((candidate) =>
       !candidate.disabled &&
       candidate.getAttribute('aria-disabled') !== 'true' &&
@@ -100,7 +109,12 @@
 
   const clickSend = () => {
     const button = findSendButton();
-    if (button) { button.click(); return 'button'; }
+    if (button) {
+      const label = button.getAttribute('aria-label') || button.getAttribute('data-testid') || button.innerText || 'send button';
+      report('CHATGPT_DIAGNOSTIC', `using ChatGPT send control: ${clean(label)}`);
+      button.click();
+      return 'button';
+    }
 
     const input = findInput();
     if (input) {
