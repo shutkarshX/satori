@@ -10,6 +10,7 @@
     requestId: 0,
     mode: 'text',
     baseline: new Set(),
+    baselineNodes: new Set(),
     baselineUsers: new Set(),
     lastSentAt: 0,
     lastSignature: '',
@@ -30,12 +31,15 @@
     .trim();
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
   const responseNodes = () => {
-    const nodes = [
-      ...document.querySelectorAll('[data-message-author-role="assistant"]'),
+    const assistantMessages = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
+    if (assistantMessages.length) {
+      return assistantMessages.filter((node) => clean(node.innerText || node.textContent).length > 0);
+    }
+    const fallback = [
       ...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown'),
       ...document.querySelectorAll('.markdown, article')
     ];
-    return [...new Set(nodes)].filter((node) => {
+    return [...new Set(fallback)].filter((node) => {
       const text = clean(node.innerText || node.textContent);
       return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
     });
@@ -205,7 +209,7 @@
 
   const confirmCodingResponse = () => {
     if (!state.requestId || state.mode !== 'coding') return;
-    const latest = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
+    const latest = snapshot().filter((item) => !state.baselineNodes.has(item.node)).at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
     if (isGenerating()) {
       resetStability();
@@ -239,7 +243,9 @@
 
   const inspect = () => {
     if (!state.requestId || !state.submitted || Date.now() < state.lastSentAt) return;
-    const latest = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
+    const current = snapshot();
+    const newResponses = current.filter((item) => !state.baselineNodes.has(item.node));
+    const latest = newResponses.at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
 
     clearTimeout(state.quietTimer);
@@ -322,7 +328,9 @@
     state.requestId = message.requestId || Date.now();
     state.mode = message.mode || 'text';
     state.promptText = String(message.prompt || '');
-    state.baseline = new Set(snapshot().map((item) => item.signature));
+    const baselineSnapshot = snapshot();
+    state.baseline = new Set(baselineSnapshot.map((item) => item.signature));
+    state.baselineNodes = new Set(baselineSnapshot.map((item) => item.node));
     state.baselineUsers = new Set(userMessageNodes().map((node) => signature(clean(node.innerText || node.textContent || ''))));
     state.lastSignature = '';
     resetStability();
