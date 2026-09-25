@@ -2,8 +2,6 @@
   if (window.__satoriChatGPTAdapterInitialized) return;
   window.__satoriChatGPTAdapterInitialized = true;
 
-  // Marker used by the background service to verify that an injected adapter
-  // survived page loading before sending the request.
   window.__satoriChatGPTAdapterLoaded = true;
 
   const state = {
@@ -65,9 +63,6 @@
     element.focus();
 
     if (element.matches('textarea, input')) {
-      // Prefer a browser editing operation for ChatGPT's React-controlled
-      // textarea. This updates the DOM and fires the input path that React
-      // uses to enable the Send control. Fall back to the native setter.
       let edited = false;
       try {
         element.focus();
@@ -105,10 +100,6 @@
       return;
     }
 
-    // ChatGPT's rich composer is a React-controlled contenteditable.
-    // Mutating textContent alone can leave React's composer state empty,
-    // which can leave ChatGPT's composer state empty. Use the browser editing
-    // command first so the page receives a real input mutation.
     try {
       document.execCommand('selectAll', false, null);
       document.execCommand('insertText', false, text);
@@ -143,10 +134,18 @@
 
   const hasSubmittedUserMessage = () => {
     const prompt = clean(state.promptText);
+    const currentUsers = userMessageNodes();
+    const newUsers = currentUsers.filter((node) => !state.baselineUsers.has(node));
+
+    // The DOM node identity is the authoritative signal. Prompt matching is
+    // only a fallback because ChatGPT may render user text with extra wrappers,
+    // hidden labels, or whitespace.
+    if (newUsers.length > 0) return true;
+
     if (!prompt) return false;
-    return userMessageNodes().some((node) => {
-      const text = clean(node.innerText || node.textContent || '');
+    return currentUsers.some((node) => {
       if (state.baselineUsers.has(node)) return false;
+      const text = clean(node.innerText || node.textContent || '');
       return text === prompt || text.includes(prompt.slice(0, Math.min(160, prompt.length)));
     });
   };
@@ -158,11 +157,10 @@
       state.awaitingUserSubmission = false;
       state.lastSentAt = Date.now();
       report('CHATGPT_SUBMITTED', 'physical Enter submission verified by new user message');
-      report('CHATGPT_DIAGNOSTIC', `physical submission verified; assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
+      report('CHATGPT_DIAGNOSTIC', `physical submission verified; user messages=${userMessageNodes().length}, assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
     }
   };
 
-  // Observe only the user's real key press. Never synthesize Enter or click Send.
   document.addEventListener('keydown', (event) => {
     if (!state.requestId || !state.awaitingUserSubmission) return;
     if (!event.isTrusted || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
@@ -172,7 +170,7 @@
     setTimeout(waitForPhysicalSubmission, 1400);
   }, true);
 
-    const extractCode = (text, node) => {
+  const extractCode = (text, node) => {
     const fenced = [...text.matchAll(/\`\`\`(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)\`\`\`/g)]
       .map((match) => normalizeSource(match[1]))
       .filter((value) => value.length > 20);
@@ -247,7 +245,6 @@
 
   const inspect = () => {
     if (!state.requestId || !state.submitted || Date.now() < state.lastSentAt) return;
-    const current = snapshot();
     const latest = candidateResponses().at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
 
@@ -294,8 +291,15 @@
         sendResponse({ ok: false, error: 'ChatGPT composer is empty.' });
         return true;
       }
-      const sendButton = document.querySelector('button[data-testid="send-button"]');
-      if (sendButton && !sendButton.disabled && sendButton.offsetParent !== null) {
+
+      const sendButton = [
+        document.querySelector('button[data-testid="send-button"]'),
+        document.querySelector('button[aria-label*="Send prompt" i]'),
+        document.querySelector('button[aria-label*="Send message" i]'),
+        document.querySelector('button[title*="Send" i]')
+      ].find((button) => button && !button.disabled && button.offsetParent !== null);
+
+      if (sendButton) {
         sendButton.click();
       } else if (form) {
         try {
@@ -310,12 +314,11 @@
       }
 
       state.lastSentAt = Date.now();
-      report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered the existing ChatGPT submission control; verifying new user message');
+      report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered ChatGPT submission; verifying new user message');
       setTimeout(waitForPhysicalSubmission, 250);
       setTimeout(waitForPhysicalSubmission, 700);
       setTimeout(waitForPhysicalSubmission, 1400);
       sendResponse({ ok: true });
-      return true;
       return true;
     }
 
