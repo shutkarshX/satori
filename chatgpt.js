@@ -180,9 +180,9 @@
     if (!state.requestId || !state.awaitingUserSubmission) return;
     if (!event.isTrusted || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
     report('CHATGPT_DIAGNOSTIC', 'physical Enter detected in ChatGPT tab; waiting for ChatGPT to create the user message');
-    setTimeout(waitForPhysicalSubmission, 250);
-    setTimeout(waitForPhysicalSubmission, 700);
-    setTimeout(waitForPhysicalSubmission, 1400);
+    setTimeout(verifySubmission, 250);
+    setTimeout(verifySubmission, 700);
+    setTimeout(verifySubmission, 1400);
   }, true);
 
   const extractCode = (text, node) => {
