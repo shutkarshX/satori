@@ -155,9 +155,7 @@
   document.addEventListener('keydown', (event) => {
     if (!state.requestId || !state.awaitingUserSubmission) return;
     if (!event.isTrusted || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
-    if (!composerHasPrompt()) return;
-    state.lastSentAt = Date.now();
-    report('CHATGPT_DIAGNOSTIC', 'physical Enter detected in ChatGPT composer; waiting for ChatGPT to create the user message');
+    report('CHATGPT_DIAGNOSTIC', 'physical Enter detected in ChatGPT tab; waiting for ChatGPT to create the user message');
     setTimeout(waitForPhysicalSubmission, 250);
     setTimeout(waitForPhysicalSubmission, 700);
     setTimeout(waitForPhysicalSubmission, 1400);
