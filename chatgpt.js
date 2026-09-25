@@ -221,12 +221,32 @@
     }
 
     if (attempt < 3) {
-      report('CHATGPT_DIAGNOSTIC', `prompt not visible as a user message after submit; retry ${attempt + 1}/3`);
+      const composerStillHasPrompt = composerHasPrompt();
+      report('CHATGPT_DIAGNOSTIC', `prompt not visible as a user message after submit; retry ${attempt + 1}/3; composer=${composerStillHasPrompt ? 'has prompt' : 'cleared'}; assistant nodes=${responseNodes().length}; generating=${isGenerating()}`);
       setTimeout(() => {
-        if (!hasSubmittedUserMessage()) clickSend();
+        if (!hasSubmittedUserMessage()) {
+          if (composerHasPrompt()) {
+            const method = clickSend();
+            report('CHATGPT_DIAGNOSTIC', method === 'button'
+              ? 'Enter did not submit; Send button fallback clicked'
+              : method === 'keyboard-attempt'
+                ? 'Enter retry attempted again'
+                : 'composer unavailable during submission retry');
+          } else if (responseNodes().length > state.baseline.size || isGenerating()) {
+            report('CHATGPT_DIAGNOSTIC', 'composer cleared/new generation detected; treating submission as accepted');
+            return;
+          }
+        }
         verifySubmission(attempt + 1);
       }, 1200);
       return;
+    }
+
+    if (composerHasPrompt()) {
+      const method = clickSend();
+      report('CHATGPT_DIAGNOSTIC', method === 'button'
+        ? 'final verification failed; Send button fallback clicked'
+        : 'final verification failed; no Send button available');
     }
 
     report('CHATGPT_DIAGNOSTIC', `prompt submission could not be verified after 3 attempts; assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
