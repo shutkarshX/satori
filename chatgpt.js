@@ -288,7 +288,9 @@
     state.baselineUsers = new Set(userMessageNodes().map((node) => signature(clean(node.innerText || node.textContent || ''))));
     state.lastSignature = '';
     resetStability();
-    state.lastSentAt = Date.now();
+    state.lastSentAt = 0;
+    state.awaitingUserSubmission = true;
+    state.submitted = false;
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
 
