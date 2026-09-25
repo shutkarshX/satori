@@ -298,28 +298,8 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
         } catch (markerError) {
           addDiagnostic('chatgpt-recovery', `adapter marker check failed (${markerError.message})`);
         }
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        addDiagnostic('chatgpt-recovery', 'sending request to injected ChatGPT adapter');
-        try {
-          const result = await Promise.race([
-            chrome.tabs.sendMessage(tabId, {
-              type: 'FILL_AND_SEND_CHATGPT',
-              requestId,
-              prompt,
-              mode
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('adapter response timed out after 3000ms')), 3000))
-          ]);
-          if (result?.ok) {
-            addDiagnostic('chatgpt-input', `prompt dispatched after adapter injection; baseline responses=${result.baselineCount ?? 'unknown'}`);
-            setStatus('ChatGPT prompt ready — press Enter in the existing ChatGPT tab.', 'waiting');
-            return;
-          }
-          addDiagnostic('chatgpt-input', result?.error || 'injected ChatGPT adapter rejected the prompt');
-        } catch (retryError) {
-          addDiagnostic('chatgpt-recovery', `injected adapter still unavailable (${retryError.message})`);
-        }
-        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
+        addDiagnostic('chatgpt-recovery', 'waiting briefly for injected ChatGPT adapter to register');
+        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 500);
         return;
       } catch (injectError) {
         addDiagnostic('chatgpt-recovery', `adapter injection failed (${injectError.message})`);
