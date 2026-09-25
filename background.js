@@ -298,13 +298,18 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
         } catch (markerError) {
           addDiagnostic('chatgpt-recovery', `adapter marker check failed (${markerError.message})`);
         }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        addDiagnostic('chatgpt-recovery', 'sending request to injected ChatGPT adapter');
         try {
-          const result = await chrome.tabs.sendMessage(tabId, {
-            type: 'FILL_AND_SEND_CHATGPT',
-            requestId,
-            prompt,
-            mode
-          });
+          const result = await Promise.race([
+            chrome.tabs.sendMessage(tabId, {
+              type: 'FILL_AND_SEND_CHATGPT',
+              requestId,
+              prompt,
+              mode
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('adapter response timed out after 3000ms')), 3000))
+          ]);
           if (result?.ok) {
             addDiagnostic('chatgpt-input', `prompt dispatched after adapter injection; baseline responses=${result.baselineCount ?? 'unknown'}`);
             setStatus('ChatGPT prompt sent — waiting for a new response…', 'waiting');
