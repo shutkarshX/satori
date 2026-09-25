@@ -281,6 +281,11 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
       try {
         await chrome.scripting.executeScript({ target: { tabId }, files: ['chatgpt.js'] });
         addDiagnostic('chatgpt-recovery', 'injected ChatGPT adapter into the reused tab');
+        // The injected script registers its runtime listener synchronously.
+        // Retry immediately so we do not lose the request during the
+        // reconnect window of a reused ChatGPT tab.
+        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 150);
+        return;
       } catch (injectError) {
         addDiagnostic('chatgpt-recovery', `adapter injection failed (${injectError.message})`);
       }
