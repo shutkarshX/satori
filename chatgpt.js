@@ -11,6 +11,7 @@
     mode: 'text',
     baseline: new Set(),
     baselineNodes: new Set(),
+    baselineAssistantSignatures: new Map(),
     baselineUsers: new Set(),
     lastSentAt: 0,
     lastSignature: '',
@@ -47,6 +48,10 @@
   const snapshot = () => responseNodes().map((node) => {
     const text = clean(node.innerText || node.textContent);
     return { node, text, signature: signature(text) };
+  });
+  const candidateResponses = () => snapshot().filter((item) => {
+    if (!state.baselineNodes.has(item.node)) return true;
+    return state.baselineAssistantSignatures.get(item.node) !== item.signature;
   });
   const report = (type, detail) => {
     try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {}
@@ -209,7 +214,7 @@
 
   const confirmCodingResponse = () => {
     if (!state.requestId || state.mode !== 'coding') return;
-    const latest = snapshot().filter((item) => !state.baselineNodes.has(item.node)).at(-1);
+    const latest = candidateResponses().at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
     if (isGenerating()) {
       resetStability();
@@ -244,8 +249,7 @@
   const inspect = () => {
     if (!state.requestId || !state.submitted || Date.now() < state.lastSentAt) return;
     const current = snapshot();
-    const newResponses = current.filter((item) => !state.baselineNodes.has(item.node));
-    const latest = newResponses.at(-1);
+    const latest = candidateResponses().at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
 
     clearTimeout(state.quietTimer);
@@ -256,7 +260,7 @@
         return;
       }
 
-      const final = snapshot().filter((item) => !state.baseline.has(item.signature)).at(-1);
+      const final = candidateResponses().at(-1);
       if (!final || final.signature === state.lastSignature) return;
 
       if (state.mode === 'coding') {
@@ -331,6 +335,7 @@
     const baselineSnapshot = snapshot();
     state.baseline = new Set(baselineSnapshot.map((item) => item.signature));
     state.baselineNodes = new Set(baselineSnapshot.map((item) => item.node));
+    state.baselineAssistantSignatures = new Map(baselineSnapshot.map((item) => [item.node, item.signature]));
     state.baselineUsers = new Set(userMessageNodes().map((node) => signature(clean(node.innerText || node.textContent || ''))));
     state.lastSignature = '';
     resetStability();
