@@ -10,6 +10,7 @@
     stableChecks: 0,
     quietTimer: null,
     stabilityTimer: null,
+    responsePollTimer: null,
     promptText: ''
   };
   const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
@@ -19,9 +20,12 @@
     .trim();
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
   const responseNodes = () => {
-    const primary = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
-    const nodes = primary.length ? primary : [...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown, .markdown, article')];
-    return nodes.filter((node) => {
+    const nodes = [
+      ...document.querySelectorAll('[data-message-author-role="assistant"]'),
+      ...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown'),
+      ...document.querySelectorAll('.markdown, article')
+    ];
+    return [...new Set(nodes)].filter((node) => {
       const text = clean(node.innerText || node.textContent);
       return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
     });
@@ -316,6 +320,8 @@
   const emitStableResponse = (final, code) => {
     if (state.lastSignature === final.signature) return;
     state.lastSignature = final.signature;
+    clearInterval(state.responsePollTimer);
+    state.responsePollTimer = null;
     report('CHATGPT_RESPONSE', { text: final.text, code, capturedAt: Date.now() });
   };
 
@@ -375,6 +381,8 @@
       }
 
       state.lastSignature = final.signature;
+      clearInterval(state.responsePollTimer);
+      state.responsePollTimer = null;
       report('CHATGPT_RESPONSE', { text: final.text, code: extractCode(final.text, final.node), capturedAt: Date.now() });
     }, 1200);
   };
@@ -405,6 +413,16 @@
     state.lastSentAt = Date.now();
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
+
+    clearInterval(state.responsePollTimer);
+    state.responsePollTimer = setInterval(() => {
+      if (!state.requestId || Date.now() - state.lastSentAt > 45000) {
+        clearInterval(state.responsePollTimer);
+        state.responsePollTimer = null;
+        return;
+      }
+      inspect();
+    }, 800);
 
     setTimeout(() => {
       const currentInput = findInput();
