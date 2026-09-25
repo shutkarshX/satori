@@ -150,15 +150,30 @@
     });
   };
 
-  const waitForPhysicalSubmission = () => {
+  const markSubmitted = (reason) => {
+    if (!state.requestId || !state.awaitingUserSubmission || state.submitted) return;
+    state.submitted = true;
+    state.awaitingUserSubmission = false;
+    state.lastSentAt = Date.now();
+    report('CHATGPT_SUBMITTED', reason);
+    report('CHATGPT_DIAGNOSTIC', `ChatGPT submission verified: ${reason}; user messages=${userMessageNodes().length}, assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
+  };
+
+  const verifySubmission = () => {
     if (!state.requestId || !state.awaitingUserSubmission) return;
-    if (hasSubmittedUserMessage()) {
-      state.submitted = true;
-      state.awaitingUserSubmission = false;
-      state.lastSentAt = Date.now();
-      report('CHATGPT_SUBMITTED', 'physical Enter submission verified by new user message');
-      report('CHATGPT_DIAGNOSTIC', `physical submission verified; user messages=${userMessageNodes().length}, assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
+    const newUserMessage = userMessageNodes().some((node) => !state.baselineUsers.has(node));
+    const composerCleared = !composerHasPrompt();
+    const generating = isGenerating();
+
+    if (newUserMessage) {
+      markSubmitted('new ChatGPT user message detected');
+      return;
     }
+    if (composerCleared || generating) {
+      markSubmitted(`ChatGPT accepted the submission (composerCleared=${composerCleared}, generating=${generating})`);
+      return;
+    }
+    report('CHATGPT_DIAGNOSTIC', `submission still pending; user messages=${userMessageNodes().length}; composerFilled=${composerHasPrompt() ? 'yes' : 'no'}; generating=${generating}`);
   };
 
   document.addEventListener('keydown', (event) => {
@@ -354,6 +369,7 @@
         state.responsePollTimer = null;
         return;
       }
+      if (state.awaitingUserSubmission) verifySubmission();
       inspect();
     }, 800);
 
