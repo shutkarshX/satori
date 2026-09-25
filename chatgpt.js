@@ -16,7 +16,9 @@
     quietTimer: null,
     stabilityTimer: null,
     responsePollTimer: null,
-    promptText: ''
+    promptText: '',
+    awaitingUserSubmission: false,
+    submitted: false
   };
   const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
   const normalizeSource = (value) => clean(value)
@@ -141,110 +143,52 @@
     ) || null;
   };
 
-  const clickSend = () => {
-    const button = findSendButton();
-    if (button) {
-      const label = button.getAttribute('aria-label') || button.getAttribute('data-testid') || button.innerText || 'send button';
-      report('CHATGPT_DIAGNOSTIC', `using ChatGPT send control: ${clean(label)}`);
-      button.click();
-      return 'button';
-    }
-
-    const input = findInput();
-    if (input) {
-      input.focus();
-      input.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        bubbles: true,
-        cancelable: true
-      }));
-      input.dispatchEvent(new KeyboardEvent('keyup', {
-        key: 'Enter',
-        code: 'Enter',
-        bubbles: true,
-        cancelable: true
-      }));
-
-      // Some ChatGPT builds expose a textarea/form before rendering the Send
-      // button. Give the normal keyboard path a moment, then use the form's
-      // native submit as a fallback rather than depending on a synthetic Enter.
-      const form = input.closest('form');
-      if (form) {
-        setTimeout(() => {
-          if (!hasSubmittedUserMessage() && composerHasPrompt()) {
-            try {
-              form.requestSubmit();
-              report('CHATGPT_DIAGNOSTIC', 'Enter was not accepted; native composer form submission attempted');
-            } catch (_error) {}
-          }
-        }, 250);
-        return 'keyboard-form-fallback';
-      }
-
-      return 'keyboard-attempt';
-    }
-    return '';
-  };
-
-  const submitPrompt = async (attempt = 0) => {
-    if (!state.requestId) return;
-
-    // ChatGPT does not reliably process synthetic submission events while
-    // the tab is hidden. Temporarily activate the existing tab, perform the
-    // normal UI submission, then return focus to the assignment tab.
-    if (attempt === 0) {
-      const input = findInput();
-      if (input && composerHasPrompt()) {
-        try {
-          const foreground = await new Promise((resolve) => {
-            chrome.runtime.sendMessage({ type: 'CHATGPT_FOREGROUND_SUBMIT' }, resolve);
-          });
-          if (!foreground?.ok) throw new Error(foreground?.error || 'could not activate ChatGPT');
-          const liveInput = findInput();
-          liveInput?.focus();
-          const button = findSendButton();
-          if (button) {
-            button.click();
-            report('CHATGPT_SUBMITTED', 'prompt submitted using visible ChatGPT Send button');
-          } else {
-            submitWithEnter();
-            report('CHATGPT_SUBMITTED', 'prompt submitted using Enter while ChatGPT tab was active');
-          }
-          setTimeout(() => {
-            chrome.runtime.sendMessage({
-              type: 'CHATGPT_BACKGROUND_AFTER_SUBMIT',
-              assignmentTabId: foreground.assignmentTabId
-            });
-          }, 300);
-          setTimeout(() => verifySubmission(0), 1200);
-          return;
-        } catch (error) {
-          report('CHATGPT_DIAGNOSTIC', 'foreground submission failed: ' + error.message);
-        }
-      }
-    }
-
-    const button = findSendButton();
-    if (button) {
-      button.click();
-      report('CHATGPT_SUBMITTED', 'prompt submitted using ChatGPT Send button fallback');
-      setTimeout(() => verifySubmission(0), 1200);
-      return;
-    }
-
-    if (attempt < 12) {
-      if (attempt === 0 || attempt % 3 === 0) {
-        report('CHATGPT_DIAGNOSTIC', `Send button not ready; retrying button detection ${attempt + 1}/12`);
-      }
-      setTimeout(() => submitPrompt(attempt + 1), 300);
-      return;
-    }
-
-    report('CHATGPT_DIAGNOSTIC', 'ChatGPT composer was unavailable for submission');
-  };
-
   const composerHasPrompt = () => {
+    const input = findInput();
+    if (!input) return false;
+    const value = input.matches('textarea, input')
+      ? input.value
+      : clean(input.innerText || input.textContent || '');
+    return state.promptText.length > 0 && value.trim().length > 0;
+  };
+
+  const userMessageNodes = () => [...document.querySelectorAll('[data-message-author-role="user"]')];
+
+  const hasSubmittedUserMessage = () => {
+    const prompt = clean(state.promptText);
+    if (!prompt) return false;
+    return userMessageNodes().some((node) => {
+      const text = clean(node.innerText || node.textContent || '');
+      const nodeSignature = signature(text);
+      if (state.baselineUsers.has(nodeSignature)) return false;
+      return text === prompt || text.includes(prompt.slice(0, Math.min(160, prompt.length)));
+    });
+  };
+
+  const waitForPhysicalSubmission = () => {
+    if (!state.requestId || !state.awaitingUserSubmission) return;
+    if (hasSubmittedUserMessage()) {
+      state.submitted = true;
+      state.awaitingUserSubmission = false;
+      state.lastSentAt = Date.now();
+      report('CHATGPT_SUBMITTED', 'physical Enter submission verified by new user message');
+      report('CHATGPT_DIAGNOSTIC', `physical submission verified; assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
+    }
+  };
+
+  // Observe only the user's real key press. Never synthesize Enter or click Send.
+  document.addEventListener('keydown', (event) => {
+    if (!state.requestId || !state.awaitingUserSubmission) return;
+    if (!event.isTrusted || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (!composerHasPrompt()) return;
+    state.lastSentAt = Date.now();
+    report('CHATGPT_DIAGNOSTIC', 'physical Enter detected in ChatGPT composer; waiting for ChatGPT to create the user message');
+    setTimeout(waitForPhysicalSubmission, 250);
+    setTimeout(waitForPhysicalSubmission, 700);
+    setTimeout(waitForPhysicalSubmission, 1400);
+  }, true);
+
+  
     const input = findInput();
     if (!input) return false;
     const value = input.matches('textarea, input')
@@ -463,20 +407,16 @@
       inspect();
     }, 800);
 
-    // The reusable ChatGPT tab is deliberately kept in the background.
-    // Do not delay the first submission with setTimeout: hidden-tab timer
-    // throttling can postpone the callback for a long time.
     const currentInput = findInput();
-    const sendButton = findSendButton();
     const inputText = currentInput
       ? (currentInput.matches('textarea, input')
         ? currentInput.value
         : clean(currentInput.innerText || currentInput.textContent || ''))
       : '';
-    report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; send=${sendButton ? clean(sendButton.getAttribute('aria-label') || sendButton.getAttribute('data-testid') || sendButton.innerText || 'available') : 'none'}`);
-    submitPrompt(0);
+    report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; send=${findSendButton() ? 'available' : 'none'}`);
+    report('CHATGPT_DIAGNOSTIC', 'prompt ready in the existing ChatGPT tab — press Enter to submit');
 
-    sendResponse({ ok: true, baselineCount: state.baseline.size });
+    sendResponse({ ok: true, baselineCount: state.baseline.size, awaitingUserSubmission: true });
     return true;
   });
 })();
