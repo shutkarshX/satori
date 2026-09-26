@@ -278,7 +278,7 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
   try {
     const result = await Promise.race([
       chrome.tabs.sendMessage(tabId, { type: 'FILL_CHATGPT_PROMPT', requestId, prompt, mode }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for adapter response')), 3500))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for adapter response')), 7000))
     ]);
     if (result?.ok) {
       addDiagnostic('chatgpt-input', `prompt ready; baseline responses=${result.baselineCount ?? 'unknown'}`);
