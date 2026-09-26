@@ -69,10 +69,67 @@
     return true;
   }
 
+  function selectMcqOption(answerText) {
+    if (!answerText) throw new Error('No answer text provided for MCQ.');
+    const cleanAnswer = answerText.trim();
+
+    // 1. Try to extract letter option like A, B, C, D
+    const letterMatch = cleanAnswer.match(/(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*\(?([A-Da-d])\)?/i)
+      || cleanAnswer.match(/^([A-Da-d])[\).\:\s]/)
+      || cleanAnswer.match(/\b([A-Da-d])\b/);
+    const targetLetter = letterMatch ? letterMatch[1].toUpperCase() : null;
+
+    // Search for radio inputs, option cards, or choice elements
+    const inputs = [...document.querySelectorAll('input[type="radio"], [role="radio"]')];
+    const optionCards = [...document.querySelectorAll('[class*="option" i], [class*="choice" i], label')];
+
+    // Priority A: If target letter is found (e.g. 'A' -> 0, 'B' -> 1, 'C' -> 2, 'D' -> 3)
+    if (targetLetter) {
+      const letterIndex = targetLetter.charCodeAt(0) - 65; // A=0, B=1...
+      // Check inputs with matching value or id
+      const matchedInput = inputs.find((input) => {
+        const val = (input.value || input.id || input.name || '').toUpperCase();
+        return val.includes(targetLetter) || val === String(letterIndex);
+      });
+      if (matchedInput) {
+        matchedInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        matchedInput.click();
+        matchedInput.dispatchEvent(new Event('change', { bubbles: true }));
+        return { matched: targetLetter, type: 'radio_value' };
+      }
+
+      // Check positional radio by index if count is 4
+      if (inputs.length >= 2 && inputs[letterIndex]) {
+        inputs[letterIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        inputs[letterIndex].click();
+        inputs[letterIndex].dispatchEvent(new Event('change', { bubbles: true }));
+        return { matched: targetLetter, type: 'radio_index' };
+      }
+    }
+
+    // Priority B: Match by text content inside option/label
+    const cleanTargetText = cleanAnswer.replace(/^(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*(?:\([A-Da-d]\)|[A-Da-d]\b)?/i, '').trim().toLowerCase();
+    if (cleanTargetText.length > 2) {
+      for (const card of optionCards) {
+        const text = visibleText(card).toLowerCase();
+        if (text && (text.includes(cleanTargetText) || cleanTargetText.includes(text))) {
+          const radio = card.querySelector('input[type="radio"]') || card;
+          radio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          radio.click();
+          radio.dispatchEvent(new Event('change', { bubbles: true }));
+          return { matched: visibleText(card).slice(0, 30), type: 'text_match' };
+        }
+      }
+    }
+
+    throw new Error(`Could not find UI option matching: ${cleanAnswer.slice(0, 50)}`);
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       if (message.type === 'EXTRACT_QUESTION') sendResponse({ ok: true, text: extractQuestion(), fullText: extractFullPage(), title: document.title, url: location.href });
       if (message.type === 'TYPE_INTO_EDITOR') sendResponse({ ok: true, typed: typeIntoEditor(message.text || '', Boolean(message.append)) });
+      if (message.type === 'SELECT_MCQ_OPTION') sendResponse({ ok: true, selected: selectMcqOption(message.answer || message.text || '') });
     } catch (error) {
       sendResponse({ ok: false, error: error.message });
     }

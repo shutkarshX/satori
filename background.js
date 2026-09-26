@@ -6,19 +6,22 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
   chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
 });
 
-async function autoFillAssignment(tabId, text, provider) {
+async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
   if (!tabId || !text || text.trim() === 'Code not available') return;
   try {
+    const msgType = mode === 'mcq' ? 'SELECT_MCQ_OPTION' : 'TYPE_INTO_EDITOR';
+    const payload = mode === 'mcq' ? { type: msgType, answer: text } : { type: msgType, text, append: false };
     let result;
-    try { result = await chrome.tabs.sendMessage(tabId, { type: 'TYPE_INTO_EDITOR', text, append: false }); }
+    try { result = await chrome.tabs.sendMessage(tabId, payload); }
     catch (_error) {
       await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
-      result = await chrome.tabs.sendMessage(tabId, { type: 'TYPE_INTO_EDITOR', text, append: false });
+      result = await chrome.tabs.sendMessage(tabId, payload);
     }
     if (result?.ok) {
-      addDiagnostic(`${provider}-autofill`, 'answer placed into the assignment editor');
-      setStatus(`${provider} answer placed in the editor. Review before submitting.`, 'ready');
-    } else addDiagnostic(`${provider}-autofill`, result?.error || 'assignment editor was not found');
+      const detail = mode === 'mcq' ? `MCQ option '${result.selected?.matched || 'choice'}' marked on portal` : 'answer placed into the assignment editor';
+      addDiagnostic(`${provider}-autofill`, detail);
+      setStatus(`${provider} answer ${mode === 'mcq' ? 'selected' : 'placed in editor'}. Review before submitting.`, 'ready');
+    } else addDiagnostic(`${provider}-autofill`, result?.error || (mode === 'mcq' ? 'could not locate MCQ option' : 'assignment editor was not found'));
   } catch (error) { addDiagnostic(`${provider}-autofill`, `could not place answer (${error.message})`); }
 }
 
@@ -94,7 +97,7 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
     }
     setStatus(`Google AI Overview captured.${warning}`, warning ? 'error' : 'ready');
     addDiagnostic('complete', quality);
-    autoFillAssignment(assignmentTabId, selected, 'Google AI');
+    autoFillAssignment(assignmentTabId, selected, 'Google AI', mode);
     return;
   }
   if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
@@ -250,7 +253,7 @@ async function handleGeminiResponse(message) {
   const assignmentTabId = activeGeminiRequest?.assignmentTabId;
   activeGeminiRequest = null;
   await chrome.storage.local.remove('activeGeminiRequest');
-  autoFillAssignment(assignmentTabId, selected, 'Gemini');
+  autoFillAssignment(assignmentTabId, selected, 'Gemini', mode);
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('gemini-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
@@ -426,7 +429,7 @@ async function handleChatGPTResponse(message) {
   const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
   activeChatGPTRequest = null;
   await chrome.storage.local.remove('activeChatGPTRequest');
-  autoFillAssignment(assignmentTabId, selected, 'ChatGPT');
+  autoFillAssignment(assignmentTabId, selected, 'ChatGPT', mode);
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`ChatGPT response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
