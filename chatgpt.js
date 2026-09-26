@@ -258,7 +258,7 @@
       }
 
       state.lastSignature = final.signature;
-      const finalCode = state.mode === 'coding' ? (code || 'Code not available') : (code || final.text);
+      const finalCode = code || final.text;
       report('CHATGPT_RESPONSE', {
         text: final.text,
         code: finalCode,

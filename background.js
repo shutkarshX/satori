@@ -410,25 +410,9 @@ async function handleChatGPTResponse(message) {
   const raw = String(payload.text || '').trim();
   const selected = mode === 'coding' ? String(payload.code || '').trim() : raw;
 
-  if (mode === 'coding') {
-    if (!selected || selected === 'Code not available') {
-      chrome.storage.local.set({
-        latestChatGPTResponse: 'Code not available',
-        latestChatGPTRawResponse: raw,
-        latestChatGPTAt: Date.now(),
-        latestProvider: 'chatgpt'
-      });
-      activeChatGPTRequest = null;
-      await chrome.storage.local.remove('activeChatGPTRequest');
-      setStatus('Code not available in response.', 'ready');
-      addDiagnostic('chatgpt-validation', `coding response: code not available (raw len=${raw.length})`);
-      return;
-    }
-  }
-
-  if (mode !== 'coding' && !selected) {
-    setStatus('ChatGPT did not return a valid answer. Check the ChatGPT response and try again.', 'error');
-    addDiagnostic('chatgpt-validation', 'MCQ response rejected: empty answer');
+  if (!selected) {
+    setStatus('ChatGPT did not return a valid answer.', 'error');
+    addDiagnostic('chatgpt-validation', 'empty response');
     return;
   }
 
