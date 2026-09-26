@@ -114,6 +114,7 @@ async function readGoogleAIOverview(tabId) {
         const validCandidates = candidates.filter((c) => !isPlaceholder(c));
         let text = validCandidates.sort((a, b) => b.length - a.length)[0] || '';
         text = text.replace(/^AI\s+Overview\s*/i, '').trim();
+        if (isPlaceholder(text)) text = '';
         const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
           .map((node) => ({ text: clean(node.innerText || node.textContent || ''), score: 0, node }))
           .filter((candidate) => candidate.text.length > 20)
@@ -132,11 +133,12 @@ async function readGoogleAIOverview(tabId) {
 
 async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, attempts = 60) {
   if (requestId !== activeRequestId) return;
+  const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
   const reading = await readGoogleAIOverview(tabId);
   const text = reading.text || '';
   const selected = mode === 'coding' ? (reading.code || '') : text;
   addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
-  if (selected && (!before || selected !== before)) {
+  if (selected && !isPlaceholder(selected) && (!before || selected !== before)) {
     const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
     chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
     let quality = 'response captured and stored';
@@ -152,6 +154,9 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
     addDiagnostic('complete', quality);
     autoFillAssignment(assignmentTabId, finalSelected, 'Google AI', mode);
     return;
+  }
+  if (selected && isPlaceholder(selected)) {
+    addDiagnostic('response-check', 'placeholder / overview unavailable detected; waiting for generation to complete');
   }
   if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
   if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, attempts - 1), 1000);
