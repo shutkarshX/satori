@@ -161,7 +161,7 @@
 
   const verifySubmission = () => {
     if (!state.requestId || !state.awaitingUserSubmission) return;
-    const newUserMessage = userMessageNodes().some((node) => !state.baselineUsers.has(node));
+    const newUserMessage = hasSubmittedUserMessage();
     const composerCleared = !composerHasPrompt();
     const generating = isGenerating();
 
@@ -330,9 +330,9 @@
 
       state.lastSentAt = Date.now();
       report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered ChatGPT submission; verifying new user message');
-      setTimeout(waitForPhysicalSubmission, 250);
-      setTimeout(waitForPhysicalSubmission, 700);
-      setTimeout(waitForPhysicalSubmission, 1400);
+      setTimeout(verifySubmission, 250);
+      setTimeout(verifySubmission, 700);
+      setTimeout(verifySubmission, 1400);
       sendResponse({ ok: true });
       return true;
     }
