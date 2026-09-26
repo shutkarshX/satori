@@ -321,64 +321,28 @@
     }
   };
 
-  const confirmCodingResponse = () => {
-    if (!state.requestId || state.mode !== 'coding') return;
-    const latest = candidateResponses().at(-1);
-    if (!latest || latest.signature === state.lastSignature) return;
-
-    if (isGenerating()) {
-      resetStability();
-      return;
-    }
-
-    const code = extractCode(latest.text, latest.node);
-    if (code && !looksComplete(code)) {
-      resetStability();
-      return;
-    }
-
-    // Only emit "Code not available" if the model has truly stopped and has written a substantial answer
-    if (!code) {
-      if (Date.now() - state.lastSentAt < 12000) {
-        // Less than 12s since send, model might still be preparing the response
-        return;
-      }
-    }
-
-    const finalCode = code || 'Code not available';
-    emitStableResponse(latest, finalCode);
-  };
-
   const inspect = () => {
     if (!state.requestId || !state.submitted || Date.now() < state.lastSentAt) return;
-    const latest = candidateResponses().at(-1);
+    const candidates = candidateResponses();
+    const latest = candidates[candidates.length - 1];
     if (!latest || latest.signature === state.lastSignature) return;
-
-    if (isGenerating()) {
-      resetStability();
-      return;
-    }
 
     clearTimeout(state.quietTimer);
     state.quietTimer = setTimeout(() => {
       if (isGenerating()) {
-        resetStability();
+        report('CHATGPT_DIAGNOSTIC', 'ChatGPT generation still in progress; waiting for completion');
+        inspect();
         return;
       }
 
-      const final = candidateResponses().at(-1);
+      const current = candidateResponses();
+      const final = current[current.length - 1] || latest;
       if (!final || final.signature === state.lastSignature) return;
 
-      if (state.mode === 'coding') {
-        confirmCodingResponse();
-        return;
-      }
-
-      state.lastSignature = final.signature;
-      clearInterval(state.responsePollTimer);
-      state.responsePollTimer = null;
-      report('CHATGPT_RESPONSE', { text: final.text, code: extractCode(final.text, final.node), capturedAt: Date.now() });
-    }, 450);
+      const code = extractCode(final.text, final.node);
+      const finalCode = state.mode === 'coding' ? (code || 'Code not available') : (code || final.text);
+      emitStableResponse(final, finalCode);
+    }, 800);
   };
 
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
@@ -452,14 +416,12 @@
       }
       if (state.awaitingUserSubmission) verifySubmission();
       inspect();
-      if (state.mode === 'coding' && !isGenerating() && state.submitted) {
-        confirmCodingResponse();
-      }
 
       if (Date.now() - state.startTime > 60000 && !isGenerating()) {
         clearInterval(state.responsePollTimer);
         state.responsePollTimer = null;
-        const latest = candidateResponses().at(-1);
+        const candidates = candidateResponses();
+        const latest = candidates[candidates.length - 1];
         const code = latest ? extractCode(latest.text, latest.node) : '';
         const fallback = state.mode === 'coding' ? (code || 'Code not available') : (latest?.text || 'No response captured');
         emitStableResponse(latest || { text: fallback, signature: 'timeout' }, fallback);
