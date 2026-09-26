@@ -83,6 +83,31 @@
     const inputs = [...document.querySelectorAll('input[type="radio"], [role="radio"]')];
     const optionCards = [...document.querySelectorAll('[class*="option" i], [class*="choice" i], label')];
 
+    const highlightAndClick = (element, matchedLabel) => {
+      if (!element) return null;
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Visual highlight outline and soft background
+      try {
+        element.style.outline = '3px solid #22c55e';
+        element.style.outlineOffset = '2px';
+        element.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+        element.style.borderRadius = '4px';
+        element.style.transition = 'all 0.3s ease';
+      } catch (_e) {}
+
+      const radio = element.matches('input[type="radio"]') ? element : element.querySelector('input[type="radio"]');
+      if (radio) {
+        radio.checked = true;
+        radio.click();
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
+        radio.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        element.click();
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      }
+      return { matched: matchedLabel, type: 'highlight_and_click' };
+    };
+
     // Priority A: If target letter is found (e.g. 'A' -> 0, 'B' -> 1, 'C' -> 2, 'D' -> 3)
     if (targetLetter) {
       const letterIndex = targetLetter.charCodeAt(0) - 65; // A=0, B=1...
@@ -92,18 +117,13 @@
         return val.includes(targetLetter) || val === String(letterIndex);
       });
       if (matchedInput) {
-        matchedInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        matchedInput.click();
-        matchedInput.dispatchEvent(new Event('change', { bubbles: true }));
-        return { matched: targetLetter, type: 'radio_value' };
+        return highlightAndClick(matchedInput.closest('label, [class*="option" i], [class*="choice" i]') || matchedInput, targetLetter);
       }
 
       // Check positional radio by index if count is 4
       if (inputs.length >= 2 && inputs[letterIndex]) {
-        inputs[letterIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        inputs[letterIndex].click();
-        inputs[letterIndex].dispatchEvent(new Event('change', { bubbles: true }));
-        return { matched: targetLetter, type: 'radio_index' };
+        const targetRadio = inputs[letterIndex];
+        return highlightAndClick(targetRadio.closest('label, [class*="option" i], [class*="choice" i]') || targetRadio, targetLetter);
       }
     }
 
@@ -111,18 +131,40 @@
     const cleanTargetText = cleanAnswer
       .replace(/^(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*/i, '')
       .replace(/^(?:\(?([A-Da-d])\)?[\).\:\-\s]*)/i, '')
+      .replace(/[.\s]+$/, '')
       .trim()
       .toLowerCase();
 
+    // Look broadly for option containers, rows, labels, list items, divs with text
+    const broadCandidates = [
+      ...document.querySelectorAll('label, [class*="option" i], [class*="choice" i], [class*="answer" i], li, tr, [role="radio"]')
+    ];
+
     if (cleanTargetText.length > 2) {
-      for (const card of optionCards) {
-        const text = visibleText(card).toLowerCase();
-        if (text && (text.includes(cleanTargetText) || (cleanTargetText.length > 10 && text.length > 5 && cleanTargetText.includes(text)))) {
-          const radio = card.querySelector('input[type="radio"]') || card;
-          radio.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          radio.click();
-          radio.dispatchEvent(new Event('change', { bubbles: true }));
-          return { matched: visibleText(card).slice(0, 30), type: 'text_match' };
+      // 1. Direct or fuzzy substring match
+      for (const card of broadCandidates) {
+        const text = visibleText(card).toLowerCase().replace(/[.\s]+$/, '');
+        if (text && (text === cleanTargetText || text.includes(cleanTargetText) || (cleanTargetText.length > 8 && text.length > 4 && cleanTargetText.includes(text)))) {
+          return highlightAndClick(card, visibleText(card).slice(0, 40));
+        }
+      }
+
+      // 2. Word-overlap match
+      const targetWords = cleanTargetText.split(/\s+/).filter((w) => w.length > 3);
+      if (targetWords.length > 0) {
+        let bestCandidate = null;
+        let maxOverlap = 0;
+        for (const card of broadCandidates) {
+          const text = visibleText(card).toLowerCase();
+          if (text.length > 200) continue; // Skip huge parent containers
+          const count = targetWords.filter((w) => text.includes(w)).length;
+          if (count > maxOverlap && count >= Math.ceil(targetWords.length * 0.6)) {
+            maxOverlap = count;
+            bestCandidate = card;
+          }
+        }
+        if (bestCandidate) {
+          return highlightAndClick(bestCandidate, visibleText(bestCandidate).slice(0, 40));
         }
       }
     }
