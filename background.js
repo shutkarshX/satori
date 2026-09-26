@@ -136,7 +136,7 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
     }
     setStatus(`Google AI Overview captured.${warning}`, warning ? 'error' : 'ready');
     addDiagnostic('complete', quality);
-    autoFillAssignment(assignmentTabId, selected, 'Google AI', mode);
+    autoFillAssignment(assignmentTabId, finalSelected, 'Google AI', mode);
     return;
   }
   if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
@@ -472,7 +472,7 @@ async function handleChatGPTResponse(message) {
   const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
   activeChatGPTRequest = null;
   await chrome.storage.local.remove('activeChatGPTRequest');
-  autoFillAssignment(assignmentTabId, selected, 'ChatGPT', mode);
+  autoFillAssignment(assignmentTabId, finalSelected, 'ChatGPT', mode);
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`ChatGPT response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);

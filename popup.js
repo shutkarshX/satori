@@ -112,6 +112,10 @@ async function extract() {
 function buildGoogleQuery() {
   const question = $('question').value.trim();
   if (!question) throw new Error('Read or enter a question first.');
+  if ($('mode').value === 'mcq') {
+    // For Google Search AI Overview, focused question text works best
+    return question.length < 2000 ? `${question} answer` : question.slice(0, 2000);
+  }
   return fullPageContext || question;
 }
 
