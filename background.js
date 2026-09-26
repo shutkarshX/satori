@@ -312,30 +312,32 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
 async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
   const windowId = assignmentTab?.windowId;
-  const tab = windowId ? await getReusableChatGPTTab(windowId) : null;
+  let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
 
-  if (!tab?.id) {
-    setStatus('Open ChatGPT once in this window, then try again.', 'error');
-    addDiagnostic('chatgpt-error', 'no existing ChatGPT conversation tab found; manual-Enter flow does not create a new tab');
-    return;
-  }
-
-  activeChatGPTRequest = { requestId, mode, tabId: tab.id, assignmentTabId: assignmentTab?.id };
+  activeChatGPTRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
   await chrome.storage.local.set({ activeChatGPTRequest });
 
-  addDiagnostic('chatgpt-tab', `reusing existing ChatGPT conversation tab ${tab.id}`);
-  setStatus('Preparing ChatGPT prompt…', 'waiting');
-
+  const url = 'https://chatgpt.com/';
   try {
-    const ready = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '') && tab.status === 'complete';
-
-    // Do not activate, deactivate, or switch tabs. The user stays in control
-    // of the existing ChatGPT conversation and presses Enter there.
-    if (!ready) {
-      await chrome.tabs.update(tab.id, { url: 'https://chatgpt.com/' });
-      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1400);
+    if (tab?.id) {
+      activeChatGPTRequest.tabId = tab.id;
+      addDiagnostic('chatgpt-tab', `reusing existing ChatGPT conversation tab ${tab.id}`);
+      setStatus('Preparing ChatGPT prompt…', 'waiting');
+      const ready = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '') && tab.status === 'complete';
+      if (!ready) {
+        await chrome.tabs.update(tab.id, { url, active: false });
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1800);
+      } else {
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 400);
+      }
     } else {
-      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 300);
+      addDiagnostic('chatgpt-tab', 'creating reusable ChatGPT tab in the background');
+      setStatus('Opening ChatGPT in the background…', 'waiting');
+      tab = await chrome.tabs.create({ url, active: false, windowId });
+      if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.');
+      activeChatGPTRequest.tabId = tab.id;
+      await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId, activeChatGPTRequest });
+      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2500);
     }
   } catch (error) {
     setStatus(`Could not prepare ChatGPT: ${error.message}`, 'error');
