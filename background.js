@@ -235,7 +235,13 @@ async function getReusableGeminiTab(windowId) {
 async function sendGeminiPrompt(tabId, requestId, prompt, mode, retries = 15) {
   if (requestId !== activeRequestId) return;
   try {
-    const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', requestId, prompt, mode });
+    let result;
+    try {
+      result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', requestId, prompt, mode });
+    } catch (_e) {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['gemini.js'] }).catch(() => {});
+      result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', requestId, prompt, mode });
+    }
     if (result?.ok) {
       addDiagnostic('gemini-input', `prompt dispatched; baseline responses=${result.baselineCount ?? 'unknown'}`);
       setStatus('Gemini prompt sent — waiting for a new response…', 'waiting');

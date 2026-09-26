@@ -21,17 +21,44 @@
     .trim();
 
   const responseNodes = () => {
-    const primary = [...document.querySelectorAll(
-      'model-response, message-content, [data-message-author-role="model"], [data-testid*="model" i], [data-test-id*="model" i], .model-response-text, .response-container'
-    )];
-    const list = primary.length ? primary : [
-      ...document.querySelectorAll('.conversation-container .model-response, [class*="model-response" i], [class*="response-content" i]')
+    const selectors = [
+      'model-response',
+      'message-content',
+      '[data-message-author-role="model"]',
+      '[data-testid*="model" i]',
+      '[data-test-id*="model" i]',
+      '.model-response-text',
+      '.response-container',
+      '.response-content',
+      '.markdown',
+      '[class*="model-response" i]',
+      '[class*="response-content" i]',
+      '[class*="response_content" i]',
+      'ms-cmark-node'
     ];
-    return list.filter((node) => {
+    const nodes = [...document.querySelectorAll(selectors.join(', '))];
+    const valid = nodes.filter((node) => {
       const text = clean(node.innerText || node.textContent);
       const userAncestor = node.closest?.('[data-message-author-role="user"], [data-message-author-role="human"], [data-author="user"]');
-      return text.length > 0 && !userAncestor && !/^You said\b|^You asked\b/i.test(text);
+      return text.length > 5 && !userAncestor && !/^You said\b|^You asked\b/i.test(text);
     });
+
+    // Deduplicate nested elements - prefer top-level model response container or deepest with full text
+    const deduped = [];
+    for (const node of valid) {
+      if (!deduped.some((existing) => existing.contains(node) || node.contains(existing))) {
+        deduped.push(node);
+      } else {
+        // If existing contains node, keep the one with longer text
+        const existingIdx = deduped.findIndex((existing) => existing.contains(node));
+        if (existingIdx !== -1) {
+          if (clean(node.innerText || '').length >= clean(deduped[existingIdx].innerText || '').length * 0.9) {
+            deduped[existingIdx] = node;
+          }
+        }
+      }
+    }
+    return deduped.length ? deduped : valid;
   };
 
   const nodeText = (node) => clean(node.innerText || node.textContent || '');
@@ -132,9 +159,13 @@
 
   const inspectForNewResponse = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
-    const candidates = responseSnapshot().filter((item) => !state.baseline.has(item.signature));
-    const latest = candidates[candidates.length - 1];
+    const all = responseSnapshot();
+    const candidates = all.filter((item) => !state.baseline.has(item.signature));
+    // If baseline filter returned nothing, check if there's a new turn at the very end
+    const latest = candidates.length ? candidates[candidates.length - 1] : (all.length > state.baselineCount ? all[all.length - 1] : null);
     if (!latest || latest.signature === state.lastResponseSignature) return;
+
+    report('GEMINI_DIAGNOSTIC', `new response candidate detected (${latest.text.length} chars)`);
     clearTimeout(state.quietTimer);
     state.quietTimer = setTimeout(() => {
       if (isGenerating()) {
@@ -142,8 +173,9 @@
         inspectForNewResponse();
         return;
       }
-      const current = responseSnapshot().filter((item) => !state.baseline.has(item.signature));
-      const final = current[current.length - 1];
+      const currentAll = responseSnapshot();
+      const current = currentAll.filter((item) => !state.baseline.has(item.signature));
+      const final = current.length ? current[current.length - 1] : currentAll[currentAll.length - 1];
       if (!final || final.signature === state.lastResponseSignature) return;
       state.lastResponseSignature = final.signature;
       report('GEMINI_RESPONSE', {
@@ -152,7 +184,7 @@
         nodeCount: responseNodes().length,
         capturedAt: Date.now()
       });
-    }, 1400);
+    }, 1200);
   };
 
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
