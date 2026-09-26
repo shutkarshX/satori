@@ -110,7 +110,9 @@ async function readGoogleAIOverview(tabId) {
           const nearby = clean(overviewLabel.parentElement.parentElement?.innerText || overviewLabel.parentElement.innerText || '');
           if (nearby.length > 40) candidates.push(nearby);
         }
-        let text = candidates.sort((a, b) => b.length - a.length)[0] || '';
+        const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
+        const validCandidates = candidates.filter((c) => !isPlaceholder(c));
+        let text = validCandidates.sort((a, b) => b.length - a.length)[0] || '';
         text = text.replace(/^AI\s+Overview\s*/i, '').trim();
         const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
           .map((node) => ({ text: clean(node.innerText || node.textContent || ''), score: 0, node }))
