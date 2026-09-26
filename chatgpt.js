@@ -1,7 +1,4 @@
 (() => {
-  if (window.__satoriChatGPTAdapterInitialized) return;
-  window.__satoriChatGPTAdapterInitialized = true;
-
   window.__satoriChatGPTAdapterLoaded = true;
 
   const state = {

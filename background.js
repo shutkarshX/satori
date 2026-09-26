@@ -323,10 +323,10 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
       activeChatGPTRequest.tabId = tab.id;
       addDiagnostic('chatgpt-tab', `reusing existing ChatGPT conversation tab ${tab.id}`);
       setStatus('Preparing ChatGPT prompt…', 'waiting');
-      const ready = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '') && tab.status === 'complete';
-      if (!ready) {
+      const isChatGPTUrl = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '');
+      if (!isChatGPTUrl) {
         await chrome.tabs.update(tab.id, { url, active: false });
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1800);
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2500);
       } else {
         setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 400);
       }
