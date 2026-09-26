@@ -402,7 +402,7 @@
       if (state.awaitingUserSubmission) verifySubmission();
       inspect();
 
-      if (Date.now() - state.startTime > 20000) {
+      if (Date.now() - state.startTime > 60000 && !isGenerating()) {
         clearInterval(state.responsePollTimer);
         state.responsePollTimer = null;
         const latest = candidateResponses().at(-1);
