@@ -206,6 +206,9 @@
       markSubmitted(`ChatGPT accepted the submission (composerCleared=${composerCleared}, generating=${generating})`);
       return;
     }
+    if (composerHasPrompt()) {
+      clickSend();
+    }
     report('CHATGPT_DIAGNOSTIC', `submission still pending; user messages=${userMessageNodes().length}; composerFilled=${composerHasPrompt() ? 'yes' : 'no'}; generating=${generating}`);
   };
 
@@ -322,26 +325,45 @@
   };
 
   const clickSend = () => {
+    const input = findInput();
     const sendButton = [
       document.querySelector('button[data-testid="send-button"]'),
       document.querySelector('button[aria-label*="Send prompt" i]'),
       document.querySelector('button[aria-label*="Send message" i]'),
-      document.querySelector('button[title*="Send" i]')
+      document.querySelector('button[title*="Send" i]'),
+      document.querySelector('button[data-testid="fruitjuice-send-button"]')
     ].find((button) => button && !button.disabled && button.getAttribute('aria-disabled') !== 'true');
 
+    let clicked = false;
     if (sendButton) {
-      sendButton.click();
-      return true;
+      try {
+        sendButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        sendButton.click();
+        clicked = true;
+      } catch (_e) {}
     }
-    const input = findInput();
+
     const form = input?.closest('form');
     if (form) {
       try {
         form.requestSubmit();
-        return true;
+        clicked = true;
       } catch (_e) {}
     }
-    return false;
+
+    if (input) {
+      try {
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+        input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+        input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+      } catch (_e) {}
+    }
+
+    return clicked;
   };
 
   const attemptAutoSubmit = (retries = 20) => {
