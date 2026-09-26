@@ -215,11 +215,11 @@
     if (openBraces > 0 && openBraces !== closeBraces) return false;
     return true;
   };
-  const isGenerating = () => [...document.querySelectorAll('button')].some((button) =>
-    /stop generating|stop/i.test(`${button.getAttribute('aria-label') || ''} ${button.innerText || ''}`) &&
-    !button.disabled &&
-    button.offsetParent !== null
-  );
+  const isGenerating = () => {
+    const stopBtn = document.querySelector('button[data-testid="stop-button"], button[aria-label*="Stop generating" i], button[aria-label="Stop" i]');
+    if (stopBtn && !stopBtn.disabled && stopBtn.offsetParent !== null) return true;
+    return false;
+  };
 
   const resetStability = () => {
     state.pendingSignature = '';
