@@ -37,10 +37,14 @@ function formatMcqAnswer(text) {
     return `${standaloneMatch[1].toUpperCase()} - ${standaloneMatch[2].trim()}`.replace(/\s+/g, ' ');
   }
 
-  // 4. Fallback: filter out heading lines and return first clean line or sentence
-  const filteredLines = lines.filter((l) => !/^(#|option evaluation|evaluation|analysis|explanation|question|here is|the correct)/i.test(l));
-  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/)[0];
-  return fallback.length < 80 ? fallback : fallback.slice(0, 80);
+  // 4. Fallback: filter out heading lines, colon endings, and return the first meaningful sentence/line
+  const filteredLines = lines.filter((l) =>
+    l.length > 5 &&
+    !/^(#|option evaluation|evaluation|analysis|explanation|question|here is|the correct|is\s*:|note)/i.test(l) &&
+    !/^is\s*[:\.]?$/i.test(l)
+  );
+  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 5 && !/^is\s*[:\.]?$/i.test(s.trim())) || clean;
+  return fallback.length < 80 ? fallback.trim() : fallback.trim().slice(0, 80);
 }
 
 async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
@@ -122,7 +126,7 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
   const text = reading.text || '';
   const selected = mode === 'coding' ? (reading.code || '') : text;
   addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
-  if (selected && (!before || selected !== before || attempts < 55)) {
+  if (selected && (!before || selected !== before)) {
     const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
     chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
     let quality = 'response captured and stored';
