@@ -9,26 +9,38 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
 function formatMcqAnswer(text) {
   if (!text) return '';
   const clean = text.trim();
-  // 1. Look for explicit answer indicators: "FINAL ANSWER: (A) ...", "ANSWER: B", "Correct answer is C: ..."
-  const patterns = [
-    /(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\s*[:\-]?\s*([A-Da-d][\).\:\s][^\n\.]+|\([A-Da-d]\)[^\n\.]+|[A-Da-d]\b)/i,
-    /(?:Option\s+)?([A-Da-d])\s*[:\-\)]\s*([^\n\.]+)/i,
-    /^([A-Da-d])[\).\:\s]\s*([^\n\.]+)/im,
-    /\b([A-Da-d])\b/
-  ];
 
-  for (const regex of patterns) {
-    const match = clean.match(regex);
-    if (match) {
-      const option = (match[1] || match[0]).trim();
-      const extraText = match[2] ? ` - ${match[2].trim()}` : '';
-      return `${option}${extraText}`.replace(/\s+/g, ' ');
+  // 1. Look for explicit answer indicators: "**ANSWER:** A - text", "ANSWER: B", "Correct Option: C", etc.
+  const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
+  if (explicitMatch && explicitMatch[1]) {
+    const candidate = explicitMatch[1].replace(/^\*+|\*+$/g, '').trim();
+    if (candidate && !/^(evaluation|analysis|explanation)/i.test(candidate)) {
+      return candidate.replace(/^[\:\-\s]+/, '').replace(/\s+/g, ' ');
     }
   }
 
-  // Fallback: Return first sentence only
-  const firstSentence = clean.split(/\.\s+|\n/)[0];
-  return firstSentence.length < 80 ? firstSentence : clean.slice(0, 80);
+  // 2. Look for lines starting with an option letter, ignoring markdown headings
+  const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (/^(#|option evaluation|evaluation|analysis|explanation|question|note)/i.test(line)) continue;
+    const optionMatch = line.match(/^(?:Option\s+)?(?:\*{0,2}\(?([A-Da-d])\)?\*{0,2})[\).\:\-\s]\s*(.*)$/);
+    if (optionMatch) {
+      const letter = optionMatch[1].toUpperCase();
+      const rest = (optionMatch[2] || '').replace(/^\*+|\*+$/g, '').trim();
+      return rest ? `${letter} - ${rest}`.replace(/\s+/g, ' ') : letter;
+    }
+  }
+
+  // 3. Look for standalone option patterns in whole text
+  const standaloneMatch = clean.match(/\b([A-Da-d])\s*[\:\-\)]\s*([^\n\r\.]+)/);
+  if (standaloneMatch && !/^(evaluation|analysis|explanation)/i.test(standaloneMatch[2])) {
+    return `${standaloneMatch[1].toUpperCase()} - ${standaloneMatch[2].trim()}`.replace(/\s+/g, ' ');
+  }
+
+  // 4. Fallback: filter out heading lines and return first clean line or sentence
+  const filteredLines = lines.filter((l) => !/^(#|option evaluation|evaluation|analysis|explanation|question|here is|the correct)/i.test(l));
+  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/)[0];
+  return fallback.length < 80 ? fallback : fallback.slice(0, 80);
 }
 
 async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
@@ -240,19 +252,21 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableGeminiTab(windowId) : null;
   activeGeminiRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
+  await chrome.storage.local.set({ activeGeminiRequest });
   addDiagnostic('gemini-tab', tab ? `reusing Gemini tab ${tab.id}` : 'creating reusable Gemini tab');
   setStatus('Opening Gemini in the background…', 'waiting');
   try {
     const url = 'https://gemini.google.com/app';
     if (tab?.id) {
       activeGeminiRequest.tabId = tab.id;
+      await chrome.storage.local.set({ activeGeminiRequest });
       await chrome.tabs.update(tab.id, { url, active: false });
       setTimeout(() => sendGeminiPrompt(tab.id, requestId, prompt, mode), 1200);
     } else {
       tab = await chrome.tabs.create({ url, active: false, windowId });
       if (!tab?.id) throw new Error('Chrome did not create the Gemini tab.');
       activeGeminiRequest.tabId = tab.id;
-      await chrome.storage.local.set({ satoriGeminiTabId: tab.id, satoriGeminiWindowId: tab.windowId });
+      await chrome.storage.local.set({ satoriGeminiTabId: tab.id, satoriGeminiWindowId: tab.windowId, activeGeminiRequest });
       setTimeout(() => sendGeminiPrompt(tab.id, requestId, prompt, mode), 1800);
     }
   } catch (error) {
@@ -281,7 +295,7 @@ async function handleGeminiResponse(message) {
   const assignmentTabId = activeGeminiRequest?.assignmentTabId;
   activeGeminiRequest = null;
   await chrome.storage.local.remove('activeGeminiRequest');
-  autoFillAssignment(assignmentTabId, selected, 'Gemini', mode);
+  autoFillAssignment(assignmentTabId, finalSelected, 'Gemini', mode);
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('gemini-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);

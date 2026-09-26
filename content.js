@@ -108,11 +108,16 @@
     }
 
     // Priority B: Match by text content inside option/label
-    const cleanTargetText = cleanAnswer.replace(/^(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*(?:\([A-Da-d]\)|[A-Da-d]\b)?/i, '').trim().toLowerCase();
+    const cleanTargetText = cleanAnswer
+      .replace(/^(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*/i, '')
+      .replace(/^(?:\(?([A-Da-d])\)?[\).\:\-\s]*)/i, '')
+      .trim()
+      .toLowerCase();
+
     if (cleanTargetText.length > 2) {
       for (const card of optionCards) {
         const text = visibleText(card).toLowerCase();
-        if (text && (text.includes(cleanTargetText) || cleanTargetText.includes(text))) {
+        if (text && (text.includes(cleanTargetText) || (cleanTargetText.length > 10 && text.length > 5 && cleanTargetText.includes(text)))) {
           const radio = card.querySelector('input[type="radio"]') || card;
           radio.scrollIntoView({ behavior: 'smooth', block: 'center' });
           radio.click();

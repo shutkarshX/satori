@@ -123,7 +123,16 @@ function buildGeminiPrompt() {
     ? `\n\nFULL PAGE CONTEXT (use this to recover omitted problem details; solve only the coding problem):\n${fullPageContext}`
     : '';
   if ($('mode').value === 'mcq') {
-    return `You are helping me study a practice assignment. Analyze the MCQ below and evaluate the options briefly. Finish your response with exactly this format:\nANSWER: <option letter or exact option text>\nCONFIDENCE: High, Medium, or Low\nIf the question is ambiguous or information is missing, say so instead of pretending certainty. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}${context}`;
+    return `Solve this practice multiple-choice question (MCQ).
+CRITICAL: Do NOT write any introduction, reasoning, explanation, analysis, headings, markdown formatting, or evaluation.
+Output ONLY the correct option in this exact format:
+ANSWER: <Option Letter> - <Exact Option Text>
+
+Example format:
+ANSWER: A - Inserting a new element into the queue
+
+${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:
+${question}${context}`;
   }
   return `Solve this practice coding problem. Use Gemini's code editor/code block and put the entire answer inside ONE code editor block only. Your response must contain exactly one complete, compilable, submission-ready source file. Start the block with the first import or header and end it after the complete entry point. Do not write any explanation, algorithm, complexity analysis, heading, introduction, conclusion, Markdown text outside the block, multiple solutions, alternative code, or partial code. Do not split the solution into multiple code blocks. Include every required import or header, helper functions, global declarations, the complete entry point, and the required class wrapper. If the language is Java, use import java.util.*; and public class Main with public static void main(String[] args). If the language is C++, include required headers and a complete main function. Preserve normal source formatting and indentation. Use the exact input/output format and requested language.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}${context}`;
 }
@@ -136,7 +145,13 @@ function buildChatGPTPrompt() {
   const languageMatch = `${fullPageContext}\n${question}`.match(/\b(C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\(?\s*\d{1,2}/i);
   const language = languageMatch ? languageMatch[1] : 'the exact language selected by the assignment';
   if ($('mode').value === 'mcq') {
-    return `Help me solve this practice MCQ. Explain the choice briefly and end with exactly: FINAL ANSWER: <option letter or exact option text>. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${safeQuestion}`;
+    return `Solve this practice multiple-choice question (MCQ).
+CRITICAL: Do NOT write any introduction, reasoning, explanation, analysis, headings, markdown formatting, or evaluation.
+Output ONLY the correct option in this exact format:
+ANSWER: <Option Letter> - <Exact Option Text>
+
+${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:
+${safeQuestion}`;
   }
   return `Solve this practice coding problem. The assignment language is EXACTLY: ${language}. Write code in that language only; do not use another language or another standard library. Return exactly one complete compilable source file in a single code block. Include all imports, helpers, and the entry point. Do not include explanation, headings, multiple solutions, or text outside the code block. Match the exact input and output format. Before answering, verify that the solution solves the problem shown below, not any earlier problem or example from conversation history.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${safeQuestion}`;
 }
