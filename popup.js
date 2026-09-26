@@ -113,13 +113,14 @@ function buildGeminiPrompt() {
 function buildChatGPTPrompt() {
   const question = $('question').value.trim();
   if (!question) throw new Error('Read or enter a question first.');
+  const safeQuestion = question.length > 7000 ? (question.slice(0, 7000) + '\n[Truncated...]') : question;
   const extra = $('extra').value.trim();
   const languageMatch = `${fullPageContext}\n${question}`.match(/\b(C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\(?\s*\d{1,2}/i);
   const language = languageMatch ? languageMatch[1] : 'the exact language selected by the assignment';
   if ($('mode').value === 'mcq') {
-    return `Help me solve this practice MCQ. Explain the choice briefly and end with exactly: FINAL ANSWER: <option letter or exact option text>. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${question}`;
+    return `Help me solve this practice MCQ. Explain the choice briefly and end with exactly: FINAL ANSWER: <option letter or exact option text>. Do not submit anything.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}QUESTION:\n${safeQuestion}`;
   }
-  return `Solve this practice coding problem. The assignment language is EXACTLY: ${language}. Write code in that language only; do not use another language or another standard library. Return exactly one complete compilable source file in a single code block. Include all imports, helpers, and the entry point. Do not include explanation, headings, multiple solutions, or text outside the code block. Match the exact input and output format. If code is not possible or the prompt is not a coding question, reply strictly with: Code not available. Before answering, verify that the solution solves the problem shown below, not any earlier problem or example from conversation history.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${question}`;
+  return `Solve this practice coding problem. The assignment language is EXACTLY: ${language}. Write code in that language only; do not use another language or another standard library. Return exactly one complete compilable source file in a single code block. Include all imports, helpers, and the entry point. Do not include explanation, headings, multiple solutions, or text outside the code block. Match the exact input and output format. If code is not possible or the prompt is not a coding question, reply strictly with: Code not available. Before answering, verify that the solution solves the problem shown below, not any earlier problem or example from conversation history.\n\n${extra ? `Additional instructions: ${extra}\n\n` : ''}PROBLEM:\n${safeQuestion}`;
 }
 
 $('extract').addEventListener('click', async () => {

@@ -173,12 +173,13 @@
 
   const verifySubmission = () => {
     if (!state.requestId || !state.awaitingUserSubmission) return;
+    const hasAssistantResponse = candidateResponses().length > 0;
     const newUserMessage = hasSubmittedUserMessage();
     const composerCleared = !composerHasPrompt();
     const generating = isGenerating();
 
-    if (newUserMessage) {
-      markSubmitted('new ChatGPT user message detected');
+    if (hasAssistantResponse || newUserMessage) {
+      markSubmitted('new turn detected in conversation');
       return;
     }
     if (composerCleared || generating) {
@@ -400,15 +401,25 @@
     setInput(input, message.prompt || '');
     setTimeout(() => attemptAutoSubmit(15), 500);
 
+    state.startTime = Date.now();
     clearInterval(state.responsePollTimer);
     state.responsePollTimer = setInterval(() => {
-      if (!state.requestId || (state.submitted && Date.now() - state.lastSentAt > 45000)) {
+      if (!state.requestId) {
         clearInterval(state.responsePollTimer);
         state.responsePollTimer = null;
         return;
       }
       if (state.awaitingUserSubmission) verifySubmission();
       inspect();
+
+      if (Date.now() - state.startTime > 30000) {
+        clearInterval(state.responsePollTimer);
+        state.responsePollTimer = null;
+        const latest = candidateResponses().at(-1);
+        const code = latest ? extractCode(latest.text, latest.node) : '';
+        const fallback = state.mode === 'coding' ? (code || 'Code not available') : (latest?.text || 'No response captured');
+        emitStableResponse(latest || { text: fallback, signature: 'timeout' }, fallback);
+      }
     }, 800);
 
     const currentInput = findInput();
