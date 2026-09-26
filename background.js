@@ -7,7 +7,7 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
 });
 
 async function autoFillAssignment(tabId, text, provider) {
-  if (!tabId || !text) return;
+  if (!tabId || !text || text.trim() === 'Code not available') return;
   try {
     let result;
     try { result = await chrome.tabs.sendMessage(tabId, { type: 'TYPE_INTO_EDITOR', text, append: false }); }
