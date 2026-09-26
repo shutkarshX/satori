@@ -6,11 +6,37 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
   chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
 });
 
+function formatMcqAnswer(text) {
+  if (!text) return '';
+  const clean = text.trim();
+  // 1. Look for explicit answer indicators: "FINAL ANSWER: (A) ...", "ANSWER: B", "Correct answer is C: ..."
+  const patterns = [
+    /(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\s*[:\-]?\s*([A-Da-d][\).\:\s][^\n\.]+|\([A-Da-d]\)[^\n\.]+|[A-Da-d]\b)/i,
+    /(?:Option\s+)?([A-Da-d])\s*[:\-\)]\s*([^\n\.]+)/i,
+    /^([A-Da-d])[\).\:\s]\s*([^\n\.]+)/im,
+    /\b([A-Da-d])\b/
+  ];
+
+  for (const regex of patterns) {
+    const match = clean.match(regex);
+    if (match) {
+      const option = (match[1] || match[0]).trim();
+      const extraText = match[2] ? ` - ${match[2].trim()}` : '';
+      return `${option}${extraText}`.replace(/\s+/g, ' ');
+    }
+  }
+
+  // Fallback: Return first sentence only
+  const firstSentence = clean.split(/\.\s+|\n/)[0];
+  return firstSentence.length < 80 ? firstSentence : clean.slice(0, 80);
+}
+
 async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
   if (!tabId || !text || text.trim() === 'Code not available') return;
   try {
+    const cleanAnswer = mode === 'mcq' ? formatMcqAnswer(text) : text;
     const msgType = mode === 'mcq' ? 'SELECT_MCQ_OPTION' : 'TYPE_INTO_EDITOR';
-    const payload = mode === 'mcq' ? { type: msgType, answer: text } : { type: msgType, text, append: false };
+    const payload = mode === 'mcq' ? { type: msgType, answer: cleanAnswer } : { type: msgType, text, append: false };
     let result;
     try { result = await chrome.tabs.sendMessage(tabId, payload); }
     catch (_error) {
@@ -85,7 +111,8 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
   const selected = mode === 'coding' ? (reading.code || '') : text;
   addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
   if (selected && (!before || selected !== before || attempts < 55)) {
-    chrome.storage.local.set({ latestGoogleResponse: selected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
+    const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
+    chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
     let quality = 'response captured and stored';
     let warning = '';
     if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\-]/i.test(text)) {
@@ -249,7 +276,8 @@ async function handleGeminiResponse(message) {
     addDiagnostic('gemini-parser', mode === 'coding' ? 'response found but code block missing' : 'empty response');
     return;
   }
-  chrome.storage.local.set({ latestGeminiResponse: selected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
+  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
+  chrome.storage.local.set({ latestGeminiResponse: finalSelected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
   const assignmentTabId = activeGeminiRequest?.assignmentTabId;
   activeGeminiRequest = null;
   await chrome.storage.local.remove('activeGeminiRequest');
@@ -420,8 +448,9 @@ async function handleChatGPTResponse(message) {
     return;
   }
 
+  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
   chrome.storage.local.set({
-    latestChatGPTResponse: selected,
+    latestChatGPTResponse: finalSelected,
     latestChatGPTRawResponse: raw,
     latestChatGPTAt: Date.now(),
     latestProvider: 'chatgpt'
