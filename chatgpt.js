@@ -6,35 +6,34 @@
     mode: 'text',
     baseline: new Set(),
     baselineCode: new Set(),
-    baselineNodes: new Set(),
-    baselineAssistantSignatures: new Map(),
-    baselineUsers: new Set(),
+    baselineCount: 0,
     lastSentAt: 0,
     lastSignature: '',
-    pendingSignature: '',
-    stableSignature: '',
-    stableChecks: 0,
-    quietTimer: null,
-    stabilityTimer: null,
-    responsePollTimer: null,
-    promptText: '',
-    awaitingUserSubmission: false,
-    submitted: false
+    quietTimer: null
   };
-  const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
+
+  const clean = (value) => String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+
   const nodeText = (el) => {
     if (!el) return '';
     const inner = clean(el.innerText || '');
     const text = clean(el.textContent || '');
     return (inner.length >= text.length * 0.5) ? inner : text;
   };
+
   const normalizeSource = (value) => clean(value)
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\n(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
     .replace(/^Copy\s*code\s*\n?/i, '')
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\nCopy\s*code\s*\n?/i, '')
     .trim();
+
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
+
   const responseNodes = () => {
     const list = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
     if (list.length) {
@@ -50,82 +49,49 @@
       return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
     });
   };
-  const snapshot = () => responseNodes().map((node) => {
+
+  const responseSnapshot = () => responseNodes().map((node) => {
     const text = nodeText(node);
     return { node, text, signature: signature(text) };
   });
+
   const candidateResponses = () => {
-    const current = snapshot();
+    const current = responseSnapshot();
     const newItems = current.filter((item) => !state.baseline.has(item.signature));
     if (newItems.length > 0) return newItems;
-    return current.filter((item) => {
-      if (!state.baselineNodes.has(item.node)) return true;
-      return state.baselineAssistantSignatures.get(item.node) !== item.signature;
-    });
+    return current;
   };
+
   const report = (type, detail) => {
     try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {}
   };
+
   const findInput = () => document.querySelector(
     '#prompt-textarea, textarea[data-id], textarea[placeholder], textarea, ' +
     '[contenteditable="true"][data-lexical-editor="true"], ' +
     '[contenteditable="true"][role="textbox"], [contenteditable="true"]'
   );
+
   const setInput = (element, text) => {
     element.focus();
 
     if (element.matches('textarea, input')) {
-      let edited = false;
-      try {
-        element.focus();
-        element.select();
-        edited = document.execCommand('insertText', false, text);
-      } catch (_error) {}
-
-      if (!edited || clean(element.value || '') !== clean(text)) {
-        const proto = element.tagName.toLowerCase() === 'textarea'
-          ? HTMLTextAreaElement.prototype
-          : HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-        if (setter) setter.call(element, text);
-        else element.value = text;
-      }
-
-      try {
-        element.dispatchEvent(new InputEvent('beforeinput', {
-          bubbles: true,
-          cancelable: true,
-          inputType: 'insertText',
-          data: text
-        }));
-      } catch (_error) {}
-      try {
-        element.dispatchEvent(new InputEvent('input', {
-          bubbles: true,
-          inputType: 'insertText',
-          data: text
-        }));
-      } catch (_error) {
-        element.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      const proto = element.tagName.toLowerCase() === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) setter.call(element, text); else element.value = text;
+      element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
 
-    // contenteditable (e.g. Lexical in modern ChatGPT)
+    // contenteditable (Lexical editor in modern ChatGPT)
     try {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        document.execCommand('delete', false, null);
-      }
+      element.focus();
+      document.execCommand('selectAll', false, null);
       document.execCommand('insertText', false, text);
-    } catch (_error) {}
+    } catch (_e) {}
 
-    if (!clean(element.innerText || element.textContent || '').includes(clean(text).slice(0, 30))) {
+    if (!clean(nodeText(element)).includes(clean(text).slice(0, 30))) {
       let p = element.querySelector('p');
       if (!p) {
         p = document.createElement('p');
@@ -135,91 +101,51 @@
     }
 
     try {
-      element.dispatchEvent(new InputEvent('beforeinput', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: text
-      }));
+      element.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
     } catch (_e) {}
     try {
-      element.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: text
-      }));
+      element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
     } catch (_e) {
       element.dispatchEvent(new Event('input', { bubbles: true }));
     }
     element.dispatchEvent(new Event('change', { bubbles: true }));
   };
-  const composerHasPrompt = () => {
+
+  const clickSend = () => {
     const input = findInput();
-    if (!input) return false;
-    const value = input.matches('textarea, input')
-      ? input.value
-      : clean(input.innerText || input.textContent || '');
-    return state.promptText.length > 0 && value.trim().length > 0;
-  };
+    const sendButton = [
+      document.querySelector('button[data-testid="send-button"]'),
+      document.querySelector('button[data-testid="fruitjuice-send-button"]'),
+      document.querySelector('button[aria-label*="Send" i]'),
+      document.querySelector('button[title*="Send" i]')
+    ].find((btn) => btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true');
 
-  const userMessageNodes = () => [...document.querySelectorAll('[data-message-author-role="user"]')];
-
-  const hasSubmittedUserMessage = () => {
-    const prompt = clean(state.promptText);
-    const currentUsers = userMessageNodes();
-    const newUsers = currentUsers.filter((node) => !state.baselineUsers.has(node));
-
-    // The DOM node identity is the authoritative signal. Prompt matching is
-    // only a fallback because ChatGPT may render user text with extra wrappers,
-    // hidden labels, or whitespace.
-    if (newUsers.length > 0) return true;
-
-    if (!prompt) return false;
-    return currentUsers.some((node) => {
-      if (state.baselineUsers.has(node)) return false;
-      const text = clean(node.innerText || node.textContent || '');
-      return text === prompt || text.includes(prompt.slice(0, Math.min(160, prompt.length)));
-    });
-  };
-
-  const markSubmitted = (reason) => {
-    if (!state.requestId || !state.awaitingUserSubmission || state.submitted) return;
-    state.submitted = true;
-    state.awaitingUserSubmission = false;
-    state.lastSentAt = Date.now();
-    report('CHATGPT_SUBMITTED', reason);
-    report('CHATGPT_DIAGNOSTIC', `ChatGPT submission verified: ${reason}; user messages=${userMessageNodes().length}, assistant nodes=${responseNodes().length}, generating=${isGenerating()}`);
-  };
-
-  const verifySubmission = () => {
-    if (!state.requestId || !state.awaitingUserSubmission) return;
-    const hasAssistantResponse = candidateResponses().length > 0;
-    const newUserMessage = hasSubmittedUserMessage();
-    const composerCleared = !composerHasPrompt();
-    const generating = isGenerating();
-
-    if (hasAssistantResponse || newUserMessage) {
-      markSubmitted('new turn detected in conversation');
-      return;
+    if (sendButton) {
+      try {
+        sendButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        sendButton.click();
+        return true;
+      } catch (_e) {}
     }
-    if (composerCleared || generating) {
-      markSubmitted(`ChatGPT accepted the submission (composerCleared=${composerCleared}, generating=${generating})`);
-      return;
-    }
-    if (composerHasPrompt()) {
-      clickSend();
-    }
-    report('CHATGPT_DIAGNOSTIC', `submission still pending; user messages=${userMessageNodes().length}; composerFilled=${composerHasPrompt() ? 'yes' : 'no'}; generating=${generating}`);
-  };
 
-  document.addEventListener('keydown', (event) => {
-    if (!state.requestId || !state.awaitingUserSubmission) return;
-    if (!event.isTrusted || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
-    report('CHATGPT_DIAGNOSTIC', 'physical Enter detected in ChatGPT tab; waiting for ChatGPT to create the user message');
-    setTimeout(verifySubmission, 250);
-    setTimeout(verifySubmission, 700);
-    setTimeout(verifySubmission, 1400);
-  }, true);
+    const form = input?.closest('form');
+    if (form) {
+      try { form.requestSubmit(); return true; } catch (_e) {}
+    }
+
+    if (input) {
+      try {
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+        return true;
+      } catch (_e) {}
+    }
+
+    return false;
+  };
 
   const extractCode = (text, node) => {
     const codeScore = (value, distance = 0) =>
@@ -294,7 +220,6 @@
   };
 
   const isGenerating = () => {
-    // 1. ChatGPT shows a stop button while generating
     const buttons = [...document.querySelectorAll('button')];
     const hasStopButton = buttons.some((button) => {
       if (button.disabled) return false;
@@ -302,90 +227,12 @@
       return /\bstop\b/i.test(label);
     });
     if (hasStopButton) return true;
-
-    // 2. Streaming indicators or active generation classes
     if (document.querySelector('.result-streaming, [class*="streaming" i]')) return true;
-
     return false;
   };
 
-  const resetStability = () => {
-    state.pendingSignature = '';
-    state.stableSignature = '';
-    state.stableChecks = 0;
-    clearTimeout(state.stabilityTimer);
-  };
-
-  const emitStableResponse = (final, code) => {
-    if (state.lastSignature === final.signature) return;
-    state.lastSignature = final.signature;
-    clearInterval(state.responsePollTimer);
-    state.responsePollTimer = null;
-    report('CHATGPT_RESPONSE', { text: final.text, code: code || final.text, capturedAt: Date.now() });
-  };
-
-  const clickSend = () => {
-    const input = findInput();
-    const sendButton = [
-      document.querySelector('button[data-testid="send-button"]'),
-      document.querySelector('button[aria-label*="Send prompt" i]'),
-      document.querySelector('button[aria-label*="Send message" i]'),
-      document.querySelector('button[title*="Send" i]'),
-      document.querySelector('button[data-testid="fruitjuice-send-button"]')
-    ].find((button) => button && !button.disabled && button.getAttribute('aria-disabled') !== 'true');
-
-    let clicked = false;
-    if (sendButton) {
-      try {
-        sendButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-        sendButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-        sendButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
-        sendButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-        sendButton.click();
-        clicked = true;
-      } catch (_e) {}
-    }
-
-    const form = input?.closest('form');
-    if (form) {
-      try {
-        form.requestSubmit();
-        clicked = true;
-      } catch (_e) {}
-    }
-
-    if (input) {
-      try {
-        input.focus();
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
-        input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
-        input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
-      } catch (_e) {}
-    }
-
-    return clicked;
-  };
-
-  const attemptAutoSubmit = (retries = 20) => {
-    if (state.submitted || !state.awaitingUserSubmission) return;
-    if (clickSend()) {
-      state.lastSentAt = Date.now();
-      report('CHATGPT_SUBMITTED', 'auto-clicked ChatGPT send button');
-      report('CHATGPT_DIAGNOSTIC', 'auto-clicked ChatGPT send button; waiting for submission confirmation');
-      setTimeout(verifySubmission, 100);
-      setTimeout(verifySubmission, 300);
-      setTimeout(verifySubmission, 700);
-      return;
-    }
-    if (retries > 0) {
-      setTimeout(() => attemptAutoSubmit(retries - 1), 80);
-    } else {
-      report('CHATGPT_DIAGNOSTIC', 'auto-send button not ready yet; press Enter in assignment tab to submit');
-    }
-  };
-
-  const inspect = () => {
-    if (!state.requestId || !state.submitted || Date.now() < state.lastSentAt) return;
+  const inspectForNewResponse = () => {
+    if (!state.requestId || Date.now() < state.lastSentAt) return;
     const candidates = candidateResponses();
     const latest = candidates[candidates.length - 1];
     if (!latest || latest.signature === state.lastSignature) return;
@@ -394,38 +241,39 @@
     state.quietTimer = setTimeout(() => {
       if (isGenerating()) {
         report('CHATGPT_DIAGNOSTIC', 'ChatGPT generation still in progress; waiting for completion');
-        inspect();
+        inspectForNewResponse();
         return;
       }
 
       const current = candidateResponses();
       const final = current[current.length - 1] || latest;
-      if (!final) return;
+      if (!final || final.signature === state.lastSignature) return;
 
       const code = extractCode(final.text, final.node);
 
-      // In coding mode, if model has not written the code block yet, wait briefly for code output
-      if (state.mode === 'coding' && !code) {
-        if (Date.now() - state.lastSentAt < 10000) {
-          report('CHATGPT_DIAGNOSTIC', 'generation quiet but code block not found yet; waiting for code');
-          inspect();
-          return;
-        }
+      if (state.mode === 'coding' && !code && Date.now() - state.lastSentAt < 12000) {
+        report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for code block');
+        inspectForNewResponse();
+        return;
       }
 
-      if (final.signature === state.lastSignature) return;
-
+      state.lastSignature = final.signature;
       const finalCode = state.mode === 'coding' ? (code || 'Code not available') : (code || final.text);
-      report('CHATGPT_DIAGNOSTIC', `Response captured: text=${final.text.length} chars, code=${finalCode.length} chars`);
-      emitStableResponse(final, finalCode);
-    }, 400);
+      report('CHATGPT_RESPONSE', {
+        text: final.text,
+        code: finalCode,
+        capturedAt: Date.now()
+      });
+    }, 800);
   };
 
-  new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
+    childList: true, subtree: true, characterData: true
+  });
 
   const checkExistingResponse = (prompt, mode) => {
     const cleanPrompt = clean(prompt);
-    const users = userMessageNodes();
+    const users = [...document.querySelectorAll('[data-message-author-role="user"], [data-testid*="user" i]')];
     const latestUser = users[users.length - 1];
 
     let isMatch = false;
@@ -486,99 +334,46 @@
         return true;
       }
 
-      if (message.type === 'SUBMIT_CHATGPT_PROMPT') {
-        const input = findInput();
-        const hasPrompt = composerHasPrompt();
-        const form = input?.closest('form');
-        if (!input) {
-          sendResponse({ ok: false, error: 'ChatGPT composer input was not found.' });
-          return true;
-        }
-        if (!hasPrompt) {
-          sendResponse({ ok: false, error: 'ChatGPT composer is empty.' });
-          return true;
-        }
-
-        if (clickSend()) {
-          state.lastSentAt = Date.now();
-          report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered ChatGPT submission; verifying new user message');
-          setTimeout(verifySubmission, 250);
-          setTimeout(verifySubmission, 700);
-          setTimeout(verifySubmission, 1400);
-          sendResponse({ ok: true });
-          return true;
-        } else {
-          sendResponse({ ok: false, error: 'ChatGPT composer could not be submitted.' });
-          return true;
-        }
-      }
-
       if (message.type !== 'FILL_CHATGPT_PROMPT') return false;
 
       const input = findInput();
       if (!input) {
-        report('CHATGPT_DIAGNOSTIC', 'composer not found');
-        sendResponse({ ok: false, error: 'ChatGPT composer is not ready yet.' });
+        report('CHATGPT_DIAGNOSTIC', 'composer input not found');
+        sendResponse({ ok: false, error: 'ChatGPT composer input not found.' });
         return true;
       }
 
       state.requestId = message.requestId || Date.now();
       state.mode = message.mode || 'text';
-      state.promptText = String(message.prompt || '');
-      const baselineSnapshot = snapshot();
-      state.baseline = new Set(baselineSnapshot.map((item) => item.signature));
+      state.baseline = new Set(responseSnapshot().map((item) => item.signature));
       state.baselineCode = new Set(
         [...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
           .map((element) => normalizeSource(nodeText(element)))
           .filter((text) => text.length > 20)
           .map(signature)
       );
-      state.baselineNodes = new Set(baselineSnapshot.map((item) => item.node));
-      state.baselineAssistantSignatures = new Map(baselineSnapshot.map((item) => [item.node, item.signature]));
-      state.baselineUsers = new Set(userMessageNodes());
+      state.baselineCount = state.baseline.size;
       state.lastSignature = '';
-      resetStability();
-      state.lastSentAt = 0;
-      state.awaitingUserSubmission = true;
-      state.submitted = false;
+      state.lastSentAt = Date.now();
       clearTimeout(state.quietTimer);
+
       setInput(input, message.prompt || '');
-      setTimeout(() => attemptAutoSubmit(20), 30);
 
-      state.startTime = Date.now();
-      clearInterval(state.responsePollTimer);
-      state.responsePollTimer = setInterval(() => {
-        if (!state.requestId) {
-          clearInterval(state.responsePollTimer);
-          state.responsePollTimer = null;
-          return;
+      setTimeout(() => {
+        if (clickSend()) {
+          report('CHATGPT_SUBMITTED', `prompt submitted; baseline responses=${state.baselineCount}`);
+        } else {
+          setTimeout(() => {
+            if (clickSend()) report('CHATGPT_SUBMITTED', `prompt submitted on retry; baseline responses=${state.baselineCount}`);
+            else report('CHATGPT_DIAGNOSTIC', 'send button not ready or disabled');
+          }, 400);
         }
-        if (state.awaitingUserSubmission) verifySubmission();
-        inspect();
+      }, 500);
 
-        if (Date.now() - state.startTime > 75000 && !isGenerating()) {
-          clearInterval(state.responsePollTimer);
-          state.responsePollTimer = null;
-          const candidates = candidateResponses();
-          const latest = candidates[candidates.length - 1];
-          const code = latest ? extractCode(latest.text, latest.node) : '';
-          const fallback = state.mode === 'coding' ? (code || 'Code not available') : (latest?.text || 'No response captured');
-          emitStableResponse(latest || { text: fallback, signature: 'timeout' }, fallback);
-        }
-      }, 350);
-
-      const currentInput = findInput();
-      const inputText = currentInput
-        ? (currentInput.matches('textarea, input')
-          ? currentInput.value
-          : clean(currentInput.innerText || currentInput.textContent || ''))
-        : '';
-      report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; auto-submitting...`);
-
-      sendResponse({ ok: true, baselineCount: state.baseline.size, awaitingUserSubmission: true });
+      sendResponse({ ok: true, baselineCount: state.baselineCount });
       return true;
     } catch (err) {
-      report('CHATGPT_DIAGNOSTIC', `adapter error in onMessage: ${err.message}`);
+      report('CHATGPT_DIAGNOSTIC', `adapter error: ${err.message}`);
       sendResponse({ ok: false, error: err.message });
       return true;
     }
