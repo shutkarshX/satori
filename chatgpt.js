@@ -228,17 +228,6 @@
     // 2. ChatGPT shows streaming indicators (e.g. .result-streaming, pulsing dots)
     if (document.querySelector('.result-streaming, [class*="streaming"]')) return true;
 
-    // 3. While generating, the send button is absent or disabled
-    const sendButton = document.querySelector(
-      'button[data-testid="send-button"], ' +
-      'button[aria-label*="Send prompt" i], ' +
-      'button[aria-label*="Send message" i]'
-    );
-    if (!sendButton || sendButton.disabled || sendButton.getAttribute('aria-disabled') === 'true') {
-      // If we recently submitted (<45s) and send button is not ready, it's still processing
-      if (Date.now() - state.lastSentAt < 45000) return true;
-    }
-
     return false;
   };
 
@@ -429,6 +418,9 @@
       }
       if (state.awaitingUserSubmission) verifySubmission();
       inspect();
+      if (state.mode === 'coding' && !isGenerating() && state.submitted) {
+        confirmCodingResponse();
+      }
 
       if (Date.now() - state.startTime > 60000 && !isGenerating()) {
         clearInterval(state.responsePollTimer);
