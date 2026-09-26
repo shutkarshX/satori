@@ -6,10 +6,31 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
   chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
 });
 
-function formatMcqAnswer(text) {
+function formatMcqAnswer(text, questionText = '') {
   if (!text) return '';
-  // Normalize unicode math symbols (e.g. 𝑂 -> O, ∗ -> *, etc.)
-  let clean = text.normalize('NFKD').replace(/\u2217|\u22c5/g, '*').trim();
+  // Normalize unicode math symbols (e.g. 𝑂 -> O, ∗ -> *, · -> *, × -> *, etc.)
+  let clean = text.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').trim();
+
+  // If questionText is provided, extract options from it and check if any is matched
+  if (questionText) {
+    const stopWords = /^(Question|Marks|Negative|Answer here|Clear|Prev|Next|Submit|Section|Time|View|Multi Choice|Single File|degree|batch|roll number|name|email|test name)/i;
+    const knownOptions = questionText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => Boolean(l) && !stopWords.test(l) && l.length < 150 && !l.includes('?') && !l.endsWith(':') && l.length >= 1);
+
+    const norm = (s) => s.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').replace(/\s+/g, '').toLowerCase();
+    const normClean = norm(clean);
+
+    // Look for exact options inside the AI explanation (longest first to prefer O(sum*n) over O(n) or O(sum))
+    const sorted = [...knownOptions].sort((a, b) => b.length - a.length);
+    for (const opt of sorted) {
+      const normOpt = norm(opt);
+      if (normOpt.length >= 2 && normClean.includes(normOpt)) {
+        return opt;
+      }
+    }
+  }
 
   // 1. Look for explicit answer indicators: "**ANSWER:** A - text", "ANSWER: B", "Correct Option: C", etc.
   const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
@@ -20,14 +41,22 @@ function formatMcqAnswer(text) {
     }
   }
 
+  // Check for Big-O notation directly (e.g. O(sum*n), O(N!), O(n2))
+  const cleanFlat = clean.replace(/\r?\n/g, ' ');
+  const bigOMatch = cleanFlat.match(/O\s*\(\s*([A-Za-z0-9_*\s\+\-\^!]+)\s*\)/i);
+  if (bigOMatch) {
+    const inner = bigOMatch[1].replace(/[\s·×⋅*]+/g, '*').trim();
+    return `O(${inner})`;
+  }
+
   // Pre-process lines: merge consecutive fragmented mathematical tokens (e.g. Google Search rendering 'O' '(' 'sum' '*' 'n' ')' on separate lines)
   const rawLines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const lines = [];
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i];
-    if (line.length <= 3 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(line)) {
+    if (line.length <= 4 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(line)) {
       let formula = line;
-      while (i + 1 < rawLines.length && rawLines[i + 1].length <= 4 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(rawLines[i + 1])) {
+      while (i + 1 < rawLines.length && rawLines[i + 1].length <= 6 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(rawLines[i + 1])) {
         i++;
         formula += rawLines[i];
       }
@@ -63,8 +92,8 @@ function formatMcqAnswer(text) {
   }
 
   // 5. Look for standalone Big-O complexity in merged lines
-  const bigOMatch = lines.find((l) => /^O\([^\)]+\)$/i.test(l));
-  if (bigOMatch) return bigOMatch;
+  const bigOMerged = lines.find((l) => /^O\([^\)]+\)$/i.test(l));
+  if (bigOMerged) return bigOMerged;
 
   // 6. Fallback: filter out heading lines, colon endings, and single non-option characters
   const filteredLines = lines.filter((l) =>
@@ -72,7 +101,11 @@ function formatMcqAnswer(text) {
     !/^(#|ai overview|option evaluation|evaluation|analysis|explanation|question|here is|the correct|is\s*:|note)/i.test(l) &&
     !/^(ai overview|is\s*[:\.]?)$/i.test(l)
   );
-  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 3 && !/^(ai overview|is\s*[:\.]?)$/i.test(s.trim())) || clean;
+  let fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 3 && !/^(ai overview|is\s*[:\.]?)$/i.test(s.trim())) || clean;
+  if (/^O$/i.test(fallback.trim())) {
+    const m = clean.match(/O\s*\([^)]+\)/i);
+    if (m) fallback = m[0];
+  }
   return fallback.length < 80 ? fallback.trim() : fallback.trim().slice(0, 80);
 }
 
@@ -153,7 +186,7 @@ async function readGoogleAIOverview(tabId) {
   } catch (_error) { return { text: '', loading: false }; }
 }
 
-async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, attempts = 60) {
+async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, questionText = '', attempts = 60) {
   if (requestId !== activeRequestId) return;
   const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
   const reading = await readGoogleAIOverview(tabId);
@@ -161,7 +194,7 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
   const selected = mode === 'coding' ? (reading.code || '') : text;
   addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
   if (selected && !isPlaceholder(selected) && (!before || selected !== before)) {
-    const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
+    const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, questionText) : selected;
     chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
     let quality = 'response captured and stored';
     let warning = '';
@@ -181,7 +214,7 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
     addDiagnostic('response-check', 'placeholder / overview unavailable detected; waiting for generation to complete');
   }
   if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
-  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, attempts - 1), 1000);
+  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, questionText, attempts - 1), 1000);
   else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
 }
 
@@ -205,7 +238,7 @@ async function getReusableGoogleTab(windowId) {
   return null;
 }
 
-async function startGoogleSearch(query, requestId, mode, assignmentTab) {
+async function startGoogleSearch(query, requestId, mode, assignmentTab, questionText = '') {
   const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
   await chrome.storage.local.remove(['latestGoogleResponse', 'latestGoogleRawResponse']);
   const windowId = assignmentTab?.windowId;
@@ -221,7 +254,7 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab) {
     chrome.tabs.onUpdated.removeListener(listener);
     setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
     addDiagnostic('page', `Google Search tab ${targetTabId} loaded`);
-    pollGoogleAIOverview(targetTabId, '', requestId, mode, assignmentTab?.id);
+    pollGoogleAIOverview(targetTabId, '', requestId, mode, assignmentTab?.id, questionText);
   };
   const listener = (updatedTabId, changeInfo) => {
     if (updatedTabId === targetTabId && changeInfo.status === 'complete') handleLoaded();
@@ -292,11 +325,11 @@ async function sendGeminiPrompt(tabId, requestId, prompt, mode, retries = 15) {
   }
 }
 
-async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
+async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText = '') {
   await chrome.storage.local.remove(['latestGeminiResponse', 'latestGeminiRawResponse']);
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableGeminiTab(windowId) : null;
-  activeGeminiRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
+  activeGeminiRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
   await chrome.storage.local.set({ activeGeminiRequest });
   addDiagnostic('gemini-tab', tab ? `reusing Gemini tab ${tab.id}` : 'creating reusable Gemini tab');
   setStatus('Opening Gemini in the background…', 'waiting');
@@ -337,7 +370,7 @@ async function handleGeminiResponse(message) {
     addDiagnostic('gemini-parser', mode === 'coding' ? 'response found but code block missing' : 'empty response');
     return;
   }
-  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
+  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, activeGeminiRequest?.questionText || '') : selected;
   chrome.storage.local.set({ latestGeminiResponse: finalSelected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
   const assignmentTabId = activeGeminiRequest?.assignmentTabId;
   activeGeminiRequest = null;
@@ -409,12 +442,12 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
     addDiagnostic('chatgpt-error', 'composer not found after retries');
   }
 }
-async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
+async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText = '') {
   await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
 
-  activeChatGPTRequest = { requestId, mode, tabId: null, assignmentTabId: assignmentTab?.id };
+  activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
   await chrome.storage.local.set({ activeChatGPTRequest });
 
   const url = 'https://chatgpt.com/';
@@ -509,7 +542,7 @@ async function handleChatGPTResponse(message) {
     return;
   }
 
-  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected) : selected;
+  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, activeChatGPTRequest?.questionText || '') : selected;
   chrome.storage.local.set({
     latestChatGPTResponse: finalSelected,
     latestChatGPTRawResponse: raw,
@@ -576,12 +609,13 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     assignmentTab = activeTabs.find((tab) => tab.id && !/^https:\/\/(www\.)?google\./i.test(tab.url || '') && !/^https:\/\/gemini\.google\.com\//i.test(tab.url || '')) || activeTabs[0];
   }
   addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId}` : 'assignment window unavailable');
+  const questionText = message.questionText || '';
   if (provider === 'google') {
-    startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab);
+    startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
   } else if (provider === 'gemini') {
-    startGeminiSearch(query, requestId, message.mode || 'text', assignmentTab);
+    startGeminiSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
   } else {
-    startChatGPTSearch(query, requestId, message.mode || 'text', assignmentTab);
+    startChatGPTSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
   }
   sendResponse({ ok: true });
 });

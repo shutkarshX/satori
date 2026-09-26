@@ -103,7 +103,7 @@
     // Priority 1: Match by exact or fuzzy text content inside option/label (Most Reliable)
     const norm = (str) => (str || '')
       .normalize('NFKD')
-      .replace(/\u2217|\u22c5/g, '*')
+      .replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*')
       .replace(/\s+/g, '')
       .toLowerCase();
 

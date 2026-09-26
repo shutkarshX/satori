@@ -172,11 +172,12 @@ $('googleSearch').addEventListener('click', async () => {
     if (provider === 'google') await chrome.storage.local.remove(['latestGoogleResponse', 'latestGoogleRawResponse']);
     else if (provider === 'gemini') await chrome.storage.local.remove(['latestGeminiResponse', 'latestGeminiRawResponse']);
     else await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
+    const questionText = $('question').value.trim();
     const message = provider === 'google'
-      ? { type: 'OPEN_GOOGLE_SEARCH', googleQuery: buildGoogleQuery(), mode }
+      ? { type: 'OPEN_GOOGLE_SEARCH', googleQuery: buildGoogleQuery(), questionText, mode }
       : provider === 'gemini'
-        ? { type: 'OPEN_GEMINI_REQUEST', prompt: buildGeminiPrompt(), mode }
-        : { type: 'OPEN_CHATGPT_REQUEST', prompt: buildChatGPTPrompt(), mode };
+        ? { type: 'OPEN_GEMINI_REQUEST', prompt: buildGeminiPrompt(), questionText, mode }
+        : { type: 'OPEN_CHATGPT_REQUEST', prompt: buildChatGPTPrompt(), questionText, mode };
     const result = await chrome.runtime.sendMessage(message);
     if (!result?.ok) throw new Error(`Could not start ${provider}.`);
     status(`${provider === 'google' ? 'Google Search' : provider === 'gemini' ? 'Gemini' : 'ChatGPT'} opened in the background. Waiting for its response…`);
