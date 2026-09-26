@@ -401,10 +401,66 @@
 
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
+  const checkExistingResponse = (prompt, mode) => {
+    const cleanPrompt = clean(prompt);
+    const users = userMessageNodes();
+    const latestUser = users[users.length - 1];
+
+    let isMatch = false;
+    if (latestUser) {
+      const userText = clean(nodeText(latestUser));
+      const promptSnippet = cleanPrompt.slice(0, 100);
+      const problemMatch = cleanPrompt.match(/Problem Statement[\s\S]*?(?=\n\s*(?:Input format|Output format|Sample test|Constraints|Note))/i);
+      const problemSnippet = problemMatch ? clean(problemMatch[0]).slice(0, 80) : '';
+
+      isMatch = (promptSnippet && userText.includes(promptSnippet)) ||
+                (problemSnippet && userText.includes(problemSnippet)) ||
+                (userText.length > 40 && cleanPrompt.includes(userText.slice(0, 80)));
+    } else {
+      const pageText = clean(document.body.innerText || '');
+      const problemMatch = cleanPrompt.match(/Problem Statement[\s\S]*?(?=\n\s*(?:Input format|Output format|Sample test|Constraints|Note))/i);
+      if (problemMatch && pageText.includes(clean(problemMatch[0]).slice(0, 80))) {
+        isMatch = true;
+      }
+    }
+
+    if (!isMatch) return null;
+
+    if (isGenerating()) {
+      return { generating: true };
+    }
+
+    const responses = responseNodes();
+    const latestAssistant = responses[responses.length - 1];
+    if (!latestAssistant) return null;
+
+    const assistantText = nodeText(latestAssistant);
+    const code = extractCode(assistantText, latestAssistant);
+
+    if (mode === 'coding' && (!code || code === 'Code not available')) {
+      return null;
+    }
+
+    return {
+      text: assistantText,
+      code: mode === 'coding' ? code : (code || assistantText)
+    };
+  };
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       if (message.type === 'PING_CHATGPT') {
         sendResponse({ ok: true, input: Boolean(findInput()), responses: responseNodes().length });
+        return true;
+      }
+
+      if (message.type === 'CHECK_EXISTING_RESPONSE') {
+        const existing = checkExistingResponse(message.prompt, message.mode);
+        if (existing) {
+          sendResponse({ ok: true, existing });
+          return true;
+        }
+        sendResponse({ ok: false });
         return true;
       }
 

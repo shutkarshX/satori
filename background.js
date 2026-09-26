@@ -333,6 +333,38 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
       let isAlive = false;
       if (isChatGPTUrl && !tab.discarded) {
         try {
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['chatgpt.js'] }).catch(() => {});
+        } catch (_e) {}
+
+        try {
+          const check = await Promise.race([
+            chrome.tabs.sendMessage(tab.id, { type: 'CHECK_EXISTING_RESPONSE', prompt, mode }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('check timeout')), 600))
+          ]);
+          if (check?.ok && check.existing) {
+            if (check.existing.generating) {
+              addDiagnostic('chatgpt-tab', `ChatGPT is generating answer in tab ${tab.id}; waiting for completion…`);
+              setStatus('ChatGPT is generating response in the background…', 'waiting');
+              return;
+            }
+            if (check.existing.code) {
+              const code = check.existing.code;
+              const text = check.existing.text || code;
+              addDiagnostic('chatgpt-instant', `captured existing answer from tab ${tab.id} (${code.length} chars)`);
+              chrome.storage.local.set({
+                latestChatGPTResponse: code,
+                latestChatGPTRawResponse: text,
+                latestChatGPTAt: Date.now(),
+                latestProvider: 'chatgpt'
+              });
+              autoFillAssignment(assignmentTab?.id, code, 'ChatGPT');
+              setStatus('ChatGPT response captured.', 'ready');
+              return;
+            }
+          }
+        } catch (_e) {}
+
+        try {
           const ping = await Promise.race([
             chrome.tabs.sendMessage(tab.id, { type: 'PING_CHATGPT' }),
             new Promise((_, reject) => setTimeout(() => reject(new Error('ping timeout')), 500))
