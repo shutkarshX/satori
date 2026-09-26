@@ -278,7 +278,7 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
   try {
     const result = await Promise.race([
       chrome.tabs.sendMessage(tabId, { type: 'FILL_CHATGPT_PROMPT', requestId, prompt, mode }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for adapter response')), 7000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for adapter response')), 4500))
     ]);
     if (result?.ok) {
       addDiagnostic('chatgpt-input', `prompt ready; baseline responses=${result.baselineCount ?? 'unknown'}`);
@@ -341,7 +341,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
         await chrome.tabs.update(tab.id, { url, active: false });
         setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1200);
       } else {
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 150);
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 30);
       }
     } else {
       addDiagnostic('chatgpt-tab', 'creating reusable ChatGPT tab in the background');

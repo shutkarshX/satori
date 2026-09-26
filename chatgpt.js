@@ -350,13 +350,13 @@
       state.lastSentAt = Date.now();
       report('CHATGPT_SUBMITTED', 'auto-clicked ChatGPT send button');
       report('CHATGPT_DIAGNOSTIC', 'auto-clicked ChatGPT send button; waiting for submission confirmation');
-      setTimeout(verifySubmission, 150);
-      setTimeout(verifySubmission, 400);
-      setTimeout(verifySubmission, 900);
+      setTimeout(verifySubmission, 100);
+      setTimeout(verifySubmission, 300);
+      setTimeout(verifySubmission, 700);
       return;
     }
     if (retries > 0) {
-      setTimeout(() => attemptAutoSubmit(retries - 1), 200);
+      setTimeout(() => attemptAutoSubmit(retries - 1), 80);
     } else {
       report('CHATGPT_DIAGNOSTIC', 'auto-send button not ready yet; press Enter in assignment tab to submit');
     }
@@ -382,9 +382,9 @@
 
       const code = extractCode(final.text, final.node);
 
-      // In coding mode, if model has not written the code block yet, wait up to 18s for code output
+      // In coding mode, if model has not written the code block yet, wait briefly for code output
       if (state.mode === 'coding' && !code) {
-        if (Date.now() - state.lastSentAt < 18000) {
+        if (Date.now() - state.lastSentAt < 10000) {
           report('CHATGPT_DIAGNOSTIC', 'generation quiet but code block not found yet; waiting for code');
           inspect();
           return;
@@ -396,7 +396,7 @@
       const finalCode = state.mode === 'coding' ? (code || 'Code not available') : (code || final.text);
       report('CHATGPT_DIAGNOSTIC', `Response captured: text=${final.text.length} chars, code=${finalCode.length} chars`);
       emitStableResponse(final, finalCode);
-    }, 1200);
+    }, 400);
   };
 
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
@@ -465,7 +465,7 @@
       state.submitted = false;
       clearTimeout(state.quietTimer);
       setInput(input, message.prompt || '');
-      setTimeout(() => attemptAutoSubmit(20), 80);
+      setTimeout(() => attemptAutoSubmit(20), 30);
 
       state.startTime = Date.now();
       clearInterval(state.responsePollTimer);
