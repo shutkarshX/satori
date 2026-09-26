@@ -112,21 +112,26 @@
       return;
     }
 
+    // contenteditable (e.g. Lexical in modern ChatGPT)
     try {
       const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.execCommand('delete', false, null);
+      if (selection && selection.rangeCount > 0) {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand('delete', false, null);
+      }
       document.execCommand('insertText', false, text);
     } catch (_error) {}
 
-    if (clean(element.innerText || element.textContent || '') !== clean(text)) {
-      element.innerHTML = '';
-      const p = document.createElement('p');
+    if (!clean(element.innerText || element.textContent || '').includes(clean(text).slice(0, 30))) {
+      let p = element.querySelector('p');
+      if (!p) {
+        p = document.createElement('p');
+        element.appendChild(p);
+      }
       p.textContent = text;
-      element.appendChild(p);
     }
 
     try {
@@ -397,101 +402,107 @@
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message.type === 'PING_CHATGPT') {
-      sendResponse({ ok: true, input: Boolean(findInput()), responses: responseNodes().length });
-      return true;
-    }
+    try {
+      if (message.type === 'PING_CHATGPT') {
+        sendResponse({ ok: true, input: Boolean(findInput()), responses: responseNodes().length });
+        return true;
+      }
 
-    if (message.type === 'SUBMIT_CHATGPT_PROMPT') {
+      if (message.type === 'SUBMIT_CHATGPT_PROMPT') {
+        const input = findInput();
+        const hasPrompt = composerHasPrompt();
+        const form = input?.closest('form');
+        if (!input) {
+          sendResponse({ ok: false, error: 'ChatGPT composer input was not found.' });
+          return true;
+        }
+        if (!hasPrompt) {
+          sendResponse({ ok: false, error: 'ChatGPT composer is empty.' });
+          return true;
+        }
+
+        if (clickSend()) {
+          state.lastSentAt = Date.now();
+          report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered ChatGPT submission; verifying new user message');
+          setTimeout(verifySubmission, 250);
+          setTimeout(verifySubmission, 700);
+          setTimeout(verifySubmission, 1400);
+          sendResponse({ ok: true });
+          return true;
+        } else {
+          sendResponse({ ok: false, error: 'ChatGPT composer could not be submitted.' });
+          return true;
+        }
+      }
+
+      if (message.type !== 'FILL_CHATGPT_PROMPT') return false;
+
       const input = findInput();
-      const hasPrompt = composerHasPrompt();
-      const form = input?.closest('form');
       if (!input) {
-        sendResponse({ ok: false, error: 'ChatGPT composer input was not found.' });
-        return true;
-      }
-      if (!hasPrompt) {
-        sendResponse({ ok: false, error: 'ChatGPT composer is empty.' });
+        report('CHATGPT_DIAGNOSTIC', 'composer not found');
+        sendResponse({ ok: false, error: 'ChatGPT composer is not ready yet.' });
         return true;
       }
 
-      if (clickSend()) {
-        state.lastSentAt = Date.now();
-        report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered ChatGPT submission; verifying new user message');
-        setTimeout(verifySubmission, 250);
-        setTimeout(verifySubmission, 700);
-        setTimeout(verifySubmission, 1400);
-        sendResponse({ ok: true });
-        return true;
-      } else {
-        sendResponse({ ok: false, error: 'ChatGPT composer could not be submitted.' });
-        return true;
-      }
-    }
+      state.requestId = message.requestId || Date.now();
+      state.mode = message.mode || 'text';
+      state.promptText = String(message.prompt || '');
+      const baselineSnapshot = snapshot();
+      state.baseline = new Set(baselineSnapshot.map((item) => item.signature));
+      state.baselineCode = new Set(
+        [...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
+          .map((element) => normalizeSource(nodeText(element)))
+          .filter((text) => text.length > 20)
+          .map(signature)
+      );
+      state.baselineNodes = new Set(baselineSnapshot.map((item) => item.node));
+      state.baselineAssistantSignatures = new Map(baselineSnapshot.map((item) => [item.node, item.signature]));
+      state.baselineUsers = new Set(userMessageNodes());
+      state.lastSignature = '';
+      resetStability();
+      state.lastSentAt = 0;
+      state.awaitingUserSubmission = true;
+      state.submitted = false;
+      clearTimeout(state.quietTimer);
+      setInput(input, message.prompt || '');
+      setTimeout(() => attemptAutoSubmit(20), 80);
 
-    if (message.type !== 'FILL_CHATGPT_PROMPT') return;
+      state.startTime = Date.now();
+      clearInterval(state.responsePollTimer);
+      state.responsePollTimer = setInterval(() => {
+        if (!state.requestId) {
+          clearInterval(state.responsePollTimer);
+          state.responsePollTimer = null;
+          return;
+        }
+        if (state.awaitingUserSubmission) verifySubmission();
+        inspect();
 
-    const input = findInput();
-    if (!input) {
-      report('CHATGPT_DIAGNOSTIC', 'composer not found');
-      sendResponse({ ok: false, error: 'ChatGPT composer is not ready yet.' });
+        if (Date.now() - state.startTime > 75000 && !isGenerating()) {
+          clearInterval(state.responsePollTimer);
+          state.responsePollTimer = null;
+          const candidates = candidateResponses();
+          const latest = candidates[candidates.length - 1];
+          const code = latest ? extractCode(latest.text, latest.node) : '';
+          const fallback = state.mode === 'coding' ? (code || 'Code not available') : (latest?.text || 'No response captured');
+          emitStableResponse(latest || { text: fallback, signature: 'timeout' }, fallback);
+        }
+      }, 350);
+
+      const currentInput = findInput();
+      const inputText = currentInput
+        ? (currentInput.matches('textarea, input')
+          ? currentInput.value
+          : clean(currentInput.innerText || currentInput.textContent || ''))
+        : '';
+      report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; auto-submitting...`);
+
+      sendResponse({ ok: true, baselineCount: state.baseline.size, awaitingUserSubmission: true });
+      return true;
+    } catch (err) {
+      report('CHATGPT_DIAGNOSTIC', `adapter error in onMessage: ${err.message}`);
+      sendResponse({ ok: false, error: err.message });
       return true;
     }
-
-    state.requestId = message.requestId || Date.now();
-    state.mode = message.mode || 'text';
-    state.promptText = String(message.prompt || '');
-    const baselineSnapshot = snapshot();
-    state.baseline = new Set(baselineSnapshot.map((item) => item.signature));
-    state.baselineCode = new Set(
-      [...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
-        .map((element) => normalizeSource(nodeText(element)))
-        .filter((text) => text.length > 20)
-        .map(signature)
-    );
-    state.baselineNodes = new Set(baselineSnapshot.map((item) => item.node));
-    state.baselineAssistantSignatures = new Map(baselineSnapshot.map((item) => [item.node, item.signature]));
-    state.baselineUsers = new Set(userMessageNodes());
-    state.lastSignature = '';
-    resetStability();
-    state.lastSentAt = 0;
-    state.awaitingUserSubmission = true;
-    state.submitted = false;
-    clearTimeout(state.quietTimer);
-    setInput(input, message.prompt || '');
-    setTimeout(() => attemptAutoSubmit(20), 80);
-
-    state.startTime = Date.now();
-    clearInterval(state.responsePollTimer);
-    state.responsePollTimer = setInterval(() => {
-      if (!state.requestId) {
-        clearInterval(state.responsePollTimer);
-        state.responsePollTimer = null;
-        return;
-      }
-      if (state.awaitingUserSubmission) verifySubmission();
-      inspect();
-
-      if (Date.now() - state.startTime > 60000 && !isGenerating()) {
-        clearInterval(state.responsePollTimer);
-        state.responsePollTimer = null;
-        const candidates = candidateResponses();
-        const latest = candidates[candidates.length - 1];
-        const code = latest ? extractCode(latest.text, latest.node) : '';
-        const fallback = state.mode === 'coding' ? (code || 'Code not available') : (latest?.text || 'No response captured');
-        emitStableResponse(latest || { text: fallback, signature: 'timeout' }, fallback);
-      }
-    }, 350);
-
-    const currentInput = findInput();
-    const inputText = currentInput
-      ? (currentInput.matches('textarea, input')
-        ? currentInput.value
-        : clean(currentInput.innerText || currentInput.textContent || ''))
-      : '';
-    report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; auto-submitting...`);
-
-    sendResponse({ ok: true, baselineCount: state.baseline.size, awaitingUserSubmission: true });
-    return true;
   });
 })();
