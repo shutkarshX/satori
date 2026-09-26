@@ -75,14 +75,14 @@ async function readGoogleAIOverview(tabId) {
   } catch (_error) { return { text: '', loading: false }; }
 }
 
-async function pollGoogleAIOverview(tabId, before, requestId, mode, attempts = 60) {
+async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, attempts = 60) {
   if (requestId !== activeRequestId) return;
   const reading = await readGoogleAIOverview(tabId);
   const text = reading.text || '';
   const selected = mode === 'coding' ? (reading.code || '') : text;
   addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
-  if (selected && selected !== before) {
-    chrome.storage.local.set({ latestGoogleResponse: selected, latestGoogleRawResponse: text, latestGoogleAt: Date.now() });
+  if (selected && (!before || selected !== before || attempts < 55)) {
+    chrome.storage.local.set({ latestGoogleResponse: selected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
     let quality = 'response captured and stored';
     let warning = '';
     if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\-]/i.test(text)) {
@@ -94,10 +94,11 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, attempts = 6
     }
     setStatus(`Google AI Overview captured.${warning}`, warning ? 'error' : 'ready');
     addDiagnostic('complete', quality);
+    autoFillAssignment(assignmentTabId, selected, 'Google AI');
     return;
   }
   if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
-  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, attempts - 1), 1000);
+  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, attempts - 1), 1000);
   else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
 }
 
@@ -139,7 +140,7 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab) {
     addDiagnostic('page', `Google Search tab ${targetTabId} loaded`);
     const reading = await readGoogleAIOverview(targetTabId);
     const before = mode === 'coding' ? (reading.code || '') : (reading.text || '');
-    pollGoogleAIOverview(targetTabId, before, requestId, mode);
+    pollGoogleAIOverview(targetTabId, before, requestId, mode, assignmentTab?.id);
   };
   const listener = (updatedTabId, changeInfo) => {
     if (updatedTabId === targetTabId && changeInfo.status === 'complete') handleLoaded();
