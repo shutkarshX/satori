@@ -86,14 +86,6 @@
     const highlightAndClick = (element, matchedLabel) => {
       if (!element) return null;
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Visual highlight outline and soft background
-      try {
-        element.style.outline = '3px solid #22c55e';
-        element.style.outlineOffset = '2px';
-        element.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
-        element.style.borderRadius = '4px';
-        element.style.transition = 'all 0.3s ease';
-      } catch (_e) {}
 
       const radio = element.matches('input[type="radio"]') ? element : element.querySelector('input[type="radio"]');
       if (radio) {
@@ -105,7 +97,7 @@
         element.click();
         element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
       }
-      return { matched: matchedLabel, type: 'highlight_and_click' };
+      return { matched: matchedLabel, type: 'selected' };
     };
 
     // Priority A: If target letter is found (e.g. 'A' -> 0, 'B' -> 1, 'C' -> 2, 'D' -> 3)
