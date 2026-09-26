@@ -20,13 +20,19 @@
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\n(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
     .trim();
 
-  const responseNodes = () => [...document.querySelectorAll(
-    'model-response, message-content, [data-message-author-role="model"], [data-testid*="model" i], [data-test-id*="model" i]'
-  )].filter((node) => {
-    const text = clean(node.innerText || node.textContent);
-    const userAncestor = node.closest?.('[data-message-author-role="user"], [data-message-author-role="human"], [data-author="user"]');
-    return text.length > 0 && !userAncestor && !/^You said\b|^You asked\b/i.test(text);
-  });
+  const responseNodes = () => {
+    const primary = [...document.querySelectorAll(
+      'model-response, message-content, [data-message-author-role="model"], [data-testid*="model" i], [data-test-id*="model" i], .model-response-text, .response-container'
+    )];
+    const list = primary.length ? primary : [
+      ...document.querySelectorAll('.conversation-container .model-response, [class*="model-response" i], [class*="response-content" i]')
+    ];
+    return list.filter((node) => {
+      const text = clean(node.innerText || node.textContent);
+      const userAncestor = node.closest?.('[data-message-author-role="user"], [data-message-author-role="human"], [data-author="user"]');
+      return text.length > 0 && !userAncestor && !/^You said\b|^You asked\b/i.test(text);
+    });
+  };
 
   const nodeText = (node) => clean(node.innerText || node.textContent || '');
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
@@ -40,7 +46,7 @@
   };
 
   const findInput = () => document.querySelector(
-    'textarea[placeholder], textarea, [contenteditable="true"][role="textbox"], [contenteditable="true"]'
+    'rich-textarea [contenteditable="true"], [contenteditable="true"][role="textbox"], textarea[placeholder], textarea, [contenteditable="true"]'
   );
 
   const setInput = (element, text) => {
@@ -58,10 +64,16 @@
 
   const clickSend = () => {
     const buttons = [...document.querySelectorAll(
-      'button[aria-label*="Send" i], button[aria-label*="send" i], button[data-testid*="send" i], button[mattooltip*="Send" i]'
+      'button[aria-label*="Send" i], button[aria-label*="send" i], button[data-testid*="send" i], button[mattooltip*="Send" i], .send-button'
     )];
     const button = buttons.find((candidate) => !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true');
     if (button) { button.click(); return true; }
+    // Fallback: send Enter key event to input
+    const input = findInput();
+    if (input) {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      return true;
+    }
     return false;
   };
 
@@ -146,6 +158,8 @@
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
     childList: true, subtree: true, characterData: true
   });
+
+  setInterval(inspectForNewResponse, 1000);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'PING_GEMINI') {
