@@ -40,10 +40,10 @@ function formatMcqAnswer(text) {
   // 4. Fallback: filter out heading lines, colon endings, and return the first meaningful sentence/line
   const filteredLines = lines.filter((l) =>
     l.length > 5 &&
-    !/^(#|option evaluation|evaluation|analysis|explanation|question|here is|the correct|is\s*:|note)/i.test(l) &&
-    !/^is\s*[:\.]?$/i.test(l)
+    !/^(#|ai overview|option evaluation|evaluation|analysis|explanation|question|here is|the correct|is\s*:|note)/i.test(l) &&
+    !/^(ai overview|is\s*[:\.]?)$/i.test(l)
   );
-  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 5 && !/^is\s*[:\.]?$/i.test(s.trim())) || clean;
+  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 5 && !/^(ai overview|is\s*[:\.]?)$/i.test(s.trim())) || clean;
   return fallback.length < 80 ? fallback.trim() : fallback.trim().slice(0, 80);
 }
 
@@ -103,7 +103,8 @@ async function readGoogleAIOverview(tabId) {
           const nearby = clean(overviewLabel.parentElement.parentElement?.innerText || overviewLabel.parentElement.innerText || '');
           if (nearby.length > 40) candidates.push(nearby);
         }
-        const text = candidates.sort((a, b) => b.length - a.length)[0] || '';
+        let text = candidates.sort((a, b) => b.length - a.length)[0] || '';
+        text = text.replace(/^AI\s+Overview\s*/i, '').trim();
         const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
           .map((node) => ({ text: clean(node.innerText || node.textContent || ''), score: 0, node }))
           .filter((candidate) => candidate.text.length > 20)
