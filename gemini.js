@@ -1,4 +1,7 @@
 (() => {
+  if (window.__satoriGeminiAdapterLoaded) return;
+  window.__satoriGeminiAdapterLoaded = true;
+
   const state = {
     requestId: 0,
     baseline: new Set(),
@@ -186,11 +189,13 @@
       const currentAll = responseSnapshot();
       const current = currentAll.filter((item) => !state.baseline.has(item.signature));
       const final = current.length ? current[current.length - 1] : currentAll[currentAll.length - 1];
-      if (!final || final.signature === state.lastResponseSignature) return;
+      const capturedRequestId = state.requestId;
       state.lastResponseSignature = final.signature;
       state.pendingSignature = '';
       state.requestId = 0; // Request completed, stop polling
       report('GEMINI_RESPONSE', {
+        requestId: capturedRequestId,
+        mode: state.mode || 'mcq',
         text: final.text,
         code: extractCode(final.text, final.node),
         nodeCount: responseNodes().length,
@@ -218,6 +223,7 @@
       return true;
     }
     state.requestId = message.requestId || Date.now();
+    state.mode = message.mode || 'coding';
     state.baseline = new Set(responseSnapshot().map((item) => item.signature));
     state.baselineCode = new Set([...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
       .map((element) => normalizeSource(element.innerText || element.textContent))

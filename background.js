@@ -287,14 +287,15 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
 }
 
 async function handleGeminiResponse(message) {
+  const responsePayload = message.detail ?? message.text;
+  const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
+  
   if (!activeGeminiRequest) {
     const stored = await chrome.storage.local.get(['activeGeminiRequest', 'satoriMode']);
     if (stored.activeGeminiRequest) activeGeminiRequest = stored.activeGeminiRequest;
     else if (stored.satoriMode) activeGeminiRequest = { mode: stored.satoriMode };
   }
-  const mode = activeGeminiRequest?.mode || 'coding';
-  const responsePayload = message.detail ?? message.text;
-  const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
+  const mode = payload.mode || activeGeminiRequest?.mode || 'coding';
   const raw = String(payload.text || '').trim();
   const selected = mode === 'coding' ? String(payload.code || '').trim() : raw;
   if (!selected) {

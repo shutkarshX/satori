@@ -100,26 +100,7 @@
       return { matched: matchedLabel, type: 'selected' };
     };
 
-    // Priority A: If target letter is found (e.g. 'A' -> 0, 'B' -> 1, 'C' -> 2, 'D' -> 3)
-    if (targetLetter) {
-      const letterIndex = targetLetter.charCodeAt(0) - 65; // A=0, B=1...
-      // Check inputs with matching value or id
-      const matchedInput = inputs.find((input) => {
-        const val = (input.value || input.id || input.name || '').toUpperCase();
-        return val.includes(targetLetter) || val === String(letterIndex);
-      });
-      if (matchedInput) {
-        return highlightAndClick(matchedInput.closest('label, [class*="option" i], [class*="choice" i]') || matchedInput, targetLetter);
-      }
-
-      // Check positional radio by index if count is 4
-      if (inputs.length >= 2 && inputs[letterIndex]) {
-        const targetRadio = inputs[letterIndex];
-        return highlightAndClick(targetRadio.closest('label, [class*="option" i], [class*="choice" i]') || targetRadio, targetLetter);
-      }
-    }
-
-    // Priority B: Match by text content inside option/label
+    // Priority 1: Match by exact or fuzzy text content inside option/label (Most Reliable)
     const cleanTargetText = cleanAnswer
       .replace(/^(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*/i, '')
       .replace(/^(?:\(?([A-Da-d])\)?[\).\:\-\s]*)/i, '')
@@ -158,6 +139,25 @@
         if (bestCandidate) {
           return highlightAndClick(bestCandidate, visibleText(bestCandidate).slice(0, 40));
         }
+      }
+    }
+
+    // Priority 2: Fallback to target letter radio matching (only if text matching didn't find anything)
+    if (targetLetter) {
+      const letterIndex = targetLetter.charCodeAt(0) - 65; // A=0, B=1...
+      // Only consider visible radio inputs
+      const visibleRadios = inputs.filter((input) => input.offsetParent !== null || input.matches('[role="radio"]'));
+      const matchedInput = visibleRadios.find((input) => {
+        const val = (input.value || input.id || input.name || '').toUpperCase();
+        return val.includes(targetLetter) || val === String(letterIndex);
+      });
+      if (matchedInput) {
+        return highlightAndClick(matchedInput.closest('label, [class*="option" i], [class*="choice" i]') || matchedInput, targetLetter);
+      }
+
+      if (visibleRadios.length >= 2 && visibleRadios[letterIndex]) {
+        const targetRadio = visibleRadios[letterIndex];
+        return highlightAndClick(targetRadio.closest('label, [class*="option" i], [class*="choice" i]') || targetRadio, targetLetter);
       }
     }
 
