@@ -39,10 +39,14 @@ function updateProviderUI() {
   $('googleSearch').textContent = labels[$('provider').value] || labels.google;
 }
 
-chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse', 'satoriStatus', 'satoriDiagnostics'], (result) => {
+chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse', 'satoriStatus', 'satoriDiagnostics', 'satoriMode'], (result) => {
+  if (result.satoriMode) $('mode').value = result.satoriMode;
   showSelectedProviderResponse(result);
   showAiStatus(result.satoriStatus);
   showDiagnostics(result.satoriDiagnostics);
+});
+$('mode').addEventListener('change', () => {
+  chrome.storage.local.set({ satoriMode: $('mode').value });
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.latestGoogleResponse || changes.latestGeminiResponse || changes.latestChatGPTResponse)) {
@@ -85,10 +89,24 @@ async function extract() {
   if (!result.text || result.text.length < 10) throw new Error('Very little text was found. Select the question manually, then try again.');
   $('question').value = result.text;
   fullPageContext = result.fullText || result.text;
-  if (fullPageContext.length > result.text.length * 1.25) {
-    status(`Read ${result.text.length.toLocaleString()} focused characters plus ${fullPageContext.length.toLocaleString()} full-page characters.`);
+
+  // Auto-detect question type: MCQ vs Coding
+  const combined = `${result.text}\n${fullPageContext}`.toLowerCase();
+  const isMcq = /\b(mcq|multiple choice|choose the correct|select the correct|option [a-d]|which of the following)\b/i.test(combined)
+    || (!/\b(single file programming|problem statement|code constraints|sample test cases|input format|output format)\b/i.test(combined) && /\b(option|a\)|b\)|c\)|d\))\b/i.test(combined));
+  
+  if (isMcq) {
+    $('mode').value = 'mcq';
+    chrome.storage.local.set({ satoriMode: 'mcq' });
+  } else {
+    $('mode').value = 'coding';
+    chrome.storage.local.set({ satoriMode: 'coding' });
   }
-  else status(`Read ${result.text.length.toLocaleString()} characters from the page.`);
+
+  if (fullPageContext.length > result.text.length * 1.25) {
+    status(`Read ${result.text.length.toLocaleString()} focused chars (detected ${$('mode').value.toUpperCase()}).`);
+  }
+  else status(`Read ${result.text.length.toLocaleString()} characters (detected ${$('mode').value.toUpperCase()}).`);
 }
 
 function buildGoogleQuery() {
