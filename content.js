@@ -113,31 +113,42 @@
       ...document.querySelectorAll('label, [class*="option" i], [class*="choice" i], [class*="answer" i], li, tr, [role="radio"]')
     ];
 
-    if (cleanTargetText.length > 2) {
-      // 1. Direct or fuzzy substring match
+    if (cleanTargetText.length >= 1) {
+      // 1. Direct match (exact or substring)
+      // Check for exact matches first (critical for single digits/letters like "2", "0", "1")
       for (const card of broadCandidates) {
-        const text = visibleText(card).toLowerCase().replace(/[.\s]+$/, '');
-        if (text && (text === cleanTargetText || text.includes(cleanTargetText) || (cleanTargetText.length > 8 && text.length > 4 && cleanTargetText.includes(text)))) {
+        const text = visibleText(card).toLowerCase().replace(/[.\s]+$/, '').trim();
+        if (text && text === cleanTargetText) {
           return highlightAndClick(card, visibleText(card).slice(0, 40));
         }
       }
 
-      // 2. Word-overlap match
-      const targetWords = cleanTargetText.split(/\s+/).filter((w) => w.length > 3);
-      if (targetWords.length > 0) {
-        let bestCandidate = null;
-        let maxOverlap = 0;
+      // If no exact match and text length > 2, try substring matches
+      if (cleanTargetText.length > 2) {
         for (const card of broadCandidates) {
-          const text = visibleText(card).toLowerCase();
-          if (text.length > 200) continue; // Skip huge parent containers
-          const count = targetWords.filter((w) => text.includes(w)).length;
-          if (count > maxOverlap && count >= Math.ceil(targetWords.length * 0.6)) {
-            maxOverlap = count;
-            bestCandidate = card;
+          const text = visibleText(card).toLowerCase().replace(/[.\s]+$/, '').trim();
+          if (text && (text.includes(cleanTargetText) || (cleanTargetText.length > 8 && text.length > 4 && cleanTargetText.includes(text)))) {
+            return highlightAndClick(card, visibleText(card).slice(0, 40));
           }
         }
-        if (bestCandidate) {
-          return highlightAndClick(bestCandidate, visibleText(bestCandidate).slice(0, 40));
+
+        // 2. Word-overlap match
+        const targetWords = cleanTargetText.split(/\s+/).filter((w) => w.length > 3);
+        if (targetWords.length > 0) {
+          let bestCandidate = null;
+          let maxOverlap = 0;
+          for (const card of broadCandidates) {
+            const text = visibleText(card).toLowerCase();
+            if (text.length > 200) continue; // Skip huge parent containers
+            const count = targetWords.filter((w) => text.includes(w)).length;
+            if (count > maxOverlap && count >= Math.ceil(targetWords.length * 0.6)) {
+              maxOverlap = count;
+              bestCandidate = card;
+            }
+          }
+          if (bestCandidate) {
+            return highlightAndClick(bestCandidate, visibleText(bestCandidate).slice(0, 40));
+          }
         }
       }
     }

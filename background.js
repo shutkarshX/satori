@@ -37,7 +37,14 @@ function formatMcqAnswer(text) {
     return `${standaloneMatch[1].toUpperCase()} - ${standaloneMatch[2].trim()}`.replace(/\s+/g, ' ');
   }
 
-  // 4. Fallback: filter out heading lines, colon endings, and return the first meaningful sentence/line
+  // 4. Look for declarative sentence endings like "is 2.", "is B.", "equal to 2.", "answer is 2."
+  const sentencePattern = /(?:is|equals?|answer is|result is|length is)\s*[:\-]?\s*([A-Da-d]\b|[0-9]+(?:\.[0-9]+)?|[^\n\.,]+)[.\s]*$/im;
+  const sentenceMatch = clean.match(sentencePattern);
+  if (sentenceMatch && sentenceMatch[1] && sentenceMatch[1].trim().length < 40) {
+    return sentenceMatch[1].replace(/[.\s]+$/, '').trim();
+  }
+
+  // 5. Fallback: filter out heading lines, colon endings, and return the first meaningful sentence/line
   const filteredLines = lines.filter((l) =>
     l.length > 5 &&
     !/^(#|ai overview|option evaluation|evaluation|analysis|explanation|question|here is|the correct|is\s*:|note)/i.test(l) &&
