@@ -5,6 +5,7 @@
     requestId: 0,
     mode: 'text',
     baseline: new Set(),
+    baselineCode: new Set(),
     baselineNodes: new Set(),
     baselineAssistantSignatures: new Map(),
     baselineUsers: new Set(),
@@ -21,33 +22,47 @@
     submitted: false
   };
   const clean = (value) => String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
+  const nodeText = (el) => {
+    if (!el) return '';
+    const inner = clean(el.innerText || '');
+    const text = clean(el.textContent || '');
+    return (inner.length >= text.length * 0.5) ? inner : text;
+  };
   const normalizeSource = (value) => clean(value)
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
     .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\n(?=(?:#include|import\s|package\s|public\s+class|class\s+|def\s+|function\s))/i, '')
+    .replace(/^Copy\s*code\s*\n?/i, '')
+    .replace(/^(?:C\+\+|C#|C|Java|Python|JavaScript|TypeScript)\s*\nCopy\s*code\s*\n?/i, '')
     .trim();
   const signature = (text) => `${text.length}:${text.slice(0, 80)}:${text.slice(-120)}`;
   const responseNodes = () => {
-    const assistantMessages = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
-    if (assistantMessages.length) {
-      return assistantMessages.filter((node) => clean(node.innerText || node.textContent).length > 0);
+    const list = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
+    if (list.length) {
+      return list.filter((node) => nodeText(node).length > 0);
     }
     const fallback = [
       ...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown'),
+      ...document.querySelectorAll('article .markdown'),
       ...document.querySelectorAll('.markdown, article')
     ];
     return [...new Set(fallback)].filter((node) => {
-      const text = clean(node.innerText || node.textContent);
+      const text = nodeText(node);
       return text.length > 0 && !node.closest?.('[data-message-author-role="user"]');
     });
   };
   const snapshot = () => responseNodes().map((node) => {
-    const text = clean(node.innerText || node.textContent);
+    const text = nodeText(node);
     return { node, text, signature: signature(text) };
   });
-  const candidateResponses = () => snapshot().filter((item) => {
-    if (!state.baselineNodes.has(item.node)) return true;
-    return state.baselineAssistantSignatures.get(item.node) !== item.signature;
-  });
+  const candidateResponses = () => {
+    const current = snapshot();
+    const newItems = current.filter((item) => !state.baseline.has(item.signature));
+    if (newItems.length > 0) return newItems;
+    return current.filter((item) => {
+      if (!state.baselineNodes.has(item.node)) return true;
+      return state.baselineAssistantSignatures.get(item.node) !== item.signature;
+    });
+  };
   const report = (type, detail) => {
     try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {}
   };
@@ -204,18 +219,28 @@
       (/[{}();]|\breturn\b|\bfor\s*\(|\bwhile\s*\(/.test(value) ? 30 : 0) +
       Math.min(value.length / 1000, 20) - distance;
 
-    // 1. Check Copy Code buttons inside assistant message (ChatGPT copy button anchor)
+    // 1. Check Copy buttons anywhere in assistant message or document
     const copyAnchored = [];
-    const copyButtons = [...(node?.querySelectorAll?.('button[aria-label*="copy" i], button[title*="copy" i], [data-tooltip*="copy" i], [aria-label*="copy code" i]') || document.querySelectorAll('button[aria-label*="copy" i], button[title*="copy" i]'))]
-      .filter((button) => button.offsetParent !== null);
+    const allButtons = [...(node?.querySelectorAll?.('button') || []), ...document.querySelectorAll('button')];
+    const copyButtons = allButtons.filter((button) =>
+      /copy/i.test(`${button.getAttribute('aria-label') || ''} ${button.getAttribute('title') || ''} ${button.innerText || ''} ${button.textContent || ''}`)
+    );
 
     copyButtons.forEach((button) => {
       let current = button.parentElement;
       for (let distance = 1; current && distance <= 8; distance += 1, current = current.parentElement) {
-        const descendants = [...current.querySelectorAll('pre, code, code-block, [class*="code" i]')]
-          .map((element) => normalizeSource(element.innerText || element.textContent))
-          .filter((value) => value.length > 20);
+        const descendants = [...current.querySelectorAll('pre, code, code-block, [class*="code" i], [data-code-block]')]
+          .map((element) => normalizeSource(nodeText(element)))
+          .filter((value) => value.length > 20 && !state.baselineCode.has(signature(value)));
         descendants.forEach((value) => copyAnchored.push({ value, score: codeScore(value, distance) + 120 }));
+
+        const containerText = normalizeSource(nodeText(current))
+          .replace(/^\s*copy\s*(?:code)?\s*$/gim, '').trim();
+        if (!descendants.length && containerText.length > 40 &&
+          /#include|\bpublic\s+class\s+Main\b|\bclass\s+Main\b|\bint\s+main\s*\(|\bstatic\s+void\s+main\b|\bdef\s+main\s*\(/i.test(containerText) &&
+          !state.baselineCode.has(signature(containerText))) {
+          copyAnchored.push({ value: containerText, score: codeScore(containerText, distance) + 100 });
+        }
         if (descendants.length) break;
       }
     });
@@ -224,43 +249,54 @@
     if (anchored) return anchored;
 
     // 2. Fenced Markdown ```code``` blocks
-    const fenced = [...text.matchAll(/\`\`\`(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)\`\`\`/g)]
+    const fenced = [...text.matchAll(/```(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/g)]
       .map((match) => normalizeSource(match[1]))
-      .filter((value) => value.length > 20);
+      .filter((value) => value.length > 20 && !state.baselineCode.has(signature(value)));
     if (fenced.length) return fenced.sort((a, b) => b.length - a.length)[0];
 
-    // 3. DOM pre / code elements
-    const elements = [...(node?.querySelectorAll?.('pre code, pre') || []), ...document.querySelectorAll('pre code, pre')];
+    // 3. DOM code elements (pre, code, code-block, etc.)
+    const selectors = 'pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]';
+    const elements = [...(node?.querySelectorAll?.(selectors) || []), ...document.querySelectorAll(selectors)];
     const domCode = elements
       .map((element, index) => ({
-        text: normalizeSource(element.innerText || element.textContent),
+        text: normalizeSource(nodeText(element)),
         index,
         score: 0
       }))
-      .filter((candidate) => candidate.text.length > 20)
+      .filter((candidate) => candidate.text.length > 20 && !state.baselineCode.has(signature(candidate.text)))
       .map((candidate) => ({
         ...candidate,
         score: codeScore(candidate.text, candidate.index)
       }));
 
-    return domCode.sort((a, b) => b.score - a.score || b.index - a.index)[0]?.text || '';
-  };
-  const looksComplete = (code) => {
-    if (!code || code.trim().length < 15) return false;
-    return true;
-  };
-  const isGenerating = () => {
-    // 1. ChatGPT shows a stop button (square) while generating
-    const stopBtn = document.querySelector(
-      'button[data-testid="stop-button"], ' +
-      'button[aria-label*="Stop generating" i], ' +
-      'button[aria-label*="Stop" i], ' +
-      'button[title*="Stop" i]'
-    );
-    if (stopBtn && !stopBtn.disabled && stopBtn.offsetParent !== null) return true;
+    const bestDom = domCode.sort((a, b) => b.score - a.score || b.index - a.index)[0]?.text || '';
+    if (bestDom) return bestDom;
 
-    // 2. ChatGPT shows streaming indicators (e.g. .result-streaming, pulsing dots)
-    if (document.querySelector('.result-streaming, [class*="streaming"]')) return true;
+    // 4. Direct text extraction fallback: If the assistant output has C/Java/Python code embedded directly in the text
+    if (/#include|\bpublic\s+class\s+Main\b|\bint\s+main\s*\(|\bdef\s+main\s*\(/i.test(text)) {
+      const match = text.match(/(?:#include[\s\S]*|public\s+class\s+Main[\s\S]*|import\s+java[\s\S]*|def\s+[\s\S]*)/);
+      if (match) {
+        const rawCode = match[0].split(/\n\s*(?:Explanation|Output format|Sample test|Note|Time Complexity):/i)[0];
+        const normalized = normalizeSource(rawCode);
+        if (normalized.length > 30) return normalized;
+      }
+    }
+
+    return '';
+  };
+
+  const isGenerating = () => {
+    // 1. ChatGPT shows a stop button while generating
+    const buttons = [...document.querySelectorAll('button')];
+    const hasStopButton = buttons.some((button) => {
+      if (button.disabled) return false;
+      const label = `${button.getAttribute('data-testid') || ''} ${button.getAttribute('aria-label') || ''} ${button.getAttribute('title') || ''} ${button.innerText || ''}`;
+      return /\bstop\b/i.test(label);
+    });
+    if (hasStopButton) return true;
+
+    // 2. Streaming indicators or active generation classes
+    if (document.querySelector('.result-streaming, [class*="streaming" i]')) return true;
 
     return false;
   };
@@ -286,7 +322,7 @@
       document.querySelector('button[aria-label*="Send prompt" i]'),
       document.querySelector('button[aria-label*="Send message" i]'),
       document.querySelector('button[title*="Send" i]')
-    ].find((button) => button && !button.disabled && button.getAttribute('aria-disabled') !== 'true' && button.offsetParent !== null);
+    ].find((button) => button && !button.disabled && button.getAttribute('aria-disabled') !== 'true');
 
     if (sendButton) {
       sendButton.click();
@@ -337,12 +373,25 @@
 
       const current = candidateResponses();
       const final = current[current.length - 1] || latest;
-      if (!final || final.signature === state.lastSignature) return;
+      if (!final) return;
 
       const code = extractCode(final.text, final.node);
+
+      // In coding mode, if model has not written the code block yet, wait up to 18s for code output
+      if (state.mode === 'coding' && !code) {
+        if (Date.now() - state.lastSentAt < 18000) {
+          report('CHATGPT_DIAGNOSTIC', 'generation quiet but code block not found yet; waiting for code');
+          inspect();
+          return;
+        }
+      }
+
+      if (final.signature === state.lastSignature) return;
+
       const finalCode = state.mode === 'coding' ? (code || 'Code not available') : (code || final.text);
+      report('CHATGPT_DIAGNOSTIC', `Response captured: text=${final.text.length} chars, code=${finalCode.length} chars`);
       emitStableResponse(final, finalCode);
-    }, 800);
+    }, 1200);
   };
 
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
@@ -394,6 +443,12 @@
     state.promptText = String(message.prompt || '');
     const baselineSnapshot = snapshot();
     state.baseline = new Set(baselineSnapshot.map((item) => item.signature));
+    state.baselineCode = new Set(
+      [...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
+        .map((element) => normalizeSource(nodeText(element)))
+        .filter((text) => text.length > 20)
+        .map(signature)
+    );
     state.baselineNodes = new Set(baselineSnapshot.map((item) => item.node));
     state.baselineAssistantSignatures = new Map(baselineSnapshot.map((item) => [item.node, item.signature]));
     state.baselineUsers = new Set(userMessageNodes());

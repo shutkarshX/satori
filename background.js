@@ -374,7 +374,7 @@ async function handleChatGPTResponse(message) {
       activeChatGPTRequest = null;
       await chrome.storage.local.remove('activeChatGPTRequest');
       setStatus('Code not available in response.', 'ready');
-      addDiagnostic('chatgpt-validation', 'coding response: code not available');
+      addDiagnostic('chatgpt-validation', `coding response: code not available (raw len=${raw.length})`);
       return;
     }
   }
@@ -395,7 +395,8 @@ async function handleChatGPTResponse(message) {
   activeChatGPTRequest = null;
   await chrome.storage.local.remove('activeChatGPTRequest');
   autoFillAssignment(assignmentTabId, selected, 'ChatGPT');
-  setStatus('ChatGPT response captured.', 'ready');
+  const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
+  setStatus(`ChatGPT response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
 }
 
