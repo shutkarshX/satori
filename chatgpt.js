@@ -98,25 +98,40 @@
     }
 
     try {
-      document.execCommand('selectAll', false, null);
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.execCommand('delete', false, null);
       document.execCommand('insertText', false, text);
     } catch (_error) {}
 
     if (clean(element.innerText || element.textContent || '') !== clean(text)) {
-      element.textContent = text;
+      element.innerHTML = '';
+      const p = document.createElement('p');
+      p.textContent = text;
+      element.appendChild(p);
     }
 
-    element.dispatchEvent(new InputEvent('beforeinput', {
-      bubbles: true,
-      cancelable: true,
-      inputType: 'insertText',
-      data: text
-    }));
-    element.dispatchEvent(new InputEvent('input', {
-      bubbles: true,
-      inputType: 'insertText',
-      data: text
-    }));
+    try {
+      element.dispatchEvent(new InputEvent('beforeinput', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: text
+      }));
+    } catch (_e) {}
+    try {
+      element.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: text
+      }));
+    } catch (_e) {
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    element.dispatchEvent(new Event('change', { bubbles: true }));
   };
   const composerHasPrompt = () => {
     const input = findInput();

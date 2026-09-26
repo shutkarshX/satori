@@ -279,35 +279,37 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
     addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`);
     if (retries === 15) {
       try {
-        const currentTab = await chrome.tabs.get(tabId);
-        if (currentTab.status !== 'complete') {
-          addDiagnostic('chatgpt-recovery', `reused ChatGPT tab is still loading (status=${currentTab.status}); waiting before injection`);
-          setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries), 500);
-          return;
-        }
         await chrome.scripting.executeScript({ target: { tabId }, files: ['chatgpt.js'] });
         addDiagnostic('chatgpt-recovery', 'injected ChatGPT adapter into the reused tab');
-        // Confirm that the injected isolated-world adapter survived the
-        // injection before sending the real request.
-        try {
-          const marker = await chrome.scripting.executeScript({
-            target: { tabId },
-            func: () => Boolean(window.__satoriChatGPTAdapterLoaded)
-          });
-          addDiagnostic('chatgpt-recovery', `adapter injection marker=${marker?.[0]?.result ? 'present' : 'missing'}`);
-        } catch (markerError) {
-          addDiagnostic('chatgpt-recovery', `adapter marker check failed (${markerError.message})`);
-        }
-        addDiagnostic('chatgpt-recovery', 'waiting briefly for injected ChatGPT adapter to register');
-        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 500);
+        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 600);
         return;
       } catch (injectError) {
         addDiagnostic('chatgpt-recovery', `adapter injection failed (${injectError.message})`);
       }
+    } else if (retries === 12) {
+      try {
+        addDiagnostic('chatgpt-recovery', 'reloading stuck ChatGPT tab to reset state');
+        await chrome.tabs.reload(tabId);
+        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 2200);
+        return;
+      } catch (_e) {}
+    } else if (retries === 8) {
+      try {
+        addDiagnostic('chatgpt-recovery', 'replacing dead tab with fresh background ChatGPT tab');
+        await chrome.tabs.remove(tabId).catch(() => {});
+        await chrome.storage.local.remove(['satoriChatGPTTabId']);
+        const freshTab = await chrome.tabs.create({ url: 'https://chatgpt.com/', active: false });
+        if (freshTab?.id) {
+          if (activeChatGPTRequest) activeChatGPTRequest.tabId = freshTab.id;
+          await chrome.storage.local.set({ satoriChatGPTTabId: freshTab.id, activeChatGPTRequest });
+          setTimeout(() => sendChatGPTPrompt(freshTab.id, requestId, prompt, mode, retries - 1), 2500);
+          return;
+        }
+      } catch (_e) {}
     }
   }
   if (retries > 0) setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
-  else { setStatus('ChatGPT composer was not ready. Open ChatGPT once, then try again.', 'error'); addDiagnostic('chatgpt-error', 'composer not found after retries'); }
+  else { setStatus('ChatGPT composer was not ready. Close existing ChatGPT tabs and try again.', 'error'); addDiagnostic('chatgpt-error', 'composer not found after retries'); }
 }
 async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
   await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
