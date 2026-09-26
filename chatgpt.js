@@ -223,6 +223,47 @@
     report('CHATGPT_RESPONSE', { text: final.text, code: code || final.text, capturedAt: Date.now() });
   };
 
+  const clickSend = () => {
+    const sendButton = [
+      document.querySelector('button[data-testid="send-button"]'),
+      document.querySelector('button[aria-label*="Send prompt" i]'),
+      document.querySelector('button[aria-label*="Send message" i]'),
+      document.querySelector('button[title*="Send" i]')
+    ].find((button) => button && !button.disabled && button.getAttribute('aria-disabled') !== 'true' && button.offsetParent !== null);
+
+    if (sendButton) {
+      sendButton.click();
+      return true;
+    }
+    const input = findInput();
+    const form = input?.closest('form');
+    if (form) {
+      try {
+        form.requestSubmit();
+        return true;
+      } catch (_e) {}
+    }
+    return false;
+  };
+
+  const attemptAutoSubmit = (retries = 15) => {
+    if (state.submitted || !state.awaitingUserSubmission) return;
+    if (clickSend()) {
+      state.lastSentAt = Date.now();
+      report('CHATGPT_SUBMITTED', 'auto-clicked ChatGPT send button');
+      report('CHATGPT_DIAGNOSTIC', 'auto-clicked ChatGPT send button; waiting for submission confirmation');
+      setTimeout(verifySubmission, 300);
+      setTimeout(verifySubmission, 800);
+      setTimeout(verifySubmission, 1500);
+      return;
+    }
+    if (retries > 0) {
+      setTimeout(() => attemptAutoSubmit(retries - 1), 350);
+    } else {
+      report('CHATGPT_DIAGNOSTIC', 'auto-send button not ready yet; press Enter in assignment tab to submit');
+    }
+  };
+
   const confirmCodingResponse = () => {
     if (!state.requestId || state.mode !== 'coding') return;
     const latest = candidateResponses().at(-1);
@@ -254,7 +295,8 @@
       return;
     }
 
-    emitStableResponse(latest, code || latest.text);
+    const finalCode = code || 'Code not available';
+    emitStableResponse(latest, finalCode);
   };
 
   const inspect = () => {
@@ -306,34 +348,18 @@
         return true;
       }
 
-      const sendButton = [
-        document.querySelector('button[data-testid="send-button"]'),
-        document.querySelector('button[aria-label*="Send prompt" i]'),
-        document.querySelector('button[aria-label*="Send message" i]'),
-        document.querySelector('button[title*="Send" i]')
-      ].find((button) => button && !button.disabled && button.offsetParent !== null);
-
-      if (sendButton) {
-        sendButton.click();
-      } else if (form) {
-        try {
-          form.requestSubmit();
-        } catch (error) {
-          sendResponse({ ok: false, error: `ChatGPT submission failed: ${error.message}` });
-          return true;
-        }
+      if (clickSend()) {
+        state.lastSentAt = Date.now();
+        report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered ChatGPT submission; verifying new user message');
+        setTimeout(verifySubmission, 250);
+        setTimeout(verifySubmission, 700);
+        setTimeout(verifySubmission, 1400);
+        sendResponse({ ok: true });
+        return true;
       } else {
         sendResponse({ ok: false, error: 'ChatGPT composer could not be submitted.' });
         return true;
       }
-
-      state.lastSentAt = Date.now();
-      report('CHATGPT_DIAGNOSTIC', 'assignment-tab Enter triggered ChatGPT submission; verifying new user message');
-      setTimeout(verifySubmission, 250);
-      setTimeout(verifySubmission, 700);
-      setTimeout(verifySubmission, 1400);
-      sendResponse({ ok: true });
-      return true;
     }
 
     if (message.type !== 'FILL_CHATGPT_PROMPT') return;
@@ -360,6 +386,7 @@
     state.submitted = false;
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
+    setTimeout(() => attemptAutoSubmit(15), 500);
 
     clearInterval(state.responsePollTimer);
     state.responsePollTimer = setInterval(() => {
@@ -378,8 +405,7 @@
         ? currentInput.value
         : clean(currentInput.innerText || currentInput.textContent || ''))
       : '';
-    report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; composerFilled=${composerHasPrompt() ? 'yes' : 'no'}`);
-    report('CHATGPT_DIAGNOSTIC', 'prompt ready in the existing ChatGPT tab — press Enter to submit');
+    report('CHATGPT_DIAGNOSTIC', `composer ready: ${currentInput?.id || currentInput?.getAttribute('data-testid') || currentInput?.tagName || 'none'}; text=${inputText.length}; auto-submitting...`);
 
     sendResponse({ ok: true, baselineCount: state.baseline.size, awaitingUserSubmission: true });
     return true;

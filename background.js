@@ -273,7 +273,7 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
   if (requestId !== activeRequestId) return;
   try {
     const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_CHATGPT_PROMPT', requestId, prompt, mode });
-    if (result?.ok) { addDiagnostic('chatgpt-input', `prompt ready; baseline responses=${result.baselineCount ?? 'unknown'}`); setStatus('ChatGPT prompt ready — press Enter in the existing ChatGPT tab.', 'waiting'); return; }
+    if (result?.ok) { addDiagnostic('chatgpt-input', `prompt ready; baseline responses=${result.baselineCount ?? 'unknown'}`); setStatus('ChatGPT prompt sent in background — waiting for response…', 'waiting'); return; }
     addDiagnostic('chatgpt-input', result?.error || 'ChatGPT adapter rejected the prompt');
   } catch (error) {
     addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`);
@@ -357,10 +357,20 @@ async function handleChatGPTResponse(message) {
   const raw = String(payload.text || '').trim();
   const selected = mode === 'coding' ? String(payload.code || '').trim() : raw;
 
-  if (mode === 'coding' && !selected) {
-    setStatus('ChatGPT did not return a valid code answer. Check the ChatGPT response and try again.', 'error');
-    addDiagnostic('chatgpt-validation', 'coding response rejected: no complete code was extracted');
-    return;
+  if (mode === 'coding') {
+    if (!selected || selected === 'Code not available') {
+      chrome.storage.local.set({
+        latestChatGPTResponse: 'Code not available',
+        latestChatGPTRawResponse: raw,
+        latestChatGPTAt: Date.now(),
+        latestProvider: 'chatgpt'
+      });
+      activeChatGPTRequest = null;
+      await chrome.storage.local.remove('activeChatGPTRequest');
+      setStatus('ChatGPT responded, but code is not available.', 'error');
+      addDiagnostic('chatgpt-validation', 'coding response: code not available');
+      return;
+    }
   }
 
   if (mode !== 'coding' && !selected) {
