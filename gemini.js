@@ -6,6 +6,7 @@
     baselineCount: 0,
     lastSentAt: 0,
     lastResponseSignature: '',
+    pendingSignature: '',
     quietTimer: null
   };
 
@@ -152,10 +153,14 @@
     return domCode.sort((a, b) => b.score - a.score || b.index - a.index)[0]?.text || '';
   };
 
-  const isGenerating = () => [...document.querySelectorAll('button')].some((button) =>
-    /stop|cancel/i.test(`${button.getAttribute('aria-label') || ''} ${button.getAttribute('data-tooltip') || ''} ${button.innerText || ''}`) &&
-    !button.disabled && button.offsetParent !== null
-  );
+  const isGenerating = () => {
+    const buttons = [...document.querySelectorAll('button')];
+    return buttons.some((button) => {
+      if (button.disabled || button.offsetParent === null) return false;
+      const label = `${button.getAttribute('aria-label') || ''} ${button.getAttribute('data-tooltip') || ''} ${button.innerText || ''}`;
+      return /\b(stop response|stop generating|stop stream)\b/i.test(label);
+    }) || Boolean(document.querySelector('.result-streaming, [class*="streaming" i]'));
+  };
 
   const inspectForNewResponse = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
@@ -165,11 +170,16 @@
     const latest = candidates.length ? candidates[candidates.length - 1] : (all.length > state.baselineCount ? all[all.length - 1] : null);
     if (!latest || latest.signature === state.lastResponseSignature) return;
 
+    // If quietTimer is already running for the exact same text, let it complete
+    if (state.pendingSignature === latest.signature) return;
+    state.pendingSignature = latest.signature;
+
     report('GEMINI_DIAGNOSTIC', `new response candidate detected (${latest.text.length} chars)`);
     clearTimeout(state.quietTimer);
     state.quietTimer = setTimeout(() => {
       if (isGenerating()) {
         report('GEMINI_DIAGNOSTIC', 'generation still in progress; waiting for completion');
+        state.pendingSignature = '';
         inspectForNewResponse();
         return;
       }
@@ -178,13 +188,14 @@
       const final = current.length ? current[current.length - 1] : currentAll[currentAll.length - 1];
       if (!final || final.signature === state.lastResponseSignature) return;
       state.lastResponseSignature = final.signature;
+      state.pendingSignature = '';
       report('GEMINI_RESPONSE', {
         text: final.text,
         code: extractCode(final.text, final.node),
         nodeCount: responseNodes().length,
         capturedAt: Date.now()
       });
-    }, 1200);
+    }, 1000);
   };
 
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
