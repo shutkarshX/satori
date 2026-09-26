@@ -192,9 +192,7 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab) {
     chrome.tabs.onUpdated.removeListener(listener);
     setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
     addDiagnostic('page', `Google Search tab ${targetTabId} loaded`);
-    const reading = await readGoogleAIOverview(targetTabId);
-    const before = mode === 'coding' ? (reading.code || '') : (reading.text || '');
-    pollGoogleAIOverview(targetTabId, before, requestId, mode, assignmentTab?.id);
+    pollGoogleAIOverview(targetTabId, '', requestId, mode, assignmentTab?.id);
   };
   const listener = (updatedTabId, changeInfo) => {
     if (updatedTabId === targetTabId && changeInfo.status === 'complete') handleLoaded();
