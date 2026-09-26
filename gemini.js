@@ -189,6 +189,7 @@
       if (!final || final.signature === state.lastResponseSignature) return;
       state.lastResponseSignature = final.signature;
       state.pendingSignature = '';
+      state.requestId = 0; // Request completed, stop polling
       report('GEMINI_RESPONSE', {
         text: final.text,
         code: extractCode(final.text, final.node),

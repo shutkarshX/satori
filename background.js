@@ -288,8 +288,9 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
 
 async function handleGeminiResponse(message) {
   if (!activeGeminiRequest) {
-    const stored = await chrome.storage.local.get('activeGeminiRequest');
+    const stored = await chrome.storage.local.get(['activeGeminiRequest', 'satoriMode']);
     if (stored.activeGeminiRequest) activeGeminiRequest = stored.activeGeminiRequest;
+    else if (stored.satoriMode) activeGeminiRequest = { mode: stored.satoriMode };
   }
   const mode = activeGeminiRequest?.mode || 'coding';
   const responsePayload = message.detail ?? message.text;
