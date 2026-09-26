@@ -281,23 +281,23 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
     addDiagnostic('chatgpt-input', result?.error || 'ChatGPT adapter rejected the prompt');
   } catch (error) {
     addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`);
-    if (retries === 15) {
+    if (retries >= 13) {
       try {
         await chrome.scripting.executeScript({ target: { tabId }, files: ['chatgpt.js'] });
         addDiagnostic('chatgpt-recovery', 'injected ChatGPT adapter into the reused tab');
-        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 600);
+        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
         return;
       } catch (injectError) {
         addDiagnostic('chatgpt-recovery', `adapter injection failed (${injectError.message})`);
       }
-    } else if (retries === 12) {
+    } else if (retries === 10) {
       try {
         addDiagnostic('chatgpt-recovery', 'reloading stuck ChatGPT tab to reset state');
         await chrome.tabs.reload(tabId);
-        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 2200);
+        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 2500);
         return;
       } catch (_e) {}
-    } else if (retries === 8) {
+    } else if (retries === 6) {
       try {
         addDiagnostic('chatgpt-recovery', 'replacing dead tab with fresh background ChatGPT tab');
         await chrome.tabs.remove(tabId).catch(() => {});
