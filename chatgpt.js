@@ -199,20 +199,54 @@
   }, true);
 
   const extractCode = (text, node) => {
+    const codeScore = (value, distance = 0) =>
+      (/#include|\bint\s+main\s*\(|public\s+class\s+Main|\bdef\s+main\s*\(|import\s+java\b/.test(value) ? 100 : 0) +
+      (/[{}();]|\breturn\b|\bfor\s*\(|\bwhile\s*\(/.test(value) ? 30 : 0) +
+      Math.min(value.length / 1000, 20) - distance;
+
+    // 1. Check Copy Code buttons inside assistant message (ChatGPT copy button anchor)
+    const copyAnchored = [];
+    const copyButtons = [...(node?.querySelectorAll?.('button[aria-label*="copy" i], button[title*="copy" i], [data-tooltip*="copy" i], [aria-label*="copy code" i]') || document.querySelectorAll('button[aria-label*="copy" i], button[title*="copy" i]'))]
+      .filter((button) => button.offsetParent !== null);
+
+    copyButtons.forEach((button) => {
+      let current = button.parentElement;
+      for (let distance = 1; current && distance <= 8; distance += 1, current = current.parentElement) {
+        const descendants = [...current.querySelectorAll('pre, code, code-block, [class*="code" i]')]
+          .map((element) => normalizeSource(element.innerText || element.textContent))
+          .filter((value) => value.length > 20);
+        descendants.forEach((value) => copyAnchored.push({ value, score: codeScore(value, distance) + 120 }));
+        if (descendants.length) break;
+      }
+    });
+
+    const anchored = copyAnchored.sort((a, b) => b.score - a.score)[0]?.value || '';
+    if (anchored) return anchored;
+
+    // 2. Fenced Markdown ```code``` blocks
     const fenced = [...text.matchAll(/\`\`\`(?:[A-Za-z0-9_+#.-]+)?\s*\n?([\s\S]*?)\`\`\`/g)]
       .map((match) => normalizeSource(match[1]))
       .filter((value) => value.length > 20);
     if (fenced.length) return fenced.sort((a, b) => b.length - a.length)[0];
+
+    // 3. DOM pre / code elements
     const elements = [...(node?.querySelectorAll?.('pre code, pre') || []), ...document.querySelectorAll('pre code, pre')];
-    return elements.map((element) => normalizeSource(element.innerText || element.textContent))
-      .filter((value) => value.length > 20)
-      .sort((a, b) => b.length - a.length)[0] || '';
+    const domCode = elements
+      .map((element, index) => ({
+        text: normalizeSource(element.innerText || element.textContent),
+        index,
+        score: 0
+      }))
+      .filter((candidate) => candidate.text.length > 20)
+      .map((candidate) => ({
+        ...candidate,
+        score: codeScore(candidate.text, candidate.index)
+      }));
+
+    return domCode.sort((a, b) => b.score - a.score || b.index - a.index)[0]?.text || '';
   };
   const looksComplete = (code) => {
     if (!code || code.trim().length < 15) return false;
-    const openBraces = (code.match(/{/g) || []).length;
-    const closeBraces = (code.match(/}/g) || []).length;
-    if (openBraces > 0 && openBraces !== closeBraces) return false;
     return true;
   };
   const isGenerating = () => {
