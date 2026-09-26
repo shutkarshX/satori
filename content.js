@@ -101,33 +101,39 @@
     };
 
     // Priority 1: Match by exact or fuzzy text content inside option/label (Most Reliable)
+    const norm = (str) => (str || '')
+      .normalize('NFKD')
+      .replace(/\u2217|\u22c5/g, '*')
+      .replace(/\s+/g, '')
+      .toLowerCase();
+
     const cleanTargetText = cleanAnswer
       .replace(/^(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*/i, '')
       .replace(/^(?:\(?([A-Da-d])\)?[\).\:\-\s]*)/i, '')
       .replace(/[.\s]+$/, '')
-      .trim()
-      .toLowerCase();
+      .trim();
+    const normTarget = norm(cleanTargetText);
 
     // Look broadly for option containers, rows, labels, list items, divs with text
     const broadCandidates = [
       ...document.querySelectorAll('label, [class*="option" i], [class*="choice" i], [class*="answer" i], li, tr, [role="radio"]')
     ];
 
-    if (cleanTargetText.length >= 1) {
+    if (normTarget.length >= 1) {
       // 1. Direct match (exact or substring)
-      // Check for exact matches first (critical for single digits/letters like "2", "0", "1")
+      // Check for exact normalized matches first (handles whitespace differences like "O(sum*n)" vs "O(sum * n)")
       for (const card of broadCandidates) {
-        const text = visibleText(card).toLowerCase().replace(/[.\s]+$/, '').trim();
-        if (text && text === cleanTargetText) {
+        const text = norm(visibleText(card));
+        if (text && text === normTarget) {
           return highlightAndClick(card, visibleText(card).slice(0, 40));
         }
       }
 
       // If no exact match and text length > 2, try substring matches
-      if (cleanTargetText.length > 2) {
+      if (normTarget.length > 2) {
         for (const card of broadCandidates) {
-          const text = visibleText(card).toLowerCase().replace(/[.\s]+$/, '').trim();
-          if (text && (text.includes(cleanTargetText) || (cleanTargetText.length > 8 && text.length > 4 && cleanTargetText.includes(text)))) {
+          const text = norm(visibleText(card));
+          if (text && (text.includes(normTarget) || (normTarget.length > 8 && text.length > 4 && normTarget.includes(text)))) {
             return highlightAndClick(card, visibleText(card).slice(0, 40));
           }
         }

@@ -8,7 +8,8 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
 
 function formatMcqAnswer(text) {
   if (!text) return '';
-  const clean = text.trim();
+  // Normalize unicode math symbols (e.g. 𝑂 -> O, ∗ -> *, etc.)
+  let clean = text.normalize('NFKD').replace(/\u2217|\u22c5/g, '*').trim();
 
   // 1. Look for explicit answer indicators: "**ANSWER:** A - text", "ANSWER: B", "Correct Option: C", etc.
   const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
@@ -19,8 +20,24 @@ function formatMcqAnswer(text) {
     }
   }
 
+  // Pre-process lines: merge consecutive fragmented mathematical tokens (e.g. Google Search rendering 'O' '(' 'sum' '*' 'n' ')' on separate lines)
+  const rawLines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (line.length <= 3 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(line)) {
+      let formula = line;
+      while (i + 1 < rawLines.length && rawLines[i + 1].length <= 4 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(rawLines[i + 1])) {
+        i++;
+        formula += rawLines[i];
+      }
+      lines.push(formula);
+    } else {
+      lines.push(line);
+    }
+  }
+
   // 2. Look for lines starting with an option letter, ignoring markdown headings
-  const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   for (const line of lines) {
     if (/^(#|option evaluation|evaluation|analysis|explanation|question|note)/i.test(line)) continue;
     const optionMatch = line.match(/^(?:Option\s+)?(?:\*{0,2}\(?([A-Da-d])\)?\*{0,2})[\).\:\-\s]\s*(.*)$/);
@@ -37,20 +54,25 @@ function formatMcqAnswer(text) {
     return `${standaloneMatch[1].toUpperCase()} - ${standaloneMatch[2].trim()}`.replace(/\s+/g, ' ');
   }
 
-  // 4. Look for declarative sentence endings like "is 2.", "is B.", "equal to 2.", "answer is 2."
-  const sentencePattern = /(?:is|equals?|answer is|result is|length is)\s*[:\-]?\s*([A-Da-d]\b|[0-9]+(?:\.[0-9]+)?|[^\n\.,]+)[.\s]*$/im;
+  // 4. Look for declarative sentence endings like "is 2.", "is B.", "equal to 2.", "answer is 2.", "complexity is O(sum*n)"
+  const sentencePattern = /(?:is|equals?|answer is|result is|length is|time complexity is|complexity is)\s*[:\-]?\s*([A-Da-d]\b|[0-9]+(?:\.[0-9]+)?|O\([^\)]+\)|[^\n\.,]+)[.\s]*$/im;
   const sentenceMatch = clean.match(sentencePattern);
   if (sentenceMatch && sentenceMatch[1] && sentenceMatch[1].trim().length < 40) {
-    return sentenceMatch[1].replace(/[.\s]+$/, '').trim();
+    const res = sentenceMatch[1].replace(/[.\s]+$/, '').trim();
+    if (res.length > 1 || /^[A-Da-d0-9]$/.test(res)) return res;
   }
 
-  // 5. Fallback: filter out heading lines, colon endings, and return the first meaningful sentence/line
+  // 5. Look for standalone Big-O complexity in merged lines
+  const bigOMatch = lines.find((l) => /^O\([^\)]+\)$/i.test(l));
+  if (bigOMatch) return bigOMatch;
+
+  // 6. Fallback: filter out heading lines, colon endings, and single non-option characters
   const filteredLines = lines.filter((l) =>
-    l.length > 5 &&
+    l.length >= 2 &&
     !/^(#|ai overview|option evaluation|evaluation|analysis|explanation|question|here is|the correct|is\s*:|note)/i.test(l) &&
     !/^(ai overview|is\s*[:\.]?)$/i.test(l)
   );
-  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 5 && !/^(ai overview|is\s*[:\.]?)$/i.test(s.trim())) || clean;
+  const fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 3 && !/^(ai overview|is\s*[:\.]?)$/i.test(s.trim())) || clean;
   return fallback.length < 80 ? fallback.trim() : fallback.trim().slice(0, 80);
 }
 
