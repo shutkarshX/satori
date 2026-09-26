@@ -196,12 +196,11 @@
       .sort((a, b) => b.length - a.length)[0] || '';
   };
   const looksComplete = (code) => {
-    if (code.length < 220) return false;
-    const hasEntryPoint = /#include|public\s+class\s+Main|\bint\s+main\s*\(|\bmain\s*\(/i.test(code);
-    const hasOutputOrReturn = /return\b|printf\s*\(|System\.out|cout\s*<<|console\.log|print\s*\(/i.test(code);
-    const hasBalancedBraces = (code.match(/{/g) || []).length === (code.match(/}/g) || []).length;
-    const hasClosingStructure = /}\s*$/.test(code);
-    return hasEntryPoint && hasOutputOrReturn && hasBalancedBraces && hasClosingStructure;
+    if (!code || code.trim().length < 15) return false;
+    const openBraces = (code.match(/{/g) || []).length;
+    const closeBraces = (code.match(/}/g) || []).length;
+    if (openBraces > 0 && openBraces !== closeBraces) return false;
+    return true;
   };
   const isGenerating = () => [...document.querySelectorAll('button')].some((button) =>
     /stop generating|stop/i.test(`${button.getAttribute('aria-label') || ''} ${button.innerText || ''}`) &&
@@ -221,7 +220,7 @@
     state.lastSignature = final.signature;
     clearInterval(state.responsePollTimer);
     state.responsePollTimer = null;
-    report('CHATGPT_RESPONSE', { text: final.text, code, capturedAt: Date.now() });
+    report('CHATGPT_RESPONSE', { text: final.text, code: code || final.text, capturedAt: Date.now() });
   };
 
   const confirmCodingResponse = () => {
@@ -230,14 +229,14 @@
     if (!latest || latest.signature === state.lastSignature) return;
     if (isGenerating()) {
       resetStability();
-      report('CHATGPT_DIAGNOSTIC', 'generation still in progress; resetting code stability');
+      report('CHATGPT_DIAGNOSTIC', 'generation still in progress; waiting for completion');
       return;
     }
 
     const code = extractCode(latest.text, latest.node);
-    if (!looksComplete(code)) {
+    if (code && !looksComplete(code)) {
       resetStability();
-      report('CHATGPT_DIAGNOSTIC', `candidate incomplete (${code.length} chars); waiting for final code`);
+      report('CHATGPT_DIAGNOSTIC', `candidate code incomplete (${code.length} chars); waiting for final code`);
       return;
     }
 
@@ -248,14 +247,14 @@
       state.stableChecks = 1;
     }
 
-    if (state.stableChecks < 3) {
-      report('CHATGPT_DIAGNOSTIC', `complete candidate detected (${code.length} chars); stability check ${state.stableChecks}/3`);
+    if (state.stableChecks < 2) {
+      report('CHATGPT_DIAGNOSTIC', `response detected (${(code || latest.text).length} chars); finalizing...`);
       clearTimeout(state.stabilityTimer);
-      state.stabilityTimer = setTimeout(confirmCodingResponse, 1200);
+      state.stabilityTimer = setTimeout(confirmCodingResponse, 800);
       return;
     }
 
-    emitStableResponse(latest, code);
+    emitStableResponse(latest, code || latest.text);
   };
 
   const inspect = () => {
