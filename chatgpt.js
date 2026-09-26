@@ -216,8 +216,29 @@
     return true;
   };
   const isGenerating = () => {
-    const stopBtn = document.querySelector('button[data-testid="stop-button"], button[aria-label*="Stop generating" i], button[aria-label="Stop" i]');
+    // 1. ChatGPT shows a stop button (square) while generating
+    const stopBtn = document.querySelector(
+      'button[data-testid="stop-button"], ' +
+      'button[aria-label*="Stop generating" i], ' +
+      'button[aria-label*="Stop" i], ' +
+      'button[title*="Stop" i]'
+    );
     if (stopBtn && !stopBtn.disabled && stopBtn.offsetParent !== null) return true;
+
+    // 2. ChatGPT shows streaming indicators (e.g. .result-streaming, pulsing dots)
+    if (document.querySelector('.result-streaming, [class*="streaming"]')) return true;
+
+    // 3. While generating, the send button is absent or disabled
+    const sendButton = document.querySelector(
+      'button[data-testid="send-button"], ' +
+      'button[aria-label*="Send prompt" i], ' +
+      'button[aria-label*="Send message" i]'
+    );
+    if (!sendButton || sendButton.disabled || sendButton.getAttribute('aria-disabled') === 'true') {
+      // If we recently submitted (<45s) and send button is not ready, it's still processing
+      if (Date.now() - state.lastSentAt < 45000) return true;
+    }
+
     return false;
   };
 
@@ -281,17 +302,24 @@
     if (!state.requestId || state.mode !== 'coding') return;
     const latest = candidateResponses().at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
+
     if (isGenerating()) {
       resetStability();
-      report('CHATGPT_DIAGNOSTIC', 'generation still in progress; waiting for completion');
       return;
     }
 
     const code = extractCode(latest.text, latest.node);
     if (code && !looksComplete(code)) {
       resetStability();
-      report('CHATGPT_DIAGNOSTIC', `candidate code incomplete (${code.length} chars); waiting for final code`);
       return;
+    }
+
+    // Only emit "Code not available" if the model has truly stopped and has written a substantial answer
+    if (!code) {
+      if (Date.now() - state.lastSentAt < 12000) {
+        // Less than 12s since send, model might still be preparing the response
+        return;
+      }
     }
 
     const finalCode = code || 'Code not available';
