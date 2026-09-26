@@ -56,10 +56,7 @@
   });
 
   const candidateResponses = () => {
-    const current = responseSnapshot();
-    const newItems = current.filter((item) => !state.baseline.has(item.signature));
-    if (newItems.length > 0) return newItems;
-    return current;
+    return responseSnapshot().filter((item) => !state.baseline.has(item.signature));
   };
 
   const report = (type, detail) => {
@@ -270,6 +267,7 @@
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
     childList: true, subtree: true, characterData: true
   });
+  setInterval(inspectForNewResponse, 1000);
 
   const checkExistingResponse = (prompt, mode) => {
     const cleanPrompt = clean(prompt);
