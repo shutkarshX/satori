@@ -112,6 +112,10 @@ async function extract() {
 function buildGoogleQuery() {
   const question = $('question').value.trim();
   if (!question) throw new Error('Read or enter a question first.');
+  if ($('mode').value === 'mcq') {
+    // For MCQ, clean question + options is vastly superior to full dashboard/sidebar page text
+    return question;
+  }
   return fullPageContext || question;
 }
 
@@ -164,6 +168,10 @@ $('googleSearch').addEventListener('click', async () => {
   try {
     const provider = $('provider').value;
     const mode = $('mode').value;
+    $('response').value = '';
+    if (provider === 'google') await chrome.storage.local.remove(['latestGoogleResponse', 'latestGoogleRawResponse']);
+    else if (provider === 'gemini') await chrome.storage.local.remove(['latestGeminiResponse', 'latestGeminiRawResponse']);
+    else await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
     const message = provider === 'google'
       ? { type: 'OPEN_GOOGLE_SEARCH', googleQuery: buildGoogleQuery(), mode }
       : provider === 'gemini'
