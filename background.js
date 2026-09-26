@@ -332,9 +332,9 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
       const isChatGPTUrl = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '');
       if (!isChatGPTUrl) {
         await chrome.tabs.update(tab.id, { url, active: false });
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2500);
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1200);
       } else {
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 400);
+        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 150);
       }
     } else {
       addDiagnostic('chatgpt-tab', 'creating reusable ChatGPT tab in the background');
@@ -343,7 +343,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
       if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.');
       activeChatGPTRequest.tabId = tab.id;
       await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId, activeChatGPTRequest });
-      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 2500);
+      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1500);
     }
   } catch (error) {
     setStatus(`Could not prepare ChatGPT: ${error.message}`, 'error');

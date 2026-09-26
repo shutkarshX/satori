@@ -259,19 +259,19 @@
     return false;
   };
 
-  const attemptAutoSubmit = (retries = 15) => {
+  const attemptAutoSubmit = (retries = 20) => {
     if (state.submitted || !state.awaitingUserSubmission) return;
     if (clickSend()) {
       state.lastSentAt = Date.now();
       report('CHATGPT_SUBMITTED', 'auto-clicked ChatGPT send button');
       report('CHATGPT_DIAGNOSTIC', 'auto-clicked ChatGPT send button; waiting for submission confirmation');
-      setTimeout(verifySubmission, 300);
-      setTimeout(verifySubmission, 800);
-      setTimeout(verifySubmission, 1500);
+      setTimeout(verifySubmission, 150);
+      setTimeout(verifySubmission, 400);
+      setTimeout(verifySubmission, 900);
       return;
     }
     if (retries > 0) {
-      setTimeout(() => attemptAutoSubmit(retries - 1), 350);
+      setTimeout(() => attemptAutoSubmit(retries - 1), 200);
     } else {
       report('CHATGPT_DIAGNOSTIC', 'auto-send button not ready yet; press Enter in assignment tab to submit');
     }
@@ -294,20 +294,6 @@
       return;
     }
 
-    if (state.stableSignature === latest.signature) {
-      state.stableChecks += 1;
-    } else {
-      state.stableSignature = latest.signature;
-      state.stableChecks = 1;
-    }
-
-    if (state.stableChecks < 2) {
-      report('CHATGPT_DIAGNOSTIC', `response detected (${(code || latest.text).length} chars); finalizing...`);
-      clearTimeout(state.stabilityTimer);
-      state.stabilityTimer = setTimeout(confirmCodingResponse, 800);
-      return;
-    }
-
     const finalCode = code || 'Code not available';
     emitStableResponse(latest, finalCode);
   };
@@ -317,11 +303,15 @@
     const latest = candidateResponses().at(-1);
     if (!latest || latest.signature === state.lastSignature) return;
 
+    if (isGenerating()) {
+      resetStability();
+      return;
+    }
+
     clearTimeout(state.quietTimer);
     state.quietTimer = setTimeout(() => {
       if (isGenerating()) {
         resetStability();
-        report('CHATGPT_DIAGNOSTIC', 'generation still in progress; waiting for completion');
         return;
       }
 
@@ -337,7 +327,7 @@
       clearInterval(state.responsePollTimer);
       state.responsePollTimer = null;
       report('CHATGPT_RESPONSE', { text: final.text, code: extractCode(final.text, final.node), capturedAt: Date.now() });
-    }, 1200);
+    }, 450);
   };
 
   new MutationObserver(inspect).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
@@ -399,7 +389,7 @@
     state.submitted = false;
     clearTimeout(state.quietTimer);
     setInput(input, message.prompt || '');
-    setTimeout(() => attemptAutoSubmit(15), 500);
+    setTimeout(() => attemptAutoSubmit(20), 80);
 
     state.startTime = Date.now();
     clearInterval(state.responsePollTimer);
@@ -412,7 +402,7 @@
       if (state.awaitingUserSubmission) verifySubmission();
       inspect();
 
-      if (Date.now() - state.startTime > 30000) {
+      if (Date.now() - state.startTime > 20000) {
         clearInterval(state.responsePollTimer);
         state.responsePollTimer = null;
         const latest = candidateResponses().at(-1);
@@ -420,7 +410,7 @@
         const fallback = state.mode === 'coding' ? (code || 'Code not available') : (latest?.text || 'No response captured');
         emitStableResponse(latest || { text: fallback, signature: 'timeout' }, fallback);
       }
-    }, 800);
+    }, 350);
 
     const currentInput = findInput();
     const inputText = currentInput
