@@ -230,25 +230,29 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab) {
   }
 }
 
-function handleGeminiResponse(message) {
-  if (!activeGeminiRequest || message.requestId !== activeGeminiRequest.requestId) {
-    addDiagnostic('gemini-stale', 'ignored response from an older Gemini request');
-    return;
+async function handleGeminiResponse(message) {
+  if (!activeGeminiRequest) {
+    const stored = await chrome.storage.local.get('activeGeminiRequest');
+    if (stored.activeGeminiRequest) activeGeminiRequest = stored.activeGeminiRequest;
   }
+  const mode = activeGeminiRequest?.mode || 'coding';
   const responsePayload = message.detail ?? message.text;
   const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
   const raw = String(payload.text || '').trim();
-  const selected = activeGeminiRequest.mode === 'coding' ? String(payload.code || '').trim() : raw;
+  const selected = mode === 'coding' ? String(payload.code || '').trim() : raw;
   if (!selected) {
-    setStatus(activeGeminiRequest.mode === 'coding' ? 'Gemini responded, but no reliable code block was found.' : 'Gemini returned an empty response.', 'error');
-    addDiagnostic('gemini-parser', activeGeminiRequest.mode === 'coding' ? 'response found but code block missing' : 'empty response');
+    setStatus(mode === 'coding' ? 'Gemini responded, but no reliable code block was found.' : 'Gemini returned an empty response.', 'error');
+    addDiagnostic('gemini-parser', mode === 'coding' ? 'response found but code block missing' : 'empty response');
     return;
   }
   chrome.storage.local.set({ latestGeminiResponse: selected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
-  autoFillAssignment(activeGeminiRequest.assignmentTabId, selected, 'Gemini');
-  const warning = activeGeminiRequest.mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
+  const assignmentTabId = activeGeminiRequest?.assignmentTabId;
+  activeGeminiRequest = null;
+  await chrome.storage.local.remove('activeGeminiRequest');
+  autoFillAssignment(assignmentTabId, selected, 'Gemini');
+  const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
-  addDiagnostic('gemini-complete', `${selected.length} chars captured${activeGeminiRequest.mode === 'coding' ? ' as code' : ''}`);
+  addDiagnostic('gemini-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
 }
 
 let activeChatGPTRequest = null;
@@ -348,12 +352,12 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab) {
 }
 
 async function handleChatGPTResponse(message) {
-  if (!activeChatGPTRequest || message.requestId !== activeChatGPTRequest.requestId) {
-    addDiagnostic('chatgpt-stale', 'ignored response from an older ChatGPT request');
-    return;
+  if (!activeChatGPTRequest) {
+    const stored = await chrome.storage.local.get('activeChatGPTRequest');
+    if (stored.activeChatGPTRequest) activeChatGPTRequest = stored.activeChatGPTRequest;
   }
 
-  const mode = activeChatGPTRequest.mode;
+  const mode = activeChatGPTRequest?.mode || 'coding';
   const responsePayload = message.detail ?? message.text;
   const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
   const raw = String(payload.text || '').trim();
@@ -369,7 +373,7 @@ async function handleChatGPTResponse(message) {
       });
       activeChatGPTRequest = null;
       await chrome.storage.local.remove('activeChatGPTRequest');
-      setStatus('ChatGPT responded, but code is not available.', 'error');
+      setStatus('Code not available in response.', 'ready');
       addDiagnostic('chatgpt-validation', 'coding response: code not available');
       return;
     }
@@ -387,7 +391,7 @@ async function handleChatGPTResponse(message) {
     latestChatGPTAt: Date.now(),
     latestProvider: 'chatgpt'
   });
-  const assignmentTabId = activeChatGPTRequest.assignmentTabId;
+  const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
   activeChatGPTRequest = null;
   await chrome.storage.local.remove('activeChatGPTRequest');
   autoFillAssignment(assignmentTabId, selected, 'ChatGPT');
