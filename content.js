@@ -74,8 +74,8 @@
 
     // 1. Try to extract letter option like A, B, C, D
     const letterMatch = cleanAnswer.match(/(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*\(?([A-Da-d])\)?/i)
-      || cleanAnswer.match(/^([A-Da-d])[\).\:\s]/)
-      || cleanAnswer.match(/\b([A-Da-d])\b/);
+      || cleanAnswer.match(/^\(?([A-Da-d])\)?$/)
+      || cleanAnswer.match(/^([A-Da-d])[\).\:\s]/);
     const targetLetter = letterMatch ? letterMatch[1].toUpperCase() : null;
 
     // Search for radio inputs, option cards, or choice elements
@@ -126,32 +126,16 @@
         }
       }
 
-      // If no exact match and text length > 2, try substring matches
-      if (normTarget.length > 2) {
-        for (const card of broadCandidates) {
+      // Only accept a unique containment match; ambiguous fuzzy matches must fail safely.
+      if (normTarget.length > 4) {
+        const matches = broadCandidates.filter((card) => {
           const text = norm(visibleText(card));
-          if (text && (text.includes(normTarget) || (normTarget.length > 8 && text.length > 4 && normTarget.includes(text)))) {
-            return highlightAndClick(card, visibleText(card).slice(0, 40));
-          }
-        }
-
-        // 2. Word-overlap match
-        const targetWords = cleanTargetText.split(/\s+/).filter((w) => w.length > 3);
-        if (targetWords.length > 0) {
-          let bestCandidate = null;
-          let maxOverlap = 0;
-          for (const card of broadCandidates) {
-            const text = visibleText(card).toLowerCase();
-            if (text.length > 200) continue; // Skip huge parent containers
-            const count = targetWords.filter((w) => text.includes(w)).length;
-            if (count > maxOverlap && count >= Math.ceil(targetWords.length * 0.6)) {
-              maxOverlap = count;
-              bestCandidate = card;
-            }
-          }
-          if (bestCandidate) {
-            return highlightAndClick(bestCandidate, visibleText(bestCandidate).slice(0, 40));
-          }
+          return text && text.length <= 180 && (text.includes(normTarget) || normTarget.includes(text));
+        });
+        const uniqueMatches = [...new Set(matches)];
+        if (uniqueMatches.length === 1) {
+          const card = uniqueMatches[0];
+          return highlightAndClick(card, visibleText(card).slice(0, 40));
         }
       }
     }
