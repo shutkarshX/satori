@@ -1,5 +1,7 @@
 (() => {
+  if (window.__satoriChatGPTAdapterLoaded) return;
   window.__satoriChatGPTAdapterLoaded = true;
+
 
   const state = {
     requestId: 0,
@@ -248,17 +250,27 @@
 
       const code = extractCode(final.text, final.node);
 
-      if (state.mode === 'coding' && !code && Date.now() - state.lastSentAt < 12000) {
-        report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for code block');
-        inspectForNewResponse();
+      if (state.mode === 'coding' && !code) {
+        if (Date.now() - state.lastSentAt < 15000) {
+          report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for a real code block');
+          inspectForNewResponse();
+          return;
+        }
+        state.lastSignature = final.signature;
+        report('CHATGPT_DIAGNOSTIC', 'response completed without a detectable code block');
+        report('CHATGPT_RESPONSE', {
+          text: final.text,
+          code: '',
+          capturedAt: Date.now()
+        });
         return;
       }
 
       state.lastSignature = final.signature;
-      const finalCode = code || final.text;
       report('CHATGPT_RESPONSE', {
         text: final.text,
-        code: finalCode,
+        code: state.mode === 'coding' ? code : final.text,
+        mode: state.mode,
         capturedAt: Date.now()
       });
     }, 800);
