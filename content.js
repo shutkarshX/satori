@@ -1,4 +1,7 @@
 (() => {
+  if (window.__satoriContentLoaded) return;
+  window.__satoriContentLoaded = true;
+
   let lastEditable = null;
 
   const isEditable = (el) => {
@@ -10,10 +13,6 @@
     if (isEditable(event.target)) lastEditable = event.target;
   }, true);
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || !event.isTrusted) return;
-    try { chrome.runtime.sendMessage({ type: 'CHATGPT_ASSIGNMENT_ENTER' }); } catch (_error) {}
-  }, true);
 
   const visibleText = (node) => {
     if (!node || node.namespaceURI === 'http://www.w3.org/2000/svg') return '';
@@ -81,8 +80,6 @@
 
     // Search for radio inputs, option cards, or choice elements
     const inputs = [...document.querySelectorAll('input[type="radio"], [role="radio"]')];
-    const optionCards = [...document.querySelectorAll('[class*="option" i], [class*="choice" i], label')];
-
     const highlightAndClick = (element, matchedLabel) => {
       if (!element) return null;
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
