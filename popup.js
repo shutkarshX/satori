@@ -36,7 +36,7 @@ function updateProviderUI() {
     gemini: 'Ask Gemini & show result',
     chatgpt: 'Ask ChatGPT & show result'
   };
-  $('googleSearch').textContent = labels[$('provider').value] || labels.google;
+  $('askProvider').textContent = labels[$('provider').value] || labels.google;
 }
 
 chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse', 'satoriStatus', 'satoriDiagnostics', 'satoriMode'], (result) => {
@@ -103,10 +103,7 @@ async function extract() {
     chrome.storage.local.set({ satoriMode: 'coding' });
   }
 
-  if (fullPageContext.length > result.text.length * 1.25) {
-    status(`Read ${result.text.length.toLocaleString()} focused chars (detected ${$('mode').value.toUpperCase()}).`);
-  }
-  else status(`Read ${result.text.length.toLocaleString()} characters (detected ${$('mode').value.toUpperCase()}).`);
+  status(`Read ${result.text.length.toLocaleString()} question chars (detected ${$('mode').value.toUpperCase()}).`);
 }
 
 function buildGoogleQuery() {
@@ -164,7 +161,7 @@ $('extract').addEventListener('click', async () => {
   try { await extract(); } catch (e) { status(e.message, true); }
 });
 
-$('googleSearch').addEventListener('click', async () => {
+$('askProvider').addEventListener('click', async () => {
   try {
     const provider = $('provider').value;
     const mode = $('mode').value;
