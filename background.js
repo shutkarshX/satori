@@ -426,10 +426,16 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
         addDiagnostic('chatgpt-recovery', 'replacing tab with fresh background ChatGPT tab');
         await chrome.tabs.remove(tabId).catch(() => {});
         await chrome.storage.local.remove(['satoriChatGPTTabId']);
-        const freshTab = await chrome.tabs.create({ url: 'https://chatgpt.com/', active: false });
+        const freshTab = await chrome.tabs.create({
+          url: 'https://chatgpt.com/',
+          active: false,
+          ...(activeChatGPTRequest?.assignmentWindowId ? { windowId: activeChatGPTRequest.assignmentWindowId } : {})
+        });
         if (freshTab?.id) {
-          if (activeChatGPTRequest) activeChatGPTRequest.tabId = freshTab.id;
-          await chrome.storage.local.set({ satoriChatGPTTabId: freshTab.id, activeChatGPTRequest });
+          if (activeChatGPTRequest) {
+            activeChatGPTRequest.tabId = freshTab.id;
+            await chrome.storage.local.set({ satoriChatGPTTabId: freshTab.id, satoriChatGPTWindowId: freshTab.windowId, activeChatGPTRequest });
+          }
           setTimeout(() => sendChatGPTPrompt(freshTab.id, requestId, prompt, mode, retries - 1), 2000);
           return;
         }
@@ -447,7 +453,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
 
-  activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
+  activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id, assignmentWindowId: assignmentTab?.windowId ?? null };
   await chrome.storage.local.set({ activeChatGPTRequest });
 
   const url = 'https://chatgpt.com/';
@@ -477,13 +483,14 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
               const code = check.existing.code;
               const text = check.existing.text || code;
               addDiagnostic('chatgpt-instant', `captured existing answer from tab ${tab.id} (${code.length} chars)`);
+              const finalExisting = mode === 'mcq' ? formatMcqAnswer(code, questionText) : code;
               chrome.storage.local.set({
-                latestChatGPTResponse: code,
+                latestChatGPTResponse: finalExisting,
                 latestChatGPTRawResponse: text,
                 latestChatGPTAt: Date.now(),
                 latestProvider: 'chatgpt'
               });
-              autoFillAssignment(assignmentTab?.id, code, 'ChatGPT');
+              autoFillAssignment(assignmentTab?.id, finalExisting, 'ChatGPT', mode);
               setStatus('ChatGPT response captured.', 'ready');
               return;
             }
@@ -500,6 +507,8 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
       }
 
       if (isAlive) {
+        activeChatGPTRequest.tabId = tab.id;
+        await chrome.storage.local.set({ activeChatGPTRequest });
         addDiagnostic('chatgpt-tab', `reusing active ChatGPT tab ${tab.id}`);
         setStatus('Preparing ChatGPT prompt…', 'waiting');
         setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 30);
@@ -515,6 +524,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
       tab = await chrome.tabs.create({ url, active: false, windowId });
       if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.');
       activeChatGPTRequest.tabId = tab.id;
+      activeChatGPTRequest.assignmentWindowId = windowId ?? tab.windowId;
       await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId, activeChatGPTRequest });
       setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1500);
     }
@@ -525,6 +535,10 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
 }
 
 async function handleChatGPTResponse(message) {
+  if (message.requestId && activeChatGPTRequest?.requestId && message.requestId !== activeChatGPTRequest.requestId) {
+    addDiagnostic('chatgpt-validation', `ignored stale response for request ${message.requestId}`);
+    return;
+  }
   if (!activeChatGPTRequest) {
     const stored = await chrome.storage.local.get('activeChatGPTRequest');
     if (stored.activeChatGPTRequest) activeChatGPTRequest = stored.activeChatGPTRequest;
