@@ -1,36 +1,55 @@
 # Satori
 
-A local Chrome extension for practice assignments. It reads selectable question text, opens a Google Search query in the browser without using an API, attempts to capture the Google AI Overview, and can type reviewed text into the assignment editor when clipboard paste is blocked. It does not submit answers.
+Satori is a practice-only Chrome extension for reading assignment questions, sending them to a selected AI provider in a reusable background tab, capturing the provider response, and placing the reviewed result into the assignment page. Final review and submission remain manual.
 
-## Install or update in Chrome
+## Providers
+
+- **Google AI Mode** — searches Google and reads the available AI result.
+- **Gemini** — reuses a Gemini tab and watches for the provider's response.
+- **ChatGPT** — reuses a ChatGPT conversation, submits the prompt automatically, and captures the new assistant response.
+
+Provider DOM handling stays inside each provider adapter. The background service worker handles request state, tab orchestration, validation, storage, and assignment autofill.
+
+## Install
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked**.
-4. Select your local `satori` folder—the folder containing `manifest.json`.
-5. If it was already installed, click **Reload** on the extension card.
-6. Reload the practice assignment page.
+4. Select the local `satori` folder containing `manifest.json`.
+5. Reload the extension after code changes.
+6. Reload the assignment page after installing or updating the extension.
 
 ## Use
 
-1. Click inside the assignment answer editor first if you plan to use the typing feature.
-2. Open the extension from the Chrome toolbar.
-3. Choose **MCQ** or **Coding**.
-4. Click **Read current question**. If the page contains unrelated text, select only the question before clicking it.
-5. Optionally add language or format instructions.
-6. Click **Search Google & show AI result**. Google Search opens in the background and Satori checks for an AI Overview.
-7. Review the result in **Latest Google AI Overview**. Put the reviewed answer/code into the extension's **Reviewed answer/code** box.
-8. Return to the assignment tab, click the target editor if needed, open the extension, and click **Type into focused assignment editor**.
-9. Review the inserted text and submit manually.
+1. Choose **MCQ** or **Coding**.
+2. Choose Google, Gemini, or ChatGPT.
+3. Click **Read current question** or select the question text manually.
+4. Add optional instructions if needed.
+5. Ask the selected provider.
+6. Review the captured response.
+7. If Satori places an answer/code into the assignment, review it before submitting.
+8. Submit the assignment manually.
+
+## Design principles
+
+- Reuse provider tabs instead of opening a new AI tab for every question.
+- Keep the assignment tab active while AI work happens in the background.
+- Keep Google, Gemini, and ChatGPT DOM strategies provider-specific.
+- Treat request IDs and response ownership as first-class state.
+- Never treat arbitrary ChatGPT prose as a coding solution.
+- Prefer failing clearly over confidently selecting an ambiguous MCQ option.
+- Keep final review and submission manual.
 
 ## Limitations
 
-- Google does not show an AI Overview for every query, account, region, or browser session.
-- Google Search may not produce a complete compilable solution for long coding assignments.
-- The assignment page must permit the extension to run; Chrome internal pages cannot be read.
-- Page layouts vary. If automatic extraction finds too much text, select the question manually first.
-- Some rich editors and embedded iframes may not accept programmatic input.
-- Image questions are not OCR'd in this first version.
-- Google login, CAPTCHA, and submission are left to the user.
+Provider websites change their DOM frequently, so selectors and response extraction may need maintenance.
+
+Google AI results are not guaranteed for every query, account, region, or session.
+
+Some assignment editors, embedded frames, and rich UI controls may reject programmatic input.
+
+Image-only questions are not OCR'd automatically.
+
+Authentication, CAPTCHA, and final submission remain user-controlled.
 
 This extension is intended for practice/learning. Use it only where AI assistance and browser automation are allowed.
