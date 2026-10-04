@@ -173,11 +173,12 @@ $('googleSearch').addEventListener('click', async () => {
     else if (provider === 'gemini') await chrome.storage.local.remove(['latestGeminiResponse', 'latestGeminiRawResponse']);
     else await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
     const questionText = $('question').value.trim();
+    const target = await activeTab();
     const message = provider === 'google'
-      ? { type: 'OPEN_GOOGLE_SEARCH', googleQuery: buildGoogleQuery(), questionText, mode }
+      ? { type: 'OPEN_GOOGLE_SEARCH', googleQuery: buildGoogleQuery(), questionText, mode, assignmentTabId: target.id, windowId: target.windowId }
       : provider === 'gemini'
-        ? { type: 'OPEN_GEMINI_REQUEST', prompt: buildGeminiPrompt(), questionText, mode }
-        : { type: 'OPEN_CHATGPT_REQUEST', prompt: buildChatGPTPrompt(), questionText, mode };
+        ? { type: 'OPEN_GEMINI_REQUEST', prompt: buildGeminiPrompt(), questionText, mode, assignmentTabId: target.id, windowId: target.windowId }
+        : { type: 'OPEN_CHATGPT_REQUEST', prompt: buildChatGPTPrompt(), questionText, mode, assignmentTabId: target.id, windowId: target.windowId };
     const result = await chrome.runtime.sendMessage(message);
     if (!result?.ok) throw new Error(`Could not start ${provider}.`);
     status(`${provider === 'google' ? 'Google Search' : provider === 'gemini' ? 'Gemini' : 'ChatGPT'} opened in the background. Waiting for its response…`);

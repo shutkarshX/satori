@@ -112,9 +112,9 @@ function formatMcqAnswer(text, questionText = '') {
 async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
   if (!tabId || !text || text.trim() === 'Code not available') return;
   try {
-    const cleanAnswer = mode === 'mcq' ? formatMcqAnswer(text) : text;
+    const cleanAnswer = text.trim();
     const msgType = mode === 'mcq' ? 'SELECT_MCQ_OPTION' : 'TYPE_INTO_EDITOR';
-    const payload = mode === 'mcq' ? { type: msgType, answer: cleanAnswer } : { type: msgType, text, append: false };
+    const payload = mode === 'mcq' ? { type: msgType, answer: cleanAnswer } : { type: msgType, text: cleanAnswer, append: false };
     let result;
     try { result = await chrome.tabs.sendMessage(tabId, payload); }
     catch (_error) {
@@ -473,17 +473,18 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
               setStatus('ChatGPT is generating response in the background…', 'waiting');
               return;
             }
-            if (check.existing.code) {
-              const code = check.existing.code;
-              const text = check.existing.text || code;
-              addDiagnostic('chatgpt-instant', `captured existing answer from tab ${tab.id} (${code.length} chars)`);
+            if (check.existing.code || check.existing.text) {
+              const raw = check.existing.code || check.existing.text;
+              const text = check.existing.text || raw;
+              const final = mode === 'mcq' ? formatMcqAnswer(text, questionText) : raw;
+              addDiagnostic('chatgpt-instant', `captured existing answer from tab ${tab.id} (${final.length} chars)`);
               chrome.storage.local.set({
-                latestChatGPTResponse: code,
+                latestChatGPTResponse: final,
                 latestChatGPTRawResponse: text,
                 latestChatGPTAt: Date.now(),
                 latestProvider: 'chatgpt'
               });
-              autoFillAssignment(assignmentTab?.id, code, 'ChatGPT');
+              autoFillAssignment(assignmentTab?.id, final, 'ChatGPT', mode);
               setStatus('ChatGPT response captured.', 'ready');
               return;
             }
@@ -603,12 +604,20 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   chrome.storage.local.set({ satoriDiagnostics: [{ time: new Date().toLocaleTimeString(), step: 'request', detail: `provider=${provider}` }] });
   const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
   addDiagnostic('prompt', `${provider} query length=${query.length}`);
-  let assignmentTab = sender.tab;
+  let assignmentTab = null;
+  if (message.assignmentTabId) {
+    try {
+      assignmentTab = await chrome.tabs.get(message.assignmentTabId);
+    } catch (_e) {}
+  }
+  if (!assignmentTab?.windowId) {
+    assignmentTab = sender.tab;
+  }
   if (!assignmentTab?.windowId) {
     const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     assignmentTab = activeTabs.find((tab) => tab.id && !/^https:\/\/(www\.)?google\./i.test(tab.url || '') && !/^https:\/\/gemini\.google\.com\//i.test(tab.url || '')) || activeTabs[0];
   }
-  addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId}` : 'assignment window unavailable');
+  addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId} tab=${assignmentTab.id}` : 'assignment window unavailable');
   const questionText = message.questionText || '';
   if (provider === 'google') {
     startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);

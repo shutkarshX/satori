@@ -120,8 +120,7 @@
     ];
 
     if (normTarget.length >= 1) {
-      // 1. Direct match (exact or substring)
-      // Check for exact normalized matches first (handles whitespace differences like "O(sum*n)" vs "O(sum * n)")
+      // 1. Direct match: Exact normalized text matches (e.g. "O(sum*n)" vs "O(sum * n)")
       for (const card of broadCandidates) {
         const text = norm(visibleText(card));
         if (text && text === normTarget) {
@@ -129,16 +128,20 @@
         }
       }
 
-      // If no exact match and text length > 2, try substring matches
-      if (normTarget.length > 2) {
-        for (const card of broadCandidates) {
-          const text = norm(visibleText(card));
-          if (text && (text.includes(normTarget) || (normTarget.length > 8 && text.length > 4 && normTarget.includes(text)))) {
+      // 2. Exact word boundary / whole phrase match
+      for (const card of broadCandidates) {
+        const text = norm(visibleText(card));
+        // Ensure that target matches fully if length is short, avoiding "o(n)" matching "o(n2)" or "o(sum*n)"
+        if (text && text.length < 150) {
+          const isContained = text.includes(normTarget);
+          if (isContained && (normTarget.length > 5 || text.length <= normTarget.length + 3)) {
             return highlightAndClick(card, visibleText(card).slice(0, 40));
           }
         }
+      }
 
-        // 2. Word-overlap match
+      // 3. Word-overlap match for longer prose answers
+      if (normTarget.length > 4) {
         const targetWords = cleanTargetText.split(/\s+/).filter((w) => w.length > 3);
         if (targetWords.length > 0) {
           let bestCandidate = null;
