@@ -484,12 +484,14 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
               const text = check.existing.text || code;
               addDiagnostic('chatgpt-instant', `captured existing answer from tab ${tab.id} (${code.length} chars)`);
               const finalExisting = mode === 'mcq' ? formatMcqAnswer(code, questionText) : code;
-              chrome.storage.local.set({
+              await chrome.storage.local.set({
                 latestChatGPTResponse: finalExisting,
                 latestChatGPTRawResponse: text,
                 latestChatGPTAt: Date.now(),
                 latestProvider: 'chatgpt'
               });
+              activeChatGPTRequest = null;
+              await chrome.storage.local.remove('activeChatGPTRequest');
               autoFillAssignment(assignmentTab?.id, finalExisting, 'ChatGPT', mode);
               setStatus('ChatGPT response captured.', 'ready');
               return;
