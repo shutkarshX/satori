@@ -331,7 +331,7 @@
         return true;
       }
 
-      if (message.type !== 'FILL_CHATGPT_PROMPT') return false;
+      if (message.type !== 'FILL_CHATGPT_PROMPT' && message.type !== 'FILL_AND_SEND_CHATGPT') return false;
 
       const input = findInput();
       if (!input) {
