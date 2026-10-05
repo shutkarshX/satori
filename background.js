@@ -484,6 +484,10 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questio
 }
 
 async function handleGeminiResponse(message) {
+  if (message.requestId && message.requestId !== activeRequestId) {
+    addDiagnostic('gemini-stale', `ignored response for request ${message.requestId}`);
+    return;
+  }
   if (!activeGeminiRequest) {
     const stored = await chrome.storage.local.get('activeGeminiRequest');
     if (stored.activeGeminiRequest) activeGeminiRequest = stored.activeGeminiRequest;
