@@ -312,47 +312,94 @@ async function readGoogleAIOverview(tabId, mode = 'mcq') {
   }
 }
 
-async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, questionText = '', attempts = 60) {
-  if (requestId !== activeRequestId) return;
-  const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
-  const reading = await readGoogleAIOverview(tabId, mode);
-  const text = reading.text || '';
-  const selected = mode === 'coding' ? (reading.code || '') : text;
-  addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
-  if (selected && !isPlaceholder(selected) && (!before || selected !== before)) {
-    const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, questionText) : selected;
-    const providerResult = buildProviderResult('google', requestId, mode, finalSelected, text);
-    if (mode === 'coding' && !looksLikeCode(providerResult.code)) {
-      setStatus('Google AI returned text that does not look like source code.', 'error');
-      addDiagnostic('google-validation', 'coding result rejected before autofill');
-      return;
-    }
-    await chrome.alarms.clear(`satori-timeout-${requestId}`);
-    await chrome.storage.local.remove('satoriActiveRequest');
-    await chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google', latestProviderResult: providerResult });
-    let quality = 'response captured and stored';
-    let warning = '';
-    if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\\-]/i.test(text)) {
-      warning = ' Response captured, but no explicit MCQ answer was found.';
-      quality += '; MCQ answer marker missing';
-    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\\(|\bdef\s+main\s*\\()/i.test(selected)) {
-      warning = ' Response captured, but it does not look like a complete program.';
-      quality += '; code completeness warning';
-    }
-    addDiagnostic('complete', quality);
-    const applied = await autoFillAssignment(assignmentTabId, providerResult);
-    if (!applied?.ok) return;
-    if (warning) setStatus('Google AI Overview captured.' + warning, 'error');
+async function handleGoogleResponse(message) {
+  if (message.requestId !== activeRequestId) {
+    addDiagnostic('google-stale', `ignored response for request ${message.requestId}`);
     return;
   }
-  if (selected && isPlaceholder(selected)) {
-    addDiagnostic('response-check', 'placeholder / overview unavailable detected; waiting for generation to complete');
+
+  const current = await chrome.storage.local.get('satoriActiveRequest');
+  if (!current.satoriActiveRequest || current.satoriActiveRequest.requestId !== message.requestId) {
+    addDiagnostic('google-validation', 'ignored Google response without matching active request');
+    return;
   }
-  if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
-  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, questionText, attempts - 1), 1000);
-  else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
+
+  const mode = current.satoriActiveRequest.mode || message.mode || 'mcq';
+  const raw = String(message.detail?.text || '').trim();
+  const selected = mode === 'coding'
+    ? String(message.detail?.code || '').trim()
+    : raw;
+
+  if (!selected) {
+    setStatus(mode === 'coding' ? 'Google AI returned no usable code.' : 'Google AI returned an empty response.', 'error');
+    addDiagnostic('google-parser', 'empty provider response');
+    return;
+  }
+
+  const finalSelected = mode === 'mcq'
+    ? formatMcqAnswer(selected, current.satoriActiveRequest.questionText || '')
+    : selected;
+  const providerResult = buildProviderResult('google', message.requestId, mode, finalSelected, raw);
+
+  if (mode === 'coding' && !looksLikeCode(providerResult.code)) {
+    setStatus('Google AI returned text that does not look like source code.', 'error');
+    addDiagnostic('google-validation', 'coding result rejected before autofill');
+    return;
+  }
+
+  await chrome.storage.local.set({
+    latestGoogleResponse: finalSelected,
+    latestGoogleRawResponse: raw,
+    latestGoogleAt: Date.now(),
+    latestProvider: 'google',
+    latestProviderResult: providerResult
+  });
+
+  await chrome.alarms.clear(`satori-timeout-${message.requestId}`);
+  await chrome.storage.local.remove('satoriActiveRequest');
+
+  const applied = await autoFillAssignment(current.satoriActiveRequest.assignmentTabId, providerResult);
+  if (!applied?.ok) return;
+
+  const warning = mode === 'coding' &&
+    !/(#include|public\\s+class\\s+Main|\\bint\\s+main\\s*\\(|\\bdef\\s+main\\s*\\()/i.test(selected);
+
+  setStatus(`Google AI Overview captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
+  addDiagnostic('google-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
 }
 
+async function startGoogleWatch(tabId, requestId, mode, baseline) {
+  try {
+    let result;
+    try {
+      result = await chrome.tabs.sendMessage(tabId, {
+        type: 'START_GOOGLE_WATCH',
+        requestId,
+        mode,
+        baselineText: baseline?.text || '',
+        baselineCode: baseline?.code || ''
+      });
+    } catch (_error) {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['google.js'] });
+      result = await chrome.tabs.sendMessage(tabId, {
+        type: 'START_GOOGLE_WATCH',
+        requestId,
+        mode,
+        baselineText: baseline?.text || '',
+        baselineCode: baseline?.code || ''
+      });
+    }
+    if (!result?.ok) throw new Error(result?.error || 'Google adapter did not start its response watcher.');
+    addDiagnostic('google-watch', 'Google AI Overview mutation watcher started');
+  } catch (error) {
+    if (requestId === activeRequestId) {
+      await chrome.alarms.clear(`satori-timeout-${requestId}`);
+      await chrome.storage.local.remove('satoriActiveRequest');
+      setStatus('Google AI Overview watcher could not start.', 'error');
+      addDiagnostic('google-error', error.message);
+    }
+  }
+}
 async function getReusableGoogleTab(windowId) {
   const stored = await chrome.storage.local.get(['satoriGoogleTabId', 'satoriGoogleWindowId']);
   if (stored.satoriGoogleTabId && stored.satoriGoogleWindowId === windowId) {
