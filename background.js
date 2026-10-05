@@ -69,7 +69,20 @@ async function runShortcut(mode) {
   else startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText);
 }
 
+async function cancelActiveRequest(reason = 'Request cancelled by user.') {
+  activeRequestId += 1;
+  activeChatGPTRequest = null;
+  activeGeminiRequest = null;
+  await chrome.storage.local.remove(['satoriActiveRequest', 'activeChatGPTRequest', 'activeGeminiRequest']);
+  setStatus(reason, 'error');
+  addDiagnostic('cancel', reason);
+}
+
 chrome.commands.onCommand.addListener(async (command) => {
+  if (command === 'satori-cancel') {
+    try { await cancelActiveRequest(); } catch (error) { setStatus(error.message, 'error'); }
+    return;
+  }
   const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-code' ? 'coding' : null;
   if (!mode) return;
   try {
