@@ -9,7 +9,8 @@
     baselineCount: 0,
     lastSentAt: 0,
     lastSignature: '',
-    quietTimer: null
+    quietTimer: null,
+    responsePollTimer: null
   };
 
   const clean = (value) => String(value || '')
@@ -256,6 +257,13 @@
     return false;
   };
 
+  const stopResponsePolling = () => {
+    if (state.responsePollTimer) {
+      clearInterval(state.responsePollTimer);
+      state.responsePollTimer = null;
+    }
+  };
+
   const inspectForNewResponse = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
     const candidates = candidateResponses();
@@ -286,6 +294,8 @@
 
       state.lastSignature = final.signature;
       const finalCode = code || final.text;
+      stopResponsePolling();
+      state.requestId = 0;
       report('CHATGPT_RESPONSE', {
         text: final.text,
         code: finalCode,
@@ -386,8 +396,11 @@
       state.lastSignature = '';
       state.lastSentAt = Date.now();
       clearTimeout(state.quietTimer);
+      stopResponsePolling();
 
       setInput(input, message.prompt || '');
+
+      state.responsePollTimer = setInterval(inspectForNewResponse, 1000);
 
       setTimeout(() => {
         if (clickSend()) {
