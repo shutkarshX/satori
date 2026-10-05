@@ -322,6 +322,11 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
   if (selected && !isPlaceholder(selected) && (!before || selected !== before)) {
     const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, questionText) : selected;
     const providerResult = buildProviderResult('google', requestId, mode, finalSelected, text);
+    if (mode === 'coding' && !looksLikeCode(providerResult.code)) {
+      setStatus('Google AI returned text that does not look like source code.', 'error');
+      addDiagnostic('google-validation', 'coding result rejected before autofill');
+      return;
+    }
     await chrome.alarms.clear(`satori-timeout-${requestId}`);
     await chrome.storage.local.remove('satoriActiveRequest');
     await chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google', latestProviderResult: providerResult });
