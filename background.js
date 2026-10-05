@@ -481,6 +481,9 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questio
       setTimeout(() => sendGeminiPrompt(tab.id, requestId, prompt, mode), 1800);
     }
   } catch (error) {
+    activeGeminiRequest = null;
+    await chrome.storage.local.remove(['activeGeminiRequest', 'satoriActiveRequest']);
+    await chrome.alarms.clear(`satori-timeout-${requestId}`);
     setStatus(`Could not open Gemini: ${error.message}`, 'error');
     addDiagnostic('gemini-error', error.message);
   }
