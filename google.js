@@ -31,6 +31,7 @@
         if (text.length > 40 && text.length < 40000) candidates.push(text);
       }
     });
+
     const label = [...document.querySelectorAll('h1,h2,h3,div,span')]
       .find((node) => /^AI Overview$/i.test((node.innerText || '').trim()));
     if (label?.parentElement) {
@@ -47,7 +48,7 @@
     const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
       .map((node) => clean(node.innerText || node.textContent || ''))
       .filter((value) => value.length > 20);
-    const fenced = [...(document.body.innerText || '').matchAll(new RegExp('```[^\\n]*\\n?([\\s\\S]*?)```', 'g'))]
+    const fenced = [...(document.body.innerText || '').matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
       .map((match) => clean(match[1]))
       .filter((value) => value.length > 20);
     const code = [...codeCandidates, ...fenced].sort((a, b) => b.length - a.length)[0] || '';
@@ -60,7 +61,9 @@
   }
 
   const report = (type, detail) => {
-    try { chrome.runtime.sendMessage({ type, requestId: state.requestId, detail }); } catch (_error) {}
+    try {
+      chrome.runtime.sendMessage({ type, requestId: state.requestId, detail });
+    } catch (_error) {}
   };
 
   const inspect = () => {
@@ -132,7 +135,8 @@
     return false;
   });
 
-  new MutationObserver(inspect).observe(document.documentElement, {
+  const observer = new MutationObserver(inspect);
+  observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
     characterData: true
