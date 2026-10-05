@@ -57,7 +57,7 @@ async function runShortcut(mode) {
     'latestChatGPTResponse', 'latestChatGPTRawResponse'
   ]);
   await chrome.storage.local.set({
-    satoriActiveRequest: { requestId, provider, mode, assignmentTabId: assignmentTab.id, startedAt: Date.now() }
+    satoriActiveRequest: { requestId, provider, mode, assignmentTabId: assignmentTab.id, questionText, startedAt: Date.now() }
   });
   statusMeta = { requestId, provider, mode, startedAt: Date.now(), estimateSec: provider === 'google' ? 10 : provider === 'gemini' ? 8 : 12 };
   await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 2 });
