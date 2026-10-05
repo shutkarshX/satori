@@ -366,33 +366,44 @@
       }
     }
 
-    // 3. Verification & Conflict Detection
-    // Both text and letter match: ensure they point to the exact same option
-    if (textMatches.length === 1 && letterTarget) {
-      const textElement = textMatches[0];
-      const sameTarget = textElement === letterTarget || textElement.contains(letterTarget) || letterTarget.contains(textElement);
-      if (!sameTarget) {
-        throw new Error(`MCQ conflict: text matched option '${visibleText(textElement).slice(0, 30)}', but letter matched '${targetLetter}'. No option selected.`);
+    // 3. Explicit provider letters are authoritative.
+    // Portals often render the same option text in nested/duplicate nodes.
+    // Do not let that DOM duplication turn a valid "ANSWER: B - ..." into
+    // a false ambiguity error. Only reject a clear unique text/letter conflict.
+    if (letterTarget) {
+      const letterTargetText = norm(visibleText(letterTarget));
+      const answerText = norm(cleanAnswer);
+      const textAgrees = !answerText ||
+        letterTargetText === answerText ||
+        letterTargetText.includes(answerText) ||
+        answerText.includes(letterTargetText);
+
+      if (textAgrees || textMatches.length !== 1) {
+        return click(letterTarget, targetLetter);
       }
-      return click(textElement, visibleText(textElement).slice(0, 80));
+
+      const textElement = textMatches[0];
+      const sameTarget = textElement === letterTarget ||
+        textElement.contains(letterTarget) ||
+        letterTarget.contains(textElement);
+
+      if (sameTarget) return click(letterTarget, targetLetter);
+
+      throw new Error('MCQ conflict: text matched option ' +
+        visibleText(textElement).slice(0, 30) +
+        ', but letter matched ' + targetLetter + '. No option selected.');
     }
 
-    // Unique text match
+    // No usable letter: only accept a unique text match.
     if (textMatches.length === 1) {
       return click(textMatches[0], visibleText(textMatches[0]).slice(0, 80));
     }
 
-    // Ambiguous multiple text matches -> DO NOTHING (safety)
     if (textMatches.length > 1) {
       throw new Error('MCQ answer matches multiple page options. Nothing was selected to prevent incorrect submission.');
     }
 
-    // Unique letter fallback
-    if (letterTarget) {
-      return click(letterTarget, targetLetter);
-    }
-
-    throw new Error(`Could not find a unique page option matching: ${cleanAnswer.slice(0, 80) || targetLetter}`);
+    throw new Error('Could not find a unique page option matching: ' + (cleanAnswer.slice(0, 80) || targetLetter));
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
