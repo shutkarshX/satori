@@ -95,6 +95,8 @@
     if (value.kind === 'ready' || value.kind === 'error') {
       setTimeout(() => {
         if (statusWidget.root && statusWidget.root.classList.contains(`satori-${value.kind}`)) {
+          if (statusWidget.timer) clearInterval(statusWidget.timer);
+          statusWidget.timer = null;
           statusWidget.root.remove();
           statusWidget.root = null;
         }
