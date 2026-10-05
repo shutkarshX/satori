@@ -9,8 +9,7 @@ const setStatus = (text, kind = 'waiting', extra = {}) => {
 
 const PROVIDER_NAMES = { google: 'Google AI Mode', gemini: 'Gemini', chatgpt: 'ChatGPT' };
 
-function buildShortcutPrompt(provider, mode, pageText) {
-  const extra = '';
+function buildShortcutPrompt(_provider, mode, pageText) {
   if (mode === 'mcq') {
     return `Solve the practice multiple-choice question contained in this page text.
 Identify the actual question and its options yourself. Ignore navigation, buttons, timers, and unrelated page content.
