@@ -295,8 +295,10 @@
       state.lastSignature = final.signature;
       const finalCode = code || final.text;
       stopResponsePolling();
+      const capturedRequestId = state.requestId;
       state.requestId = 0;
       report('CHATGPT_RESPONSE', {
+        requestId: capturedRequestId,
         text: final.text,
         code: finalCode,
         capturedAt: Date.now()
