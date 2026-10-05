@@ -8,6 +8,7 @@ Choose the AI provider once in the popup. Then use the keyboard shortcuts on the
 
 - **Alt+Shift+M** — solve the current page as an MCQ.
 - **Alt+Shift+C** — solve the current page as a coding problem.
+- **Alt+Shift+X** — cancel the current request.
 
 Chrome lets these shortcuts be changed from `chrome://extensions/shortcuts`.
 
@@ -18,6 +19,9 @@ A small draggable status widget appears on the assignment page while a request i
 - **◉ ~Ns** — processing, with an approximate estimate.
 - **✓ DONE** — the result was successfully applied.
 - **× ERROR** — the request or assignment action failed.
+- **– CANCELLED** — the request was stopped by the user.
+
+Every request also has a durable two-minute timeout.
 
 Click the widget for the current status detail.
 
