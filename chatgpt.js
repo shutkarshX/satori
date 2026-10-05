@@ -39,6 +39,23 @@
     if (list.length) {
       return list.filter((node) => nodeText(node).length > 0);
     }
+
+    // Modern / unauthenticated ChatGPT renders turns under "ChatGPT said:" headers
+    const turns = [...document.querySelectorAll('h4, div, section')]
+      .filter((el) => {
+        const t = (el.innerText || '').trim();
+        return t === 'ChatGPT said:' || t.startsWith('ChatGPT said:');
+      })
+      .map((header) => {
+        // Return the sibling answer node or parent list item / container
+        return header.nextElementSibling || header.parentElement || header;
+      })
+      .filter((node) => nodeText(node).length > 0);
+
+    if (turns.length) {
+      return [...new Set(turns)];
+    }
+
     const fallback = [
       ...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown'),
       ...document.querySelectorAll('article .markdown'),
