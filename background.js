@@ -61,6 +61,7 @@ async function runShortcut(mode) {
     satoriActiveRequest: { requestId, provider, mode, assignmentTabId: assignmentTab.id, startedAt: Date.now() }
   });
   statusMeta = { requestId, provider, mode, startedAt: Date.now(), estimateSec: provider === 'google' ? 10 : provider === 'gemini' ? 8 : 12 };
+  await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 2 });
   setStatus(`${PROVIDER_NAMES[provider]} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting');
   addDiagnostic('shortcut', `${mode} shortcut → ${provider} request ${requestId}`);
 
@@ -70,6 +71,8 @@ async function runShortcut(mode) {
 }
 
 async function cancelActiveRequest(reason = 'Request cancelled by user.') {
+  const current = await chrome.storage.local.get('satoriActiveRequest');
+  if (current.satoriActiveRequest?.requestId) await chrome.alarms.clear(`satori-timeout-${current.satoriActiveRequest.requestId}`);
   activeRequestId += 1;
   activeChatGPTRequest = null;
   activeGeminiRequest = null;
@@ -77,6 +80,16 @@ async function cancelActiveRequest(reason = 'Request cancelled by user.') {
   setStatus(reason, 'error');
   addDiagnostic('cancel', reason);
 }
+
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (!alarm.name.startsWith('satori-timeout-')) return;
+  const current = await chrome.storage.local.get('satoriActiveRequest');
+  if (!current.satoriActiveRequest) return;
+  const requestId = Number(alarm.name.replace('satori-timeout-', ''));
+  if (current.satoriActiveRequest.requestId !== requestId) return;
+  await cancelActiveRequest('Satori request timed out after 2 minutes.');
+});
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'satori-cancel') {
