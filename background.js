@@ -710,28 +710,6 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
   if (message.type === 'CHATGPT_DIAGNOSTIC') { addDiagnostic('chatgpt', message.detail || 'ChatGPT adapter diagnostic'); return; }
   if (message.type === 'CHATGPT_SUBMITTED') { addDiagnostic('chatgpt-submit', message.detail || 'ChatGPT prompt submitted'); return; }
-  if (false && message.type === 'CHATGPT_ASSIGNMENT_ENTER') {
-    addDiagnostic('chatgpt-submit', 'assignment-tab Enter received');
-    if (!activeChatGPTRequest?.tabId) {
-      const stored = await chrome.storage.local.get('activeChatGPTRequest');
-      if (stored.activeChatGPTRequest?.tabId) {
-        activeChatGPTRequest = stored.activeChatGPTRequest;
-        addDiagnostic('chatgpt-submit', `restored active ChatGPT request for tab ${activeChatGPTRequest.tabId}`);
-      }
-    }
-    if (!activeChatGPTRequest?.tabId) {
-      addDiagnostic('chatgpt-submit', 'ignored assignment-tab Enter: no active ChatGPT request');
-      return;
-    }
-    try {
-      const result = await chrome.tabs.sendMessage(activeChatGPTRequest.tabId, { type: 'SUBMIT_CHATGPT_PROMPT', requestId: activeChatGPTRequest.requestId });
-      if (result?.ok) addDiagnostic('chatgpt-submit', 'assignment-tab Enter forwarded to the existing ChatGPT conversation');
-      else addDiagnostic('chatgpt-submit', result?.error || 'ChatGPT rejected assignment-tab Enter');
-    } catch (error) {
-      addDiagnostic('chatgpt-submit', `could not forward assignment-tab Enter (${error.message})`);
-    }
-    return;
-  }
   if (!['OPEN_GOOGLE_SEARCH', 'OPEN_GEMINI_REQUEST', 'OPEN_CHATGPT_REQUEST'].includes(message.type)) return;
   activeRequestId += 1;
   const requestId = activeRequestId;
