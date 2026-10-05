@@ -361,8 +361,7 @@ async function handleGoogleResponse(message) {
   const applied = await autoFillAssignment(current.satoriActiveRequest.assignmentTabId, providerResult);
   if (!applied?.ok) return;
 
-  const warning = mode === 'coding' &&
-    !/(#include|public\\s+class\\s+Main|\\bint\\s+main\\s*\\(|\\bdef\\s+main\\s*\\()/i.test(selected);
+  const warning = false;
 
   setStatus(`Google AI Overview captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('google-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
@@ -599,7 +598,7 @@ async function handleGeminiResponse(message) {
   await chrome.storage.local.remove(['activeGeminiRequest', 'satoriActiveRequest']);
   const applied = await autoFillAssignment(assignmentTabId, providerResult);
   if (!applied?.ok) return;
-  const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
+  const warning = false;
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('gemini-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
 }
@@ -803,7 +802,7 @@ async function handleChatGPTResponse(message) {
     addDiagnostic('chatgpt-complete', 'response captured but could not be applied to the assignment');
     return;
   }
-  const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
+  const warning = false;
   setStatus(`ChatGPT response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
 }
