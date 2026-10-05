@@ -24,6 +24,13 @@
         "mac": "Command+Shift+C"
       },
       "description": "Solve the current page as coding with Satori"
+    },
+    "satori-cancel": {
+      "suggested_key": {
+        "default": "Alt+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "Cancel the current Satori request"
     }
   },
   "content_scripts": [
