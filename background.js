@@ -223,6 +223,17 @@ function formatMcqAnswer(text, questionText = '') {
   return fallback.length < 80 ? fallback.trim() : fallback.trim().slice(0, 80);
 }
 
+function looksLikeCode(text) {
+  const value = String(text || '').trim();
+  if (value.length < 20) return false;
+  const signals = [
+    /#include\\s*[<"]/i, /\\bpublic\\s+(?:static\\s+)?class\\b/i, /\\b(?:int|long|void|bool|double|float|string)\\s+main\\s*\\(/i,
+    /\\bdef\\s+\\w+\\s*\\(/i, /\\bfunction\\s+\\w+\\s*\\(/i, /=>/, /[{};][\\s\\S]*[{};]/,
+    /\\bimport\\s+(?:java|javafx|sys|os|math|collections)\\b/i
+  ];
+  return signals.filter((pattern) => pattern.test(value)).length >= 1;
+}
+
 function buildProviderResult(provider, requestId, mode, selected, raw) {
   const text = String(selected || '').trim();
   if (mode === 'mcq') {
@@ -236,10 +247,13 @@ function buildProviderResult(provider, requestId, mode, selected, raw) {
       createdAt: Date.now()
     };
   }
+  const fenced = text.match(/```([A-Za-z0-9_+#.-]+)?\\s*\\n([\\s\\S]*?)```/);
+  const code = (fenced ? fenced[2] : text).trim();
+  const language = fenced?.[1] || null;
   return {
     provider, requestId, type: 'coding',
-    language: null,
-    code: text,
+    language,
+    code,
     raw: String(raw || text),
     createdAt: Date.now()
   };
@@ -250,6 +264,9 @@ async function autoFillAssignment(tabId, providerResult) {
   const mode = providerResult.type;
   if (mode === 'coding' && (!providerResult.code || providerResult.code === 'Code not available')) {
     return { ok: false, error: 'No usable code was returned.' };
+  }
+  if (mode === 'coding' && !looksLikeCode(providerResult.code)) {
+    return { ok: false, error: 'Provider returned text that does not look like source code.' };
   }
   try {
     const payload = mode === 'mcq'
