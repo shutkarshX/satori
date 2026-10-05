@@ -332,10 +332,10 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
     await chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google', latestProviderResult: providerResult });
     let quality = 'response captured and stored';
     let warning = '';
-    if (mode === 'mcq' && !/\b(answer|correct answer|option)\\s*[:\\-]/i.test(text)) {
+    if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\\-]/i.test(text)) {
       warning = ' Response captured, but no explicit MCQ answer was found.';
       quality += '; MCQ answer marker missing';
-    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\\bint\s+main\\s*\\(|\\bdef\s+main\\s*\\()/i.test(selected)) {
+    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\\(|\bdef\s+main\s*\\()/i.test(selected)) {
       warning = ' Response captured, but it does not look like a complete program.';
       quality += '; code completeness warning';
     }
