@@ -5,6 +5,7 @@
   const state = {
     requestId: 0,
     baseline: new Set(),
+    baselineNodes: new Set(),
     baselineCode: new Set(),
     baselineCount: 0,
     lastSentAt: 0,
@@ -168,7 +169,7 @@
   const inspectForNewResponse = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
     const all = responseSnapshot();
-    const candidates = all.filter((item) => !state.baseline.has(item.signature));
+    const candidates = all.filter((item) => !state.baselineNodes.has(item.node));
     // If baseline filter returned nothing, check if there's a new turn at the very end
     const latest = candidates.length ? candidates[candidates.length - 1] : (all.length > state.baselineCount ? all[all.length - 1] : null);
     if (!latest || latest.signature === state.lastResponseSignature) return;
@@ -187,7 +188,7 @@
         return;
       }
       const currentAll = responseSnapshot();
-      const current = currentAll.filter((item) => !state.baseline.has(item.signature));
+      const current = currentAll.filter((item) => !state.baselineNodes.has(item.node));
       const final = current.length ? current[current.length - 1] : currentAll[currentAll.length - 1];
       const capturedRequestId = state.requestId;
       state.lastResponseSignature = final.signature;
@@ -208,8 +209,7 @@
     childList: true, subtree: true, characterData: true
   });
 
-  setInterval(inspectForNewResponse, 1000);
-
+  
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'PING_GEMINI') {
       sendResponse({ ok: true, input: Boolean(findInput()), responses: responseNodes().length });
@@ -225,6 +225,7 @@
     state.requestId = message.requestId || Date.now();
     state.mode = message.mode || 'coding';
     state.baseline = new Set(responseSnapshot().map((item) => item.signature));
+    state.baselineNodes = new Set(responseSnapshot().map((item) => item.node));
     state.baselineCode = new Set([...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
       .map((element) => normalizeSource(element.innerText || element.textContent))
       .filter((text) => text.length > 20)
