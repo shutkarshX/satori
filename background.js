@@ -308,19 +308,21 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
   addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
   if (selected && !isPlaceholder(selected) && (!before || selected !== before)) {
     const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, questionText) : selected;
-    chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
+    const providerResult = buildProviderResult('google', requestId, mode, finalSelected, text);
+    await chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google', latestProviderResult: providerResult });
     let quality = 'response captured and stored';
     let warning = '';
-    if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\-]/i.test(text)) {
+    if (mode === 'mcq' && !/\\b(answer|correct answer|option)\\s*[:\\-]/i.test(text)) {
       warning = ' Response captured, but no explicit MCQ answer was found.';
       quality += '; MCQ answer marker missing';
-    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected)) {
+    } else if (mode === 'coding' && !/(#include|public\\s+class\\s+Main|\\bint\\s+main\\s*\\(|\\bdef\\s+main\\s*\\()/i.test(selected)) {
       warning = ' Response captured, but it does not look like a complete program.';
       quality += '; code completeness warning';
     }
-    setStatus(`Google AI Overview captured.${warning}`, warning ? 'error' : 'ready');
     addDiagnostic('complete', quality);
-    autoFillAssignment(assignmentTabId, finalSelected, 'Google AI', mode);
+    const applied = await autoFillAssignment(assignmentTabId, providerResult);
+    if (!applied?.ok) return;
+    if (warning) setStatus('Google AI Overview captured.' + warning, 'error');
     return;
   }
   if (selected && isPlaceholder(selected)) {
