@@ -76,7 +76,7 @@ async function cancelActiveRequest(reason = 'Request cancelled by user.') {
   activeChatGPTRequest = null;
   activeGeminiRequest = null;
   await chrome.storage.local.remove(['satoriActiveRequest', 'activeChatGPTRequest', 'activeGeminiRequest']);
-  setStatus(reason, 'error');
+  setStatus(reason, 'cancelled');
   addDiagnostic('cancel', reason);
 }
 
