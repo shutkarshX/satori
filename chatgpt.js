@@ -64,7 +64,7 @@
   };
 
   const findInput = () => document.querySelector(
-    '#prompt-textarea, textarea[data-id], textarea[placeholder], textarea, ' +
+    '#prompt-textarea, #mobile-composer-prompt, textarea[data-id], textarea[placeholder], textarea, ' +
     '[contenteditable="true"][data-lexical-editor="true"], ' +
     '[contenteditable="true"][role="textbox"], [contenteditable="true"]'
   );
@@ -114,8 +114,13 @@
       document.querySelector('button[data-testid="send-button"]'),
       document.querySelector('button[data-testid="fruitjuice-send-button"]'),
       document.querySelector('button[aria-label*="Send" i]'),
-      document.querySelector('button[title*="Send" i]')
-    ].find((btn) => btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true');
+      document.querySelector('button[title*="Send" i]'),
+      ...document.querySelectorAll('button')
+    ].find((btn) => {
+      if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return false;
+      const label = `${btn.getAttribute('aria-label') || ''} ${btn.getAttribute('data-testid') || ''} ${btn.getAttribute('title') || ''}`.toLowerCase();
+      return label.includes('send');
+    });
 
     if (sendButton) {
       try {
