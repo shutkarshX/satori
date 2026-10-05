@@ -90,6 +90,15 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   await cancelActiveRequest('Satori request timed out after 2 minutes.');
 });
 
+
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const current = await chrome.storage.local.get(['activeChatGPTRequest', 'activeGeminiRequest', 'satoriActiveRequest']);
+  const requests = [current.activeChatGPTRequest, current.activeGeminiRequest, current.satoriActiveRequest].filter(Boolean);
+  if (requests.some((request) => request.tabId === tabId)) {
+    await cancelActiveRequest('Provider tab was closed; request cancelled.');
+  }
+});
+
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'satori-cancel') {
     try { await cancelActiveRequest(); } catch (error) { setStatus(error.message, 'error'); }
