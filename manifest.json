@@ -8,8 +8,7 @@
     "scripting",
     "storage",
     "tabs",
-    "alarms",
-    "debugger"
+    "alarms"
   ],
   "host_permissions": [
     "https://www.google.com/*",
