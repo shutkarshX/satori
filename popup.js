@@ -51,6 +51,16 @@ $('provider').addEventListener('change', async () => {
   await refresh();
 });
 
+$('cancel').addEventListener('click', async () => {
+  $('status').textContent = 'Cancelling…';
+  try {
+    await chrome.runtime.sendMessage({ type: 'CANCEL_REQUEST' });
+    $('status').textContent = 'Request cancelled.';
+  } catch (error) {
+    $('status').textContent = `Could not cancel: ${error.message}`;
+  }
+});
+
 $('type').addEventListener('click', async () => {
   const draft = $('draft').value;
   if (!draft.trim()) {
