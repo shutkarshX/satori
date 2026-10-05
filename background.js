@@ -666,7 +666,6 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
               const appliedExisting = await autoFillAssignment(assignmentTab?.id, existingResult);
               if (!appliedExisting?.ok) return;
               return;
-              return;
             }
           }
         } catch (_e) {}
