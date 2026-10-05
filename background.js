@@ -635,16 +635,20 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
               const text = check.existing.text || code;
               addDiagnostic('chatgpt-instant', `captured existing answer from tab ${tab.id} (${code.length} chars)`);
               const finalExisting = mode === 'mcq' ? formatMcqAnswer(code, questionText) : code;
+              const existingResult = buildProviderResult('chatgpt', requestId, mode, finalExisting, text);
               await chrome.storage.local.set({
                 latestChatGPTResponse: finalExisting,
                 latestChatGPTRawResponse: text,
                 latestChatGPTAt: Date.now(),
-                latestProvider: 'chatgpt'
+                latestProvider: 'chatgpt',
+                latestProviderResult: existingResult
               });
+              await chrome.alarms.clear(`satori-timeout-${requestId}`);
               activeChatGPTRequest = null;
-              await chrome.storage.local.remove('activeChatGPTRequest');
-              autoFillAssignment(assignmentTab?.id, finalExisting, 'ChatGPT', mode);
-              setStatus('ChatGPT response captured.', 'ready');
+              await chrome.storage.local.remove(['activeChatGPTRequest', 'satoriActiveRequest']);
+              const appliedExisting = await autoFillAssignment(assignmentTab?.id, existingResult);
+              if (!appliedExisting?.ok) return;
+              return;
               return;
             }
           }
@@ -682,6 +686,9 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
       setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1500);
     }
   } catch (error) {
+    activeChatGPTRequest = null;
+    await chrome.storage.local.remove(['activeChatGPTRequest', 'satoriActiveRequest']);
+    await chrome.alarms.clear(`satori-timeout-${requestId}`);
     setStatus(`Could not prepare ChatGPT: ${error.message}`, 'error');
     addDiagnostic('chatgpt-error', error.message);
   }
