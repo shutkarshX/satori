@@ -15,7 +15,14 @@
   };
 
   function ensureStatusWidget() {
-    if (statusWidget.root || !document.body) return;
+    // If an existing widget element already exists in document, clean up duplicates
+    const existing = [...document.querySelectorAll('#satori-status-widget')];
+    if (existing.length > 0) {
+      statusWidget.root = existing[0];
+      for (let i = 1; i < existing.length; i++) existing[i].remove();
+      return;
+    }
+    if (!document.body) return;
 
     const root = document.createElement('div');
     root.id = 'satori-status-widget';
@@ -338,8 +345,12 @@
     let letterTarget = null;
     if (letterIndex >= 0) {
       const explicit = visibleRadios.find((input) => {
-        const value = `${input.value || ''} ${input.id || ''} ${input.getAttribute('aria-label') || ''}`.toUpperCase();
-        return value.includes(targetLetter) || value.trim() === String(letterIndex);
+        const idAndLabel = `${input.id || ''} ${input.getAttribute('aria-label') || ''}`.toUpperCase();
+        // Check for standalone letter in id/aria-label (e.g. "choice-B", "option_B")
+        if (new RegExp(`(?:^|[^A-Z])${targetLetter}(?:[^A-Z]|$)`).test(idAndLabel)) return true;
+        // Check if value is literally just the option index or letter
+        const val = (input.value || '').trim().toUpperCase();
+        return val === targetLetter || val === String(letterIndex);
       });
       letterTarget = explicit || visibleRadios[letterIndex] || null;
       if (letterTarget) {
