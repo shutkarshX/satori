@@ -134,38 +134,48 @@
 
   const clickSend = () => {
     const input = findInput();
-    const sendButton = [
+
+    // Never call form.requestSubmit() here. ChatGPT's composer form can contain
+    // required fields unrelated to the message body; requestSubmit() can then
+    // trigger the browser's native "Please fill in this field" bubble.
+    const candidates = [
       document.querySelector('button[data-testid="send-button"]'),
       document.querySelector('button[data-testid="fruitjuice-send-button"]'),
+      input?.closest('form')?.querySelector('button[type="submit"]'),
       document.querySelector('button[aria-label*="Send" i]'),
       document.querySelector('button[title*="Send" i]'),
       ...document.querySelectorAll('button')
-    ].find((btn) => {
+    ];
+
+    const sendButton = candidates.find((btn) => {
       if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return false;
-      const label = `${btn.getAttribute('aria-label') || ''} ${btn.getAttribute('data-testid') || ''} ${btn.getAttribute('title') || ''}`.toLowerCase();
-      return label.includes('send');
+      const label = String(btn.getAttribute('aria-label') || '') + ' ' +
+        String(btn.getAttribute('data-testid') || '') + ' ' +
+        String(btn.getAttribute('title') || '');
+      return label.toLowerCase().includes('send') || btn.type === 'submit';
     });
 
     if (sendButton) {
       try {
-        sendButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-        sendButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-        sendButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
-        sendButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
         sendButton.click();
         return true;
       } catch (_e) {}
     }
 
-    const form = input?.closest('form');
-    if (form) {
-      try { form.requestSubmit(); return true; } catch (_e) {}
-    }
-
     if (input) {
       try {
         input.focus();
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+        const eventInit = {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true
+        };
+        input.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+        input.dispatchEvent(new KeyboardEvent('keypress', eventInit));
+        input.dispatchEvent(new KeyboardEvent('keyup', eventInit));
         return true;
       } catch (_e) {}
     }
@@ -265,16 +275,34 @@
   };
 
   const keepLatestTurnRendered = () => {
-    // ChatGPT can virtualize older conversation turns. When the reused provider
-    // tab is left away from the bottom, the newest assistant turn may exist
-    // server-side but not be mounted in the DOM. Keep the provider viewport at
-    // the latest turn while Satori is waiting, without focusing the tab.
+    // ChatGPT may use an inner conversation scroller rather than the document
+    // itself. Move the actual scroll container to the newest turn while the
+    // provider tab stays in the background; do not focus or activate the tab.
     try {
+      const assistantNodes = responseNodes();
+      const latestAssistant = assistantNodes[assistantNodes.length - 1];
+      if (latestAssistant?.scrollIntoView) {
+        latestAssistant.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' });
+      }
+
+      const scrollables = [...document.querySelectorAll('*')]
+        .filter((el) => {
+          if (!el || el === document.documentElement || el === document.body) return false;
+          const style = getComputedStyle(el);
+          const canScroll = el.scrollHeight > el.clientHeight + 40;
+          return canScroll && /(auto|scroll)/i.test(style.overflowY || '');
+        })
+        .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
+
+      for (const el of scrollables.slice(0, 3)) {
+        try {
+          el.scrollTop = el.scrollHeight;
+        } catch (_e) {}
+      }
+
       const scrollingElement = document.scrollingElement || document.documentElement;
-      const distanceFromBottom = scrollingElement.scrollHeight -
-        (window.scrollY + window.innerHeight);
-      if (distanceFromBottom > 160) {
-        window.scrollTo({ top: scrollingElement.scrollHeight, behavior: 'auto' });
+      if (scrollingElement.scrollHeight > scrollingElement.clientHeight + 40) {
+        scrollingElement.scrollTop = scrollingElement.scrollHeight;
       }
     } catch (_e) {}
   };
