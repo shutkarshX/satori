@@ -39,8 +39,8 @@ function updateProviderUI() {
   $('askProvider').textContent = labels[$('provider').value] || labels.google;
 }
 
-chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse', 'satoriStatus', 'satoriDiagnostics', 'satoriMode'], (result) => {
-  if (result.satoriMode) $('mode').value = result.satoriMode;
+chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse', 'satoriStatus', 'satoriDiagnostics', 'satoriProvider'], (result) => {
+  if (result.satoriProvider) $('provider').value = result.satoriProvider;
   showSelectedProviderResponse(result);
   showAiStatus(result.satoriStatus);
   showDiagnostics(result.satoriDiagnostics);
@@ -56,7 +56,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.satoriDiagnostics) showDiagnostics(changes.satoriDiagnostics.newValue);
 });
 updateProviderUI();
-$('provider').addEventListener('change', updateProviderUI);
+$('provider').addEventListener('change', () => { updateProviderUI(); chrome.storage.local.set({ satoriProvider: $('provider').value }); });
 $('provider').addEventListener('change', async () => {
   const result = await chrome.storage.local.get(['latestGoogleResponse', 'latestGeminiResponse', 'latestChatGPTResponse']);
   showSelectedProviderResponse(result);
