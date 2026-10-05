@@ -57,7 +57,7 @@ async function runShortcut(mode) {
     'latestChatGPTResponse', 'latestChatGPTRawResponse'
   ]);
   await chrome.storage.local.set({
-    satoriActiveRequest: { requestId, provider, mode, assignmentTabId: assignmentTab.id, questionText, startedAt: Date.now() }
+    satoriActiveRequest: { requestId, provider, mode, assignmentTabId: assignmentTab.id, questionText, providerTabId: null, startedAt: Date.now() }
   });
   statusMeta = { requestId, provider, mode, startedAt: Date.now(), estimateSec: provider === 'google' ? 10 : provider === 'gemini' ? 8 : 12 };
   await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 2 });
@@ -449,17 +449,23 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
   chrome.tabs.onUpdated.addListener(listener);
   try {
     if (tab?.id) {
+      await chrome.storage.local.set({ satoriActiveRequest: { requestId, provider: 'google', mode, assignmentTabId: assignmentTab?.id, questionText, providerTabId: tab.id, startedAt: Date.now() } });
       await chrome.tabs.update(tab.id, { url, active: false });
     } else {
       tab = await chrome.tabs.create({ url, active: false, windowId });
       if (!tab?.id) throw new Error('Chrome did not create the tab.');
       targetTabId = tab.id;
-      await chrome.storage.local.set({ satoriGoogleTabId: tab.id, satoriGoogleWindowId: tab.windowId });
+      await chrome.storage.local.set({
+        satoriGoogleTabId: tab.id,
+        satoriGoogleWindowId: tab.windowId,
+        satoriActiveRequest: { requestId, provider: 'google', mode, assignmentTabId: assignmentTab?.id, questionText, providerTabId: tab.id, startedAt: Date.now() }
+      });
     }
     if (!reused && tab.status === 'complete') handleLoaded();
   } catch (error) {
     chrome.tabs.onUpdated.removeListener(listener);
     if (requestId === activeRequestId) {
+      await chrome.alarms.clear(`satori-timeout-${requestId}`);
       await chrome.storage.local.remove('satoriActiveRequest');
       setStatus(`Could not open Google Search: ${error.message}`, 'error');
     }
