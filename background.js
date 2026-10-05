@@ -526,7 +526,8 @@ async function handleGeminiResponse(message) {
   if (requestId) await chrome.alarms.clear(`satori-timeout-${requestId}`);
   activeGeminiRequest = null;
   await chrome.storage.local.remove(['activeGeminiRequest', 'satoriActiveRequest']);
-  await autoFillAssignment(assignmentTabId, providerResult);
+  const applied = await autoFillAssignment(assignmentTabId, providerResult);
+  if (!applied?.ok) return;
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('gemini-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
