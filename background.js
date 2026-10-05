@@ -436,7 +436,12 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
     chrome.tabs.onUpdated.removeListener(listener);
     setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
     addDiagnostic('page', `Google Search tab ${targetTabId} loaded`);
-    pollGoogleAIOverview(targetTabId, '', requestId, mode, assignmentTab?.id, questionText);
+    readGoogleAIOverview(targetTabId, mode).then((baseline) => {
+      if (requestId !== activeRequestId) return;
+      startGoogleWatch(targetTabId, requestId, mode, baseline);
+    }).catch((error) => {
+      addDiagnostic('google-error', `initial overview read failed: ${error.message}`);
+    });
   };
   const listener = (updatedTabId, changeInfo) => {
     if (updatedTabId === targetTabId && changeInfo.status === 'complete') handleLoaded();
@@ -809,6 +814,10 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   }
   if (message.type === 'GEMINI_SUBMITTED') {
     addDiagnostic('gemini-submit', message.detail || 'Gemini prompt submitted');
+    return;
+  }
+  if (message.type === 'GOOGLE_RESPONSE') {
+    handleGoogleResponse(message);
     return;
   }
   if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
