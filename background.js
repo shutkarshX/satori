@@ -297,6 +297,7 @@ async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTa
     const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, questionText) : selected;
     const providerResult = buildProviderResult('google', requestId, mode, finalSelected, text);
     await chrome.alarms.clear(`satori-timeout-${requestId}`);
+    await chrome.storage.local.remove('satoriActiveRequest');
     await chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google', latestProviderResult: providerResult });
     let quality = 'response captured and stored';
     let warning = '';
