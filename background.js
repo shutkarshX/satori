@@ -63,27 +63,9 @@ function formatMcqAnswer(text, questionText = '') {
   if (!text) return { letter: null, text: '', raw: '' };
   let clean = text.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').trim();
 
-  // If question options are known, test against them directly (longest first)
-  if (questionText) {
-    const stopWords = /^(Question|Marks|Negative|Answer here|Clear|Prev|Next|Submit|Section|Time|View|Multi Choice|Single File|degree|batch|roll number|name|email|test name)/i;
-    const knownOptions = questionText
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => Boolean(l) && !stopWords.test(l) && l.length < 150 && !l.includes('?') && !l.endsWith(':') && l.length >= 1);
-
-    const norm = (s) => s.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').replace(/\s+/g, '').toLowerCase();
-    const normClean = norm(clean);
-    const sorted = [...knownOptions].sort((a, b) => b.length - a.length);
-
-    for (const opt of sorted) {
-      const normOpt = norm(opt);
-      if (normOpt.length >= 2 && normClean.includes(normOpt)) {
-        return { letter: null, text: opt, raw: clean };
-      }
-    }
-  }
-
-  // 1. Explicit answer marker: "ANSWER: B - Text" or "ANSWER: C"
+  // 1. Explicit answer marker: preserve the option letter and text exactly.
+  // The letter is authoritative; page-option matching below is only verification.
+  const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
   const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
   if (explicitMatch && explicitMatch[1]) {
     const candidate = explicitMatch[1].replace(/^\*+|\*+$/g, '').trim();
