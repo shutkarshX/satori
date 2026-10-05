@@ -185,12 +185,38 @@ function formatMcqAnswer(text, questionText = '') {
   return fallback.length < 80 ? fallback.trim() : fallback.trim().slice(0, 80);
 }
 
-async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
-  if (!tabId || !text || text.trim() === 'Code not available') return;
+function buildProviderResult(provider, requestId, mode, selected, raw) {
+  const text = String(selected || '').trim();
+  if (mode === 'mcq') {
+    const formatted = formatMcqAnswer(text);
+    const letter = formatted.match(/^(?:Option\\s+)?([A-D])(?:\\s*[-:.)]|$)/i)?.[1]?.toUpperCase() || null;
+    const answerText = formatted.replace(/^(?:Option\\s+)?[A-D](?:\\s*[-:.)]|\\s+)/i, '').trim();
+    return {
+      provider, requestId, type: 'mcq',
+      answer: { letter, text: answerText || formatted, raw: text },
+      raw: String(raw || text),
+      createdAt: Date.now()
+    };
+  }
+  return {
+    provider, requestId, type: 'coding',
+    language: null,
+    code: text,
+    raw: String(raw || text),
+    createdAt: Date.now()
+  };
+}
+
+async function autoFillAssignment(tabId, providerResult) {
+  if (!tabId || !providerResult) return { ok: false, error: 'No assignment target or provider result.' };
+  const mode = providerResult.type;
+  if (mode === 'coding' && (!providerResult.code || providerResult.code === 'Code not available')) {
+    return { ok: false, error: 'No usable code was returned.' };
+  }
   try {
-    const cleanAnswer = mode === 'mcq' ? formatMcqAnswer(text) : text;
-    const msgType = mode === 'mcq' ? 'SELECT_MCQ_OPTION' : 'TYPE_INTO_EDITOR';
-    const payload = mode === 'mcq' ? { type: msgType, answer: cleanAnswer } : { type: msgType, text, append: false };
+    const payload = mode === 'mcq'
+      ? { type: 'SELECT_MCQ_OPTION', answer: providerResult.answer }
+      : { type: 'TYPE_INTO_EDITOR', text: providerResult.code, append: false };
     let result;
     try { result = await chrome.tabs.sendMessage(tabId, payload); }
     catch (_error) {
@@ -198,17 +224,21 @@ async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
       result = await chrome.tabs.sendMessage(tabId, payload);
     }
     if (result?.ok) {
-      const detail = mode === 'mcq' ? `MCQ option '${result.selected?.matched || 'choice'}' marked on portal` : 'answer placed into the assignment editor';
-      addDiagnostic(`${provider}-autofill`, detail);
-      setStatus(`${provider} answer ${mode === 'mcq' ? 'selected' : 'placed in editor'}. Review before submitting.`, 'ready');
-    } else {
-      const detail = result?.error || (mode === 'mcq' ? 'could not locate MCQ option' : 'assignment editor was not found');
-      addDiagnostic(`${provider}-autofill`, detail);
-      setStatus(`${provider} answer could not be applied: ${detail}`, 'error');
+      const detail = mode === 'mcq'
+        ? `MCQ option '${result.selected?.matched || 'choice'}' marked on portal`
+        : 'answer placed into the assignment editor';
+      addDiagnostic(`${providerResult.provider}-autofill`, detail);
+      setStatus(`${providerResult.provider} answer ${mode === 'mcq' ? 'selected' : 'placed in editor'}. Review before submitting.`, 'ready');
+      return result;
     }
+    const detail = result?.error || (mode === 'mcq' ? 'could not locate MCQ option' : 'assignment editor was not found');
+    addDiagnostic(`${providerResult.provider}-autofill`, detail);
+    setStatus(`${providerResult.provider} answer could not be applied: ${detail}`, 'error');
+    return { ok: false, error: detail };
   } catch (error) {
-    addDiagnostic(`${provider}-autofill`, `could not place answer (${error.message})`);
-    setStatus(`${provider} answer could not be applied.`, 'error');
+    addDiagnostic(`${providerResult.provider}-autofill`, `could not place answer (${error.message})`);
+    setStatus(`${providerResult.provider} answer could not be applied.`, 'error');
+    return { ok: false, error: error.message };
   }
 }
 
@@ -462,11 +492,13 @@ async function handleGeminiResponse(message) {
     return;
   }
   const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, activeGeminiRequest?.questionText || '') : selected;
-  chrome.storage.local.set({ latestGeminiResponse: finalSelected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
+  const requestId = activeGeminiRequest?.requestId || message.requestId || null;
+  const providerResult = buildProviderResult('gemini', requestId, mode, finalSelected, raw);
+  await chrome.storage.local.set({ latestGeminiResponse: finalSelected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini', latestProviderResult: providerResult });
   const assignmentTabId = activeGeminiRequest?.assignmentTabId;
   activeGeminiRequest = null;
-  await chrome.storage.local.remove('activeGeminiRequest');
-  autoFillAssignment(assignmentTabId, finalSelected, 'Gemini', mode);
+  await chrome.storage.local.remove(['activeGeminiRequest', 'satoriActiveRequest']);
+  await autoFillAssignment(assignmentTabId, providerResult);
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('gemini-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
@@ -650,16 +682,13 @@ async function handleChatGPTResponse(message) {
   }
 
   const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, activeChatGPTRequest?.questionText || '') : selected;
-  chrome.storage.local.set({
-    latestChatGPTResponse: finalSelected,
-    latestChatGPTRawResponse: raw,
-    latestChatGPTAt: Date.now(),
-    latestProvider: 'chatgpt'
-  });
+  const requestId = activeChatGPTRequest?.requestId || message.requestId || null;
+  const providerResult = buildProviderResult('chatgpt', requestId, mode, finalSelected, raw);
+  await chrome.storage.local.set({ latestChatGPTResponse: finalSelected, latestChatGPTRawResponse: raw, latestChatGPTAt: Date.now(), latestProvider: 'chatgpt', latestProviderResult: providerResult });
   const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
   activeChatGPTRequest = null;
-  await chrome.storage.local.remove('activeChatGPTRequest');
-  autoFillAssignment(assignmentTabId, finalSelected, 'ChatGPT', mode);
+  await chrome.storage.local.remove(['activeChatGPTRequest', 'satoriActiveRequest']);
+  await autoFillAssignment(assignmentTabId, providerResult);
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`ChatGPT response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
@@ -681,7 +710,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
   if (message.type === 'CHATGPT_DIAGNOSTIC') { addDiagnostic('chatgpt', message.detail || 'ChatGPT adapter diagnostic'); return; }
   if (message.type === 'CHATGPT_SUBMITTED') { addDiagnostic('chatgpt-submit', message.detail || 'ChatGPT prompt submitted'); return; }
-  if (message.type === 'CHATGPT_ASSIGNMENT_ENTER') {
+  if (false && message.type === 'CHATGPT_ASSIGNMENT_ENTER') {
     addDiagnostic('chatgpt-submit', 'assignment-tab Enter received');
     if (!activeChatGPTRequest?.tabId) {
       const stored = await chrome.storage.local.get('activeChatGPTRequest');
