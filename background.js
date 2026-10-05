@@ -384,6 +384,29 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
   let tab = windowId ? await getReusableTab(/https:\/\/(chatgpt\.com|chat\.openai\.com)\//i, 'satoriChatGPTTabId', 'satoriChatGPTWindowId', windowId) : null;
   activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
 
+  const startPolling = (tabId) => {
+    let pollCount = 0;
+    const interval = setInterval(async () => {
+      pollCount += 1;
+      const current = await chrome.storage.local.get('satoriActiveRequest');
+      if (current.satoriActiveRequest?.requestId !== requestId || pollCount > 100) {
+        clearInterval(interval);
+        return;
+      }
+      try {
+        chrome.tabs.sendMessage(tabId, { type: 'POLL_LATEST_RESPONSE' }, (res) => {
+          if (chrome.runtime.lastError || !res?.ok) return;
+          if (res.ready && res.result) {
+            clearInterval(interval);
+            handleCompletedResult('chatgpt', requestId, res.result);
+          }
+        });
+      } catch (_e) {
+        clearInterval(interval);
+      }
+    }, 1000);
+  };
+
   const sendPrompt = (tabId, retries = 15) => {
     chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', prompt, requestId, mode }, (res) => {
       if (chrome.runtime.lastError || !res?.ok) {
@@ -391,6 +414,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
         else setStatus('ChatGPT composer was not ready. Check the background ChatGPT tab.', 'error');
       } else {
         addDiagnostic('chatgpt-submit', 'Prompt dispatched to ChatGPT MutationObserver');
+        startPolling(tabId);
       }
     });
   };

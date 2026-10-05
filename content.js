@@ -317,20 +317,16 @@
       if (!element) return null;
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-      const label = element.closest('label') || (element.matches('label') ? element : null);
-      const radio = element.matches('input[type="radio"]') ? element : element.querySelector('input[type="radio"]');
-
-      if (label) {
-        label.click();
-      } else if (radio) {
-        radio.click();
-      } else {
-        element.click();
-      }
-
       if (radio) {
+        radio.checked = true;
+        radio.click();
         radio.dispatchEvent(new Event('input', { bubbles: true }));
         radio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (label && label !== radio) {
+        label.click();
+      } else if (!radio) {
+        element.click();
       }
 
       return { matched, type: 'selected' };

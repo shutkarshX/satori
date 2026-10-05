@@ -262,6 +262,23 @@
     const latest = candidates[candidates.length - 1];
     if (!latest || latest.signature === state.lastSignature) return;
 
+    const generating = isGenerating();
+    const code = extractCode(latest.text, latest.node);
+
+    // If answer is ready and OpenAI is not actively streaming, emit immediately
+    if (!generating) {
+      if (state.mode === 'coding' && code) {
+        state.lastSignature = latest.signature;
+        report('CHATGPT_RESPONSE', { text: latest.text, code, capturedAt: Date.now() });
+        return;
+      }
+      if (state.mode === 'mcq' && (/ANSWER\s*:\s*[A-D]/i.test(latest.text) || latest.text.length > 20)) {
+        state.lastSignature = latest.signature;
+        report('CHATGPT_RESPONSE', { text: latest.text, code: code || latest.text, capturedAt: Date.now() });
+        return;
+      }
+    }
+
     clearTimeout(state.quietTimer);
     const processResult = () => {
       if (isGenerating()) {
@@ -275,9 +292,9 @@
       const final = current[current.length - 1] || latest;
       if (!final || final.signature === state.lastSignature) return;
 
-      const code = extractCode(final.text, final.node);
+      const finalCode = extractCode(final.text, final.node);
 
-      if (state.mode === 'coding' && !code && Date.now() - state.lastSentAt < 12000) {
+      if (state.mode === 'coding' && !finalCode && Date.now() - state.lastSentAt < 12000) {
         report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for code block');
         clearTimeout(state.quietTimer);
         state.quietTimer = setTimeout(processResult, 400);
@@ -285,10 +302,9 @@
       }
 
       state.lastSignature = final.signature;
-      const finalCode = code || final.text;
       report('CHATGPT_RESPONSE', {
         text: final.text,
-        code: finalCode,
+        code: finalCode || final.text,
         capturedAt: Date.now()
       });
     };
@@ -353,13 +369,21 @@
         return true;
       }
 
-      if (message.type === 'CHECK_EXISTING_RESPONSE') {
-        const existing = checkExistingResponse(message.prompt, message.mode);
-        if (existing) {
-          sendResponse({ ok: true, existing });
+      if (message.type === 'POLL_LATEST_RESPONSE') {
+        const candidates = candidateResponses();
+        const latest = candidates[candidates.length - 1];
+        if (latest && latest.signature !== state.lastSignature) {
+          const generating = isGenerating();
+          const code = extractCode(latest.text, latest.node);
+          if (!generating) {
+            state.lastSignature = latest.signature;
+            sendResponse({ ok: true, ready: true, result: { text: latest.text, code: code || latest.text, capturedAt: Date.now() } });
+            return true;
+          }
+          sendResponse({ ok: true, ready: false, generating: true });
           return true;
         }
-        sendResponse({ ok: false });
+        sendResponse({ ok: true, ready: false });
         return true;
       }
 
