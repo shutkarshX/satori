@@ -823,26 +823,4 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
   if (message.type === 'CHATGPT_DIAGNOSTIC') { addDiagnostic('chatgpt', message.detail || 'ChatGPT adapter diagnostic'); return; }
   if (message.type === 'CHATGPT_SUBMITTED') { addDiagnostic('chatgpt-submit', message.detail || 'ChatGPT prompt submitted'); return; }
-  if (!['OPEN_GOOGLE_SEARCH', 'OPEN_GEMINI_REQUEST', 'OPEN_CHATGPT_REQUEST'].includes(message.type)) return;
-  activeRequestId += 1;
-  const requestId = activeRequestId;
-  const provider = message.type === 'OPEN_GEMINI_REQUEST' ? 'gemini' : message.type === 'OPEN_CHATGPT_REQUEST' ? 'chatgpt' : 'google';
-  chrome.storage.local.set({ satoriDiagnostics: [{ time: new Date().toLocaleTimeString(), step: 'request', detail: `provider=${provider}` }] });
-  const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
-  addDiagnostic('prompt', `${provider} query length=${query.length}`);
-  let assignmentTab = sender.tab;
-  if (!assignmentTab?.windowId) {
-    const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    assignmentTab = activeTabs.find((tab) => tab.id && !/^https:\/\/(www\.)?google\./i.test(tab.url || '') && !/^https:\/\/gemini\.google\.com\//i.test(tab.url || '')) || activeTabs[0];
-  }
-  addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId}` : 'assignment window unavailable');
-  const questionText = message.questionText || '';
-  if (provider === 'google') {
-    startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
-  } else if (provider === 'gemini') {
-    startGeminiSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
-  } else {
-    startChatGPTSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
-  }
-  sendResponse({ ok: true });
 });
