@@ -108,7 +108,7 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.satoriStatus) renderStatus(changes.satoriStatus.newValue);
   });
-  chrome.storage.local.get('satoriStatus', (result) => renderStatus(result.satoriStatus));
+  chrome.storage.local.get('satoriStatus', (result) => renderStatus(result.satoriStatus || { kind: 'idle', text: 'Satori ready', at: Date.now() }));
 
   const isEditable = (el) => {
     if (!el) return false;
