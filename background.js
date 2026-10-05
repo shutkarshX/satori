@@ -201,8 +201,15 @@ async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
       const detail = mode === 'mcq' ? `MCQ option '${result.selected?.matched || 'choice'}' marked on portal` : 'answer placed into the assignment editor';
       addDiagnostic(`${provider}-autofill`, detail);
       setStatus(`${provider} answer ${mode === 'mcq' ? 'selected' : 'placed in editor'}. Review before submitting.`, 'ready');
-    } else addDiagnostic(`${provider}-autofill`, result?.error || (mode === 'mcq' ? 'could not locate MCQ option' : 'assignment editor was not found'));
-  } catch (error) { addDiagnostic(`${provider}-autofill`, `could not place answer (${error.message})`); }
+    } else {
+      const detail = result?.error || (mode === 'mcq' ? 'could not locate MCQ option' : 'assignment editor was not found');
+      addDiagnostic(`${provider}-autofill`, detail);
+      setStatus(`${provider} answer could not be applied: ${detail}`, 'error');
+    }
+  } catch (error) {
+    addDiagnostic(`${provider}-autofill`, `could not place answer (${error.message})`);
+    setStatus(`${provider} answer could not be applied.`, 'error');
+  }
 }
 
 async function readGoogleAIOverview(tabId) {
@@ -430,6 +437,14 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questio
 }
 
 async function handleGeminiResponse(message) {
+  if (!activeGeminiRequest) {
+    const stored = await chrome.storage.local.get('activeGeminiRequest');
+    if (stored.activeGeminiRequest) activeGeminiRequest = stored.activeGeminiRequest;
+  }
+  if (message.requestId && activeGeminiRequest?.requestId && message.requestId !== activeGeminiRequest.requestId) {
+    addDiagnostic('gemini-validation', `ignored stale response for request ${message.requestId}`);
+    return;
+  }
   const responsePayload = message.detail ?? message.text;
   const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
   
