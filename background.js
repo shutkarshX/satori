@@ -66,7 +66,6 @@ function formatMcqAnswer(text, questionText = '') {
   // 1. Explicit answer marker: preserve the option letter and text exactly.
   // The letter is authoritative; page-option matching below is only verification.
   const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
-  const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
   if (explicitMatch && explicitMatch[1]) {
     const candidate = explicitMatch[1].replace(/^\*+|\*+$/g, '').trim();
     const parsed = candidate.match(/^(?:Option\s+)?(?:\(?([A-Da-d])\)?[\).\:\-\s]*)\s*(.*)$/);
