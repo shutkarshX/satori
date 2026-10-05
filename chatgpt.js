@@ -42,6 +42,18 @@
     if (list.length) {
       return list.filter((node) => nodeText(node).length > 0);
     }
+    // Some ChatGPT layouts expose assistant turns through an accessible
+    // "ChatGPT said:" heading instead of data-message-author-role.
+    const turns = [...document.querySelectorAll('h4')]
+      .filter((el) => {
+        const text = clean(el.innerText || el.textContent || '');
+        return text === 'ChatGPT said:' || text.startsWith('ChatGPT said:');
+      })
+      .map((header) => header.nextElementSibling || header.parentElement || header)
+      .filter((node) => nodeText(node).length > 0);
+
+    if (turns.length) return [...new Set(turns)];
+
     const fallback = [
       ...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown'),
       ...document.querySelectorAll('article .markdown'),
@@ -59,7 +71,10 @@
   });
 
   const candidateResponses = () => {
-    return responseSnapshot().filter((item) => !state.baselineNodes.has(item.node));
+    return responseSnapshot().filter((item) =>
+      !state.baselineNodes.has(item.node) ||
+      !state.baseline.has(item.signature)
+    );
   };
 
   const report = (type, detail) => {
@@ -238,10 +253,11 @@
     if (!latest || latest.signature === state.lastSignature) return;
 
     clearTimeout(state.quietTimer);
-    state.quietTimer = setTimeout(() => {
+
+    const processResult = () => {
       if (isGenerating()) {
         report('CHATGPT_DIAGNOSTIC', 'ChatGPT generation still in progress; waiting for completion');
-        inspectForNewResponse();
+        state.quietTimer = setTimeout(processResult, 800);
         return;
       }
 
@@ -254,7 +270,7 @@
       if (state.mode === 'coding' && !code) {
         if (Date.now() - state.lastSentAt < 15000) {
           report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for a real code block');
-          inspectForNewResponse();
+          state.quietTimer = setTimeout(processResult, 800);
           return;
         }
         state.lastSignature = final.signature;
@@ -262,6 +278,7 @@
         report('CHATGPT_RESPONSE', {
           text: final.text,
           code: '',
+          mode: state.mode,
           capturedAt: Date.now()
         });
         return;
@@ -274,7 +291,9 @@
         mode: state.mode,
         capturedAt: Date.now()
       });
-    }, 800);
+    };
+
+    state.quietTimer = setTimeout(processResult, 800);
   };
 
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
