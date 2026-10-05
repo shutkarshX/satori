@@ -36,6 +36,7 @@
       #satori-status-widget.satori-waiting .satori-status-pill{border-color:#e5b84b;background:#fff8df}
       #satori-status-widget.satori-ready .satori-status-pill{border-color:#63b77a;background:#eaf7ee}
       #satori-status-widget.satori-error .satori-status-pill{border-color:#e28a83;background:#fdf0ef}
+      #satori-status-widget.satori-cancelled .satori-status-pill{border-color:#d7dbe0;background:#f1f3f4}
     `;
     document.documentElement.appendChild(style);
     document.body.appendChild(root);
@@ -70,9 +71,9 @@
     ensureStatusWidget();
     if (!statusWidget.root || !value) return;
     const root = statusWidget.root;
-    root.classList.remove('satori-waiting','satori-ready','satori-error');
+    root.classList.remove('satori-waiting','satori-ready','satori-error','satori-cancelled');
     root.classList.add(`satori-${value.kind || 'waiting'}`);
-    root.querySelector('.satori-status-icon').textContent = value.kind === 'ready' ? '✓' : value.kind === 'error' ? '×' : '◉';
+    root.querySelector('.satori-status-icon').textContent = value.kind === 'ready' ? '✓' : value.kind === 'error' ? '×' : value.kind === 'cancelled' ? '–' : '◉';
     root.querySelector('.satori-status-detail').textContent = value.text || 'Satori';
     if (statusWidget.timer) clearInterval(statusWidget.timer);
 
@@ -82,7 +83,7 @@
 
     const updateTime = () => {
       if (value.kind !== 'waiting' || !estimate) {
-        timeEl.textContent = value.kind === 'ready' ? 'DONE' : value.kind === 'error' ? 'ERROR' : '—';
+        timeEl.textContent = value.kind === 'ready' ? 'DONE' : value.kind === 'error' ? 'ERROR' : value.kind === 'cancelled' ? 'CANCELLED' : '—';
         return;
       }
       const elapsed = (Date.now() - startedAt) / 1000;
@@ -92,7 +93,7 @@
     updateTime();
     if (value.kind === 'waiting') statusWidget.timer = setInterval(updateTime, 500);
 
-    if (value.kind === 'ready' || value.kind === 'error') {
+    if (value.kind === 'ready' || value.kind === 'error' || value.kind === 'cancelled') {
       setTimeout(() => {
         if (statusWidget.root && statusWidget.root.classList.contains(`satori-${value.kind}`)) {
           if (statusWidget.timer) clearInterval(statusWidget.timer);
