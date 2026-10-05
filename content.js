@@ -105,10 +105,15 @@
     }
   }
 
+  // Render the widget immediately; do not depend on a background status event.
+  ensureStatusWidget();
+  renderStatus({ kind: 'idle', text: 'Satori ready', at: Date.now() });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.satoriStatus) renderStatus(changes.satoriStatus.newValue);
   });
-  chrome.storage.local.get('satoriStatus', (result) => renderStatus(result.satoriStatus || { kind: 'idle', text: 'Satori ready', at: Date.now() }));
+  chrome.storage.local.get('satoriStatus', (result) => {
+    if (result.satoriStatus) renderStatus(result.satoriStatus);
+  });
 
   const isEditable = (el) => {
     if (!el) return false;
