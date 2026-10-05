@@ -7,28 +7,55 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header><strong>Satori</strong><span class="badge">practice only</span></header>
-  <label id="providerLabel" for="provider">AI provider</label>
-  <select id="provider"><option value="chatgpt">ChatGPT</option><option value="gemini">Gemini</option><option value="google">Google AI Mode</option></select>
-  <div class="shortcut-card">
-    <strong>Shortcuts</strong>
-    <span><kbd>Alt+Shift+M</kbd> MCQ</span>
-    <span><kbd>Alt+Shift+C</kbd> Coding</span>
-    <span><kbd>Alt+Shift+X</kbd> Cancel</span>
-    <small>Open an assignment and use the shortcut. Satori reads the full page and runs the selected AI in the background.</small>
+  <header>
+    <strong>Satori</strong>
+    <span class="badge">practice only</span>
+  </header>
+
+  <div class="shortcuts-card">
+    <div class="shortcut-row"><span>MCQ</span><kbd>Alt + Shift + M</kbd></div>
+    <div class="shortcut-row"><span>Coding</span><kbd>Alt + Shift + C</kbd></div>
+    <div class="shortcut-row"><span>Cancel</span><kbd>Alt + Shift + X</kbd></div>
   </div>
+
+  <label for="provider">AI provider</label>
+  <select id="provider">
+    <option value="chatgpt">ChatGPT (background)</option>
+    <option value="gemini">Gemini (background)</option>
+    <option value="google">Google AI Mode</option>
+  </select>
+
+  <label for="mode">Question type</label>
+  <select id="mode">
+    <option value="mcq">MCQ</option>
+    <option value="coding">Coding</option>
+  </select>
+
+  <button id="extract">Read page content</button>
+  <textarea id="question" placeholder="Select question text or click 'Read page content'."></textarea>
+
+  <button id="runSearch" class="primary">Solve with Selected AI</button>
+
   <div id="aiStatus" class="ai-status idle">Idle — ready for a question</div>
-  <button id="cancel" type="button">Cancel current request</button>
-  <details id="diagnostics"><summary>Diagnostics</summary><pre id="diagnosticLog">No request yet.</pre></details>
+
+  <details id="diagnostics">
+    <summary>Diagnostics</summary>
+    <pre id="diagnosticLog">No request yet.</pre>
+  </details>
+
   <label id="responseLabel" for="response">Latest AI response</label>
-  <textarea id="response" readonly placeholder="The selected provider response will appear here."></textarea>
+  <textarea id="response" readonly placeholder="The AI response will appear here."></textarea>
+
   <hr>
-  <label for="draft">Reviewed answer/code to type into the assignment</label>
+
+  <label for="draft">Reviewed answer/code to type into assignment</label>
   <textarea id="draft" placeholder="Click the assignment editor first, then put reviewed text here."></textarea>
   <label class="check"><input type="checkbox" id="append"> append instead of replace</label>
   <button id="type">Type into focused assignment editor</button>
+
   <p id="status" role="status"></p>
   <small>AI providers run in the background. Final review and submission stay manual.</small>
+
   <script src="popup.js"></script>
 </body>
 </html>
