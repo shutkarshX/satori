@@ -227,9 +227,9 @@ function looksLikeCode(text) {
   const value = String(text || '').trim();
   if (value.length < 20) return false;
   const signals = [
-    /#include\\s*[<"]/i, /\\bpublic\\s+(?:static\\s+)?class\\b/i, /\\b(?:int|long|void|bool|double|float|string)\\s+main\\s*\\(/i,
-    /\\bdef\\s+\\w+\\s*\\(/i, /\\bfunction\\s+\\w+\\s*\\(/i, /=>/, /[{};][\\s\\S]*[{};]/,
-    /\\bimport\\s+(?:java|javafx|sys|os|math|collections)\\b/i
+    /#include\s*[<"]/i, /\bpublic\s+(?:static\s+)?class\b/i, /\b(?:int|long|void|bool|double|float|string)\s+main\s*\(/i,
+    /\bdef\s+\w+\s*\(/i, /\bfunction\s+\w+\s*\(/i, /=>/, /[{};][\s\\S]*[{};]/,
+    /\bimport\s+(?:java|javafx|sys|os|math|collections)\b/i
   ];
   return signals.filter((pattern) => pattern.test(value)).length >= 1;
 }
@@ -247,7 +247,7 @@ function buildProviderResult(provider, requestId, mode, selected, raw) {
       createdAt: Date.now()
     };
   }
-  const fenced = text.match(/```([A-Za-z0-9_+#.-]+)?\\s*\\n([\\s\\S]*?)```/);
+  const fenced = text.match(/```([A-Za-z0-9_+#.-]+)?\s*\n([\s\S]*?)```/);
   const code = (fenced ? fenced[2] : text).trim();
   const language = fenced?.[1] || null;
   return {
