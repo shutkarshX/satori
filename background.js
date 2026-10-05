@@ -714,6 +714,7 @@ async function handleChatGPTResponse(message) {
 }
 
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  if (message.type === 'CANCEL_REQUEST') { cancelActiveRequest(); sendResponse({ ok: true }); return true; }
   if (message.type === 'GEMINI_RESPONSE') {
     handleGeminiResponse(message);
     return;
