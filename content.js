@@ -4,6 +4,106 @@
 
   let lastEditable = null;
 
+  const statusWidget = {
+    root: null,
+    expanded: false,
+    timer: null
+  };
+
+  function ensureStatusWidget() {
+    if (statusWidget.root || !document.body) return;
+    const root = document.createElement('div');
+    root.id = 'satori-status-widget';
+    root.innerHTML = `
+      <button type="button" class="satori-status-pill" aria-label="Satori status">
+        <span class="satori-status-icon">◉</span>
+        <span class="satori-status-time">—</span>
+      </button>
+      <div class="satori-status-panel" hidden>
+        <strong>Satori</strong>
+        <span class="satori-status-detail">Idle</span>
+      </div>`;
+    const style = document.createElement('style');
+    style.textContent = `
+      #satori-status-widget{position:fixed;right:18px;bottom:18px;z-index:2147483647;font:12px/1.35 system-ui,sans-serif;color:#202124;user-select:none}
+      #satori-status-widget .satori-status-pill{display:flex;align-items:center;gap:7px;border:1px solid #d7dbe0;border-radius:999px;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.14);padding:7px 11px;cursor:grab}
+      #satori-status-widget .satori-status-pill:active{cursor:grabbing}
+      #satori-status-widget .satori-status-icon{font-size:13px}
+      #satori-status-widget .satori-status-time{font-variant-numeric:tabular-nums}
+      #satori-status-widget .satori-status-panel{margin-top:7px;min-width:190px;padding:10px 11px;border:1px solid #d7dbe0;border-radius:10px;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.16)}
+      #satori-status-widget .satori-status-panel strong,#satori-status-widget .satori-status-panel span{display:block}
+      #satori-status-widget .satori-status-panel span{margin-top:4px;color:#5f6368}
+      #satori-status-widget.satori-waiting .satori-status-pill{border-color:#e5b84b;background:#fff8df}
+      #satori-status-widget.satori-ready .satori-status-pill{border-color:#63b77a;background:#eaf7ee}
+      #satori-status-widget.satori-error .satori-status-pill{border-color:#e28a83;background:#fdf0ef}
+    `;
+    document.documentElement.appendChild(style);
+    document.body.appendChild(root);
+    statusWidget.root = root;
+
+    const pill = root.querySelector('.satori-status-pill');
+    let drag = null;
+    pill.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      drag = { x: event.clientX, y: event.clientY, left: root.getBoundingClientRect().left, top: root.getBoundingClientRect().top };
+      pill.setPointerCapture?.(event.pointerId);
+    });
+    pill.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      root.style.left = `${Math.max(4, Math.min(window.innerWidth - root.offsetWidth - 4, drag.left + dx))}px`;
+      root.style.top = `${Math.max(4, Math.min(window.innerHeight - root.offsetHeight - 4, drag.top + dy))}px`;
+      root.style.right = 'auto'; root.style.bottom = 'auto';
+    });
+    pill.addEventListener('pointerup', () => { drag = null; });
+    pill.addEventListener('click', () => {
+      if (drag) return;
+      statusWidget.expanded = !statusWidget.expanded;
+      root.querySelector('.satori-status-panel').hidden = !statusWidget.expanded;
+    });
+  }
+
+  function renderStatus(value) {
+    ensureStatusWidget();
+    if (!statusWidget.root || !value) return;
+    const root = statusWidget.root;
+    root.classList.remove('satori-waiting','satori-ready','satori-error');
+    root.classList.add(`satori-${value.kind || 'waiting'}`);
+    root.querySelector('.satori-status-icon').textContent = value.kind === 'ready' ? '✓' : value.kind === 'error' ? '×' : '◉';
+    root.querySelector('.satori-status-detail').textContent = value.text || 'Satori';
+    if (statusWidget.timer) clearInterval(statusWidget.timer);
+
+    const startedAt = Number(value.startedAt || value.at || Date.now());
+    const estimate = Number(value.estimateSec || 0);
+    const timeEl = root.querySelector('.satori-status-time');
+
+    const updateTime = () => {
+      if (value.kind !== 'waiting' || !estimate) {
+        timeEl.textContent = value.kind === 'ready' ? 'DONE' : value.kind === 'error' ? 'ERROR' : '—';
+        return;
+      }
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const remaining = Math.max(0, Math.ceil(estimate - elapsed));
+      timeEl.textContent = remaining > 0 ? `~${remaining}s` : 'working…';
+    };
+    updateTime();
+    if (value.kind === 'waiting') statusWidget.timer = setInterval(updateTime, 500);
+
+    if (value.kind === 'ready' || value.kind === 'error') {
+      setTimeout(() => {
+        if (statusWidget.root && statusWidget.root.classList.contains(`satori-${value.kind}`)) {
+          statusWidget.root.remove();
+          statusWidget.root = null;
+        }
+      }, 4500);
+    }
+  }
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.satoriStatus) renderStatus(changes.satoriStatus.newValue);
+  });
+  chrome.storage.local.get('satoriStatus', (result) => renderStatus(result.satoriStatus));
+
   const isEditable = (el) => {
     if (!el) return false;
     return el.matches?.('textarea, input:not([type="hidden"]), [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea') || el.isContentEditable;
