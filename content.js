@@ -178,8 +178,8 @@
 
     const norm = (str) => (str || '')
       .normalize('NFKD')
-      .replace(/[\\u2217\\u22c5\\u00d7·×⋅]/g, '*')
-      .replace(/\\s+/g, ' ')
+      .replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*')
+      .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
 
