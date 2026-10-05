@@ -521,6 +521,11 @@ async function handleGeminiResponse(message) {
   const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, activeGeminiRequest?.questionText || '') : selected;
   const requestId = activeGeminiRequest?.requestId || message.requestId || null;
   const providerResult = buildProviderResult('gemini', requestId, mode, finalSelected, raw);
+  if (mode === 'coding' && !looksLikeCode(providerResult.code)) {
+    setStatus('Gemini returned text that does not look like source code.', 'error');
+    addDiagnostic('gemini-validation', 'coding result rejected before autofill');
+    return;
+  }
   await chrome.storage.local.set({ latestGeminiResponse: finalSelected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini', latestProviderResult: providerResult });
   const assignmentTabId = activeGeminiRequest?.assignmentTabId;
   if (requestId) await chrome.alarms.clear(`satori-timeout-${requestId}`);
