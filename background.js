@@ -1,6 +1,11 @@
-const setStatus = (text, kind = 'waiting', extra = {}) => chrome.storage.local.set({
-  satoriStatus: { text, kind, at: Date.now(), ...extra }
-});
+let statusMeta = {};
+const setStatus = (text, kind = 'waiting', extra = {}) => {
+  if (kind === 'waiting') statusMeta = { ...statusMeta, ...extra };
+  else statusMeta = {};
+  return chrome.storage.local.set({
+    satoriStatus: { text, kind, at: Date.now(), ...(kind === 'waiting' ? statusMeta : {}), ...extra }
+  });
+};
 
 const PROVIDER_NAMES = { google: 'Google AI Mode', gemini: 'Gemini', chatgpt: 'ChatGPT' };
 
@@ -55,9 +60,8 @@ async function runShortcut(mode) {
   await chrome.storage.local.set({
     satoriActiveRequest: { requestId, provider, mode, assignmentTabId: assignmentTab.id, startedAt: Date.now() }
   });
-  setStatus(`${PROVIDER_NAMES[provider]} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting', {
-    requestId, provider, mode, startedAt: Date.now(), estimateSec: provider === 'google' ? 10 : provider === 'gemini' ? 8 : 12
-  });
+  statusMeta = { requestId, provider, mode, startedAt: Date.now(), estimateSec: provider === 'google' ? 10 : provider === 'gemini' ? 8 : 12 };
+  setStatus(`${PROVIDER_NAMES[provider]} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting');
   addDiagnostic('shortcut', `${mode} shortcut → ${provider} request ${requestId}`);
 
   if (provider === 'google') startGoogleSearch(pageText, requestId, mode, assignmentTab, questionText);
