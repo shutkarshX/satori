@@ -528,6 +528,7 @@ async function handleGeminiResponse(message) {
   const providerResult = buildProviderResult('gemini', requestId, mode, finalSelected, raw);
   await chrome.storage.local.set({ latestGeminiResponse: finalSelected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini', latestProviderResult: providerResult });
   const assignmentTabId = activeGeminiRequest?.assignmentTabId;
+  if (requestId) await chrome.alarms.clear(`satori-timeout-${requestId}`);
   activeGeminiRequest = null;
   await chrome.storage.local.remove(['activeGeminiRequest', 'satoriActiveRequest']);
   await autoFillAssignment(assignmentTabId, providerResult);
@@ -718,6 +719,7 @@ async function handleChatGPTResponse(message) {
   const providerResult = buildProviderResult('chatgpt', requestId, mode, finalSelected, raw);
   await chrome.storage.local.set({ latestChatGPTResponse: finalSelected, latestChatGPTRawResponse: raw, latestChatGPTAt: Date.now(), latestProvider: 'chatgpt', latestProviderResult: providerResult });
   const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
+  if (requestId) await chrome.alarms.clear(`satori-timeout-${requestId}`);
   activeChatGPTRequest = null;
   await chrome.storage.local.remove(['activeChatGPTRequest', 'satoriActiveRequest']);
   await autoFillAssignment(assignmentTabId, providerResult);
