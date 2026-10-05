@@ -123,18 +123,31 @@
   function extractQuestion() {
     const selection = window.getSelection()?.toString().trim();
     if (selection && selection.length > 20) return selection;
+
     const candidates = [
-      '[role="main"]', 'main', 'article', '[class*="question"]', '[class*="Question"]',
-      '[class*="problem"]', '[class*="Problem"]', '[class*="assessment"]'
+      ...document.querySelectorAll(
+        '[role="main"], main, article, [class*="question" i], [class*="problem" i], ' +
+        '[class*="assessment" i], [id*="question" i], [id*="problem" i], section'
+      )
     ];
-    let best = '';
-    for (const selector of candidates) {
-      document.querySelectorAll(selector).forEach((el) => {
-        const text = visibleText(el);
-        if (text.length > best.length && text.length < 30000) best = text;
-      });
-    }
-    return best || visibleText(document.body).slice(0, 30000);
+    const score = (el, text) => {
+      let value = 0;
+      const meta = `${el.id || ''} ${el.className || ''}`;
+      if (/question|problem|assessment/i.test(meta)) value += 80;
+      if (/options?|choices?|answers?/i.test(text)) value += 25;
+      if (/input|output|constraints|sample|example/i.test(text)) value += 20;
+      if (/[?]/.test(text)) value += 20;
+      if (text.length >= 80 && text.length <= 20000) value += 15;
+      if (text.length > 28000) value -= 30;
+      if (/^(navigation|sidebar|header|footer)/i.test(meta)) value -= 80;
+      return value;
+    };
+    const ranked = candidates.map((el) => {
+      const text = visibleText(el);
+      return { text, score: score(el, text) };
+    }).filter((item) => item.text.length >= 40 && item.text.length < 30000)
+      .sort((a, b) => b.score - a.score || b.text.length - a.text.length);
+    return ranked[0]?.text || visibleText(document.body).slice(0, 30000);
   }
 
   function extractFullPage() {
