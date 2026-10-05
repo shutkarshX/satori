@@ -325,10 +325,12 @@
     let textMatches = [];
     if (cleanAnswer) {
       const target = norm(cleanAnswer);
-      textMatches = unique.filter((node) => {
+      const rawMatches = unique.filter((node) => {
         const text = norm(visibleText(node));
         return text && (text === target || (target.length > 4 && text.length <= 180 && (text.includes(target) || target.includes(text))));
       });
+      // Deduplicate nested elements: if a parent already matched (e.g. <label> contains <span>), keep only the top-level option container
+      textMatches = rawMatches.filter((node) => !rawMatches.some((other) => other !== node && other.contains(node)));
     }
 
     // 2. Letter matching candidates (A -> 0, B -> 1, ...)
