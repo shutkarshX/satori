@@ -134,17 +134,26 @@
 
   const clickSend = () => {
     const input = findInput();
+    const form = input?.closest('form');
 
-    // Never call form.requestSubmit() here. ChatGPT's composer form can contain
-    // required fields unrelated to the message body; requestSubmit() can then
-    // trigger the browser's native "Please fill in this field" bubble.
+    // The "Please fill in this field" bubble seen in ChatGPT is native HTML
+    // form validation. Even clicking ChatGPT's real send button can invoke
+    // validation when that button is a submit control. Disable validation
+    // for Satori's send action; do not submit unrelated required fields.
+    const disableNativeValidation = () => {
+      if (!form) return () => {};
+      const previous = form.noValidate;
+      form.noValidate = true;
+      return () => {
+        try { form.noValidate = previous; } catch (_e) {}
+      };
+    };
+
     const candidates = [
       document.querySelector('button[data-testid="send-button"]'),
       document.querySelector('button[data-testid="fruitjuice-send-button"]'),
-      input?.closest('form')?.querySelector('button[type="submit"]'),
       document.querySelector('button[aria-label*="Send" i]'),
-      document.querySelector('button[title*="Send" i]'),
-      ...document.querySelectorAll('button')
+      document.querySelector('button[title*="Send" i]')
     ];
 
     const sendButton = candidates.find((btn) => {
@@ -152,17 +161,22 @@
       const label = String(btn.getAttribute('aria-label') || '') + ' ' +
         String(btn.getAttribute('data-testid') || '') + ' ' +
         String(btn.getAttribute('title') || '');
-      return label.toLowerCase().includes('send') || btn.type === 'submit';
+      return label.toLowerCase().includes('send');
     });
 
     if (sendButton) {
+      const restoreValidation = disableNativeValidation();
       try {
         sendButton.click();
+        setTimeout(restoreValidation, 0);
         return true;
-      } catch (_e) {}
+      } catch (_e) {
+        restoreValidation();
+      }
     }
 
     if (input) {
+      const restoreValidation = disableNativeValidation();
       try {
         input.focus();
         const eventInit = {
@@ -176,8 +190,11 @@
         input.dispatchEvent(new KeyboardEvent('keydown', eventInit));
         input.dispatchEvent(new KeyboardEvent('keypress', eventInit));
         input.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+        setTimeout(restoreValidation, 0);
         return true;
-      } catch (_e) {}
+      } catch (_e) {
+        restoreValidation();
+      }
     }
 
     return false;
