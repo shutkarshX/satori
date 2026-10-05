@@ -137,12 +137,31 @@ function formatMcqAnswer(text, questionText = '') {
 function validateProviderResult(provider, requestId, mode, payload, questionText = '') {
   if (mode === 'mcq') {
     const raw = typeof payload === 'string' ? payload : (payload.text || payload.code || '');
-    const mcq = formatMcqAnswer(raw, questionText);
+    const cleanRaw = (raw || '').trim();
+
+    // Check if AI explicitly stated no question/MCQ exists or returned N/A
+    const notApplicable = /ANSWER:\s*(?:N\/A|NONE|NOT\s+APPLICABLE|NO\s+(?:PRACTICE\s+)?(?:QUESTION|MCQ))/i.test(cleanRaw) ||
+      /no\s+(?:practice\s+)?(?:multiple[\s-]choice\s+question|mcq|question)\s+(?:found|present|contained)/i.test(cleanRaw);
+
+    if (notApplicable) {
+      return {
+        provider,
+        requestId,
+        type: 'mcq',
+        valid: false,
+        notAQuestion: true,
+        reason: 'AI found no MCQ on this page (ensure you are on an actual question page)',
+        raw
+      };
+    }
+
+    const mcq = formatMcqAnswer(cleanRaw, questionText);
+    const valid = Boolean(mcq.letter || (mcq.text && mcq.text.length < 150));
     return {
       provider,
       requestId,
       type: 'mcq',
-      valid: Boolean(mcq.letter || mcq.text),
+      valid,
       answer: mcq,
       raw
     };
@@ -216,9 +235,9 @@ async function handleCompletedResult(provider, requestId, rawPayload) {
   const validated = validateProviderResult(provider, requestId, active.mode, rawPayload, active.questionText);
 
   if (!validated.valid) {
-    const reason = active.mode === 'mcq'
+    const reason = validated.reason || (active.mode === 'mcq'
       ? 'No reliable MCQ option found in response.'
-      : 'Response did not contain a complete compilable code block.';
+      : 'Response did not contain a complete compilable code block.');
     setStatus(reason, 'error');
     addDiagnostic('validation-failed', reason);
     return;
