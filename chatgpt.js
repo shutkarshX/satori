@@ -40,8 +40,8 @@
       return list.filter((node) => nodeText(node).length > 0);
     }
 
-    // Modern / unauthenticated ChatGPT renders turns under "ChatGPT said:" headers
-    const turns = [...document.querySelectorAll('h4, div, section')]
+    // Modern / unauthenticated ChatGPT renders turns under "ChatGPT said:" h4 headers
+    const turns = [...document.querySelectorAll('h4')]
       .filter((el) => {
         const t = (el.innerText || '').trim();
         return t === 'ChatGPT said:' || t.startsWith('ChatGPT said:');
@@ -257,10 +257,11 @@
     if (!latest || latest.signature === state.lastSignature) return;
 
     clearTimeout(state.quietTimer);
-    state.quietTimer = setTimeout(() => {
+    const processResult = () => {
       if (isGenerating()) {
         report('CHATGPT_DIAGNOSTIC', 'ChatGPT generation still in progress; waiting for completion');
-        inspectForNewResponse();
+        clearTimeout(state.quietTimer);
+        state.quietTimer = setTimeout(processResult, 300);
         return;
       }
 
@@ -272,7 +273,8 @@
 
       if (state.mode === 'coding' && !code && Date.now() - state.lastSentAt < 12000) {
         report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for code block');
-        inspectForNewResponse();
+        clearTimeout(state.quietTimer);
+        state.quietTimer = setTimeout(processResult, 400);
         return;
       }
 
@@ -283,7 +285,9 @@
         code: finalCode,
         capturedAt: Date.now()
       });
-    }, 350);
+    };
+
+    state.quietTimer = setTimeout(processResult, 250);
   };
 
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
