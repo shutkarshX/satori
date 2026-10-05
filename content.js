@@ -168,98 +168,83 @@
     return true;
   }
 
-  function selectMcqOption(answerText) {
-    if (!answerText) throw new Error('No answer text provided for MCQ.');
-    const cleanAnswer = answerText.trim();
+  function selectMcqOption(answerInput) {
+    const answer = typeof answerInput === 'string'
+      ? { letter: null, text: answerInput, raw: answerInput }
+      : (answerInput || {});
+    const cleanAnswer = String(answer.text || answer.raw || '').trim();
+    const targetLetter = String(answer.letter || '').trim().toUpperCase() || null;
+    if (!cleanAnswer && !targetLetter) throw new Error('No answer provided for MCQ.');
 
-    // 1. Try to extract letter option like A, B, C, D
-    const letterMatch = cleanAnswer.match(/(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*\(?([A-Da-d])\)?/i)
-      || cleanAnswer.match(/^\(?([A-Da-d])\)?$/)
-      || cleanAnswer.match(/^([A-Da-d])[\).\:\s]/);
-    const targetLetter = letterMatch ? letterMatch[1].toUpperCase() : null;
+    const norm = (str) => (str || '')
+      .normalize('NFKD')
+      .replace(/[\\u2217\\u22c5\\u00d7·×⋅]/g, '*')
+      .replace(/\\s+/g, ' ')
+      .trim()
+      .toLowerCase();
 
-    // Search for radio inputs, option cards, or choice elements
-    const inputs = [...document.querySelectorAll('input[type="radio"], [role="radio"]')];
-    const highlightAndClick = (element, matchedLabel) => {
+    const candidates = [
+      ...document.querySelectorAll('label, [class*="option" i], [class*="choice" i], [class*="answer" i], li, tr, [role="radio"]')
+    ].filter((node) => node.offsetParent !== null || node.matches('[role="radio"]'));
+
+    const unique = [...new Set(candidates)];
+    const visibleRadios = [...document.querySelectorAll('input[type="radio"], [role="radio"]')]
+      .filter((node) => node.offsetParent !== null || node.matches('[role="radio"]'));
+
+    const click = (element, matched) => {
       if (!element) return null;
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
       const radio = element.matches('input[type="radio"]') ? element : element.querySelector('input[type="radio"]');
       if (radio) {
-        radio.checked = true;
         radio.click();
         radio.dispatchEvent(new Event('change', { bubbles: true }));
         radio.dispatchEvent(new Event('input', { bubbles: true }));
       } else {
         element.click();
-        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
       }
-      return { matched: matchedLabel, type: 'selected' };
+      return { matched, type: 'selected' };
     };
 
-    // Priority 1: Match by exact or fuzzy text content inside option/label (Most Reliable)
-    const norm = (str) => (str || '')
-      .normalize('NFKD')
-      .replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*')
-      .replace(/\s+/g, '')
-      .toLowerCase();
-
-    const cleanTargetText = cleanAnswer
-      .replace(/^(?:ANSWER|FINAL ANSWER|CORRECT OPTION|OPTION)\s*[:\-]?\s*/i, '')
-      .replace(/^(?:\(?([A-Da-d])\)?[\).\:\-\s]*)/i, '')
-      .replace(/[.\s]+$/, '')
-      .trim();
-    const normTarget = norm(cleanTargetText);
-
-    // Look broadly for option containers, rows, labels, list items, divs with text
-    const broadCandidates = [
-      ...document.querySelectorAll('label, [class*="option" i], [class*="choice" i], [class*="answer" i], li, tr, [role="radio"]')
-    ];
-
-    if (normTarget.length >= 1) {
-      // 1. Direct match (exact or substring)
-      // Check for exact normalized matches first (handles whitespace differences like "O(sum*n)" vs "O(sum * n)")
-      for (const card of broadCandidates) {
-        const text = norm(visibleText(card));
-        if (text && text === normTarget) {
-          return highlightAndClick(card, visibleText(card).slice(0, 40));
-        }
-      }
-
-      // Only accept a unique containment match; ambiguous fuzzy matches must fail safely.
-      if (normTarget.length > 4) {
-        const matches = broadCandidates.filter((card) => {
-          const text = norm(visibleText(card));
-          return text && text.length <= 180 && (text.includes(normTarget) || normTarget.includes(text));
-        });
-        const uniqueMatches = [...new Set(matches)];
-        if (uniqueMatches.length === 1) {
-          const card = uniqueMatches[0];
-          return highlightAndClick(card, visibleText(card).slice(0, 40));
-        }
-      }
-    }
-
-    // Priority 2: Fallback to target letter radio matching (only if text matching didn't find anything)
-    if (targetLetter) {
-      const letterIndex = targetLetter.charCodeAt(0) - 65; // A=0, B=1...
-      // Only consider visible radio inputs
-      const visibleRadios = inputs.filter((input) => input.offsetParent !== null || input.matches('[role="radio"]'));
-      const matchedInput = visibleRadios.find((input) => {
-        const val = (input.value || input.id || input.name || '').toUpperCase();
-        return val.includes(targetLetter) || val === String(letterIndex);
+    let textMatches = [];
+    if (cleanAnswer) {
+      const target = norm(cleanAnswer);
+      textMatches = unique.filter((node) => {
+        const text = norm(visibleText(node));
+        return text && (text === target || (target.length > 4 && text.length <= 180 && (text.includes(target) || target.includes(text))));
       });
-      if (matchedInput) {
-        return highlightAndClick(matchedInput.closest('label, [class*="option" i], [class*="choice" i]') || matchedInput, targetLetter);
-      }
+    }
 
-      if (visibleRadios.length >= 2 && visibleRadios[letterIndex]) {
-        const targetRadio = visibleRadios[letterIndex];
-        return highlightAndClick(targetRadio.closest('label, [class*="option" i], [class*="choice" i]') || targetRadio, targetLetter);
+    const letterIndex = targetLetter ? targetLetter.charCodeAt(0) - 65 : -1;
+    let letterTarget = null;
+    if (letterIndex >= 0) {
+      const explicit = visibleRadios.find((input) => {
+        const value = `${input.value || ''} ${input.id || ''} ${input.getAttribute('aria-label') || ''}`.toUpperCase();
+        return value.includes(targetLetter) || value.trim() === String(letterIndex);
+      });
+      letterTarget = explicit || visibleRadios[letterIndex] || null;
+      if (letterTarget) {
+        letterTarget = letterTarget.closest('label, [class*="option" i], [class*="choice" i], [role="radio"]') || letterTarget;
       }
     }
 
-    throw new Error(`Could not find UI option matching: ${cleanAnswer.slice(0, 50)}`);
+    if (textMatches.length === 1 && letterTarget) {
+      const textElement = textMatches[0];
+      const sameTarget = textElement === letterTarget || textElement.contains(letterTarget) || letterTarget.contains(textElement);
+      if (!sameTarget) throw new Error(`MCQ conflict: AI text matches a different option than AI letter ${targetLetter}.`);
+      return click(textElement, visibleText(textElement).slice(0, 80));
+    }
+
+    if (textMatches.length === 1) {
+      return click(textMatches[0], visibleText(textMatches[0]).slice(0, 80));
+    }
+
+    if (textMatches.length > 1) {
+      throw new Error('MCQ answer matches multiple page options; nothing was selected.');
+    }
+
+    if (letterTarget) return click(letterTarget, targetLetter);
+
+    throw new Error(`Could not find a unique page option matching: ${cleanAnswer.slice(0, 80) || targetLetter}`);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
