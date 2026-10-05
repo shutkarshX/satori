@@ -73,7 +73,13 @@
   });
 
   const candidateResponses = () => {
-    return responseSnapshot().filter((item) => !state.baseline.has(item.signature));
+    const snapshot = responseSnapshot();
+    // Return all turns created after baselineCount was recorded for this request
+    if (snapshot.length > state.baselineCount) {
+      return snapshot.slice(state.baselineCount);
+    }
+    // Fallback: if turn was mutated in-place
+    return snapshot.filter((item) => !state.baseline.has(item.signature));
   };
 
   const report = (type, detail) => {
