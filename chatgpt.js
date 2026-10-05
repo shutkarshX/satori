@@ -1,13 +1,10 @@
 (() => {
-  if (window.__satoriChatGPTAdapterLoaded) return;
   window.__satoriChatGPTAdapterLoaded = true;
-
 
   const state = {
     requestId: 0,
     mode: 'text',
     baseline: new Set(),
-    baselineNodes: new Set(),
     baselineCode: new Set(),
     baselineCount: 0,
     lastSentAt: 0,
@@ -42,17 +39,22 @@
     if (list.length) {
       return list.filter((node) => nodeText(node).length > 0);
     }
-    // Some ChatGPT layouts expose assistant turns through an accessible
-    // "ChatGPT said:" heading instead of data-message-author-role.
+
+    // Modern / unauthenticated ChatGPT renders turns under "ChatGPT said:" h4 headers
     const turns = [...document.querySelectorAll('h4')]
       .filter((el) => {
-        const text = clean(el.innerText || el.textContent || '');
-        return text === 'ChatGPT said:' || text.startsWith('ChatGPT said:');
+        const t = (el.innerText || '').trim();
+        return t === 'ChatGPT said:' || t.startsWith('ChatGPT said:');
       })
-      .map((header) => header.nextElementSibling || header.parentElement || header)
+      .map((header) => {
+        // Return the sibling answer node or parent list item / container
+        return header.nextElementSibling || header.parentElement || header;
+      })
       .filter((node) => nodeText(node).length > 0);
 
-    if (turns.length) return [...new Set(turns)];
+    if (turns.length) {
+      return [...new Set(turns)];
+    }
 
     const fallback = [
       ...document.querySelectorAll('[data-testid*="conversation-turn" i] .markdown'),
@@ -71,10 +73,13 @@
   });
 
   const candidateResponses = () => {
-    return responseSnapshot().filter((item) =>
-      !state.baselineNodes.has(item.node) ||
-      !state.baseline.has(item.signature)
-    );
+    const snapshot = responseSnapshot();
+    // Return all turns created after baselineCount was recorded for this request
+    if (snapshot.length > state.baselineCount) {
+      return snapshot.slice(state.baselineCount);
+    }
+    // Fallback: if turn was mutated in-place
+    return snapshot.filter((item) => !state.baseline.has(item.signature));
   };
 
   const report = (type, detail) => {
@@ -82,7 +87,7 @@
   };
 
   const findInput = () => document.querySelector(
-    '#prompt-textarea, textarea[data-id], textarea[placeholder], textarea, ' +
+    '#prompt-textarea, #mobile-composer-prompt, textarea[data-id], textarea[placeholder], textarea, ' +
     '[contenteditable="true"][data-lexical-editor="true"], ' +
     '[contenteditable="true"][role="textbox"], [contenteditable="true"]'
   );
@@ -132,8 +137,13 @@
       document.querySelector('button[data-testid="send-button"]'),
       document.querySelector('button[data-testid="fruitjuice-send-button"]'),
       document.querySelector('button[aria-label*="Send" i]'),
-      document.querySelector('button[title*="Send" i]')
-    ].find((btn) => btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true');
+      document.querySelector('button[title*="Send" i]'),
+      ...document.querySelectorAll('button')
+    ].find((btn) => {
+      if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return false;
+      const label = `${btn.getAttribute('aria-label') || ''} ${btn.getAttribute('data-testid') || ''} ${btn.getAttribute('title') || ''}`.toLowerCase();
+      return label.includes('send');
+    });
 
     if (sendButton) {
       try {
@@ -168,9 +178,9 @@
       (/[{}();]|\breturn\b|\bfor\s*\(|\bwhile\s*\(/.test(value) ? 30 : 0) +
       Math.min(value.length / 1000, 20) - distance;
 
-    // 1. Check Copy buttons inside the current assistant message only.
+    // 1. Check Copy buttons anywhere in assistant message or document
     const copyAnchored = [];
-    const allButtons = [...(node?.querySelectorAll?.('button') || [])];
+    const allButtons = [...(node?.querySelectorAll?.('button') || []), ...document.querySelectorAll('button')];
     const copyButtons = allButtons.filter((button) =>
       /copy/i.test(`${button.getAttribute('aria-label') || ''} ${button.getAttribute('title') || ''} ${button.innerText || ''} ${button.textContent || ''}`)
     );
@@ -205,7 +215,7 @@
 
     // 3. DOM code elements (pre, code, code-block, etc.)
     const selectors = 'pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]';
-    const elements = [...(node?.querySelectorAll?.(selectors) || [])];
+    const elements = [...(node?.querySelectorAll?.(selectors) || []), ...document.querySelectorAll(selectors)];
     const domCode = elements
       .map((element, index) => ({
         text: normalizeSource(nodeText(element)),
@@ -253,11 +263,11 @@
     if (!latest || latest.signature === state.lastSignature) return;
 
     clearTimeout(state.quietTimer);
-
     const processResult = () => {
       if (isGenerating()) {
         report('CHATGPT_DIAGNOSTIC', 'ChatGPT generation still in progress; waiting for completion');
-        state.quietTimer = setTimeout(processResult, 800);
+        clearTimeout(state.quietTimer);
+        state.quietTimer = setTimeout(processResult, 300);
         return;
       }
 
@@ -267,33 +277,23 @@
 
       const code = extractCode(final.text, final.node);
 
-      if (state.mode === 'coding' && !code) {
-        if (Date.now() - state.lastSentAt < 15000) {
-          report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for a real code block');
-          state.quietTimer = setTimeout(processResult, 800);
-          return;
-        }
-        state.lastSignature = final.signature;
-        report('CHATGPT_DIAGNOSTIC', 'response completed without a detectable code block');
-        report('CHATGPT_RESPONSE', {
-          text: final.text,
-          code: '',
-          mode: state.mode,
-          capturedAt: Date.now()
-        });
+      if (state.mode === 'coding' && !code && Date.now() - state.lastSentAt < 12000) {
+        report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for code block');
+        clearTimeout(state.quietTimer);
+        state.quietTimer = setTimeout(processResult, 400);
         return;
       }
 
       state.lastSignature = final.signature;
+      const finalCode = code || final.text;
       report('CHATGPT_RESPONSE', {
         text: final.text,
-        code: state.mode === 'coding' ? code : final.text,
-        mode: state.mode,
+        code: finalCode,
         capturedAt: Date.now()
       });
     };
 
-    state.quietTimer = setTimeout(processResult, 800);
+    state.quietTimer = setTimeout(processResult, 250);
   };
 
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
@@ -304,32 +304,46 @@
     const cleanPrompt = clean(prompt);
     const users = [...document.querySelectorAll('[data-message-author-role="user"], [data-testid*="user" i]')];
     const latestUser = users[users.length - 1];
-    if (!latestUser) return null;
 
-    const userText = clean(nodeText(latestUser));
-    const promptSnippet = cleanPrompt.slice(0, 220);
-    const matchesPrompt = promptSnippet.length >= 80 && userText.includes(promptSnippet);
-    if (!matchesPrompt) return null;
+    let isMatch = false;
+    if (latestUser) {
+      const userText = clean(nodeText(latestUser));
+      const promptSnippet = cleanPrompt.slice(0, 100);
+      const problemMatch = cleanPrompt.match(/Problem Statement[\s\S]*?(?=\n\s*(?:Input format|Output format|Sample test|Constraints|Note))/i);
+      const problemSnippet = problemMatch ? clean(problemMatch[0]).slice(0, 80) : '';
+
+      isMatch = (promptSnippet && userText.includes(promptSnippet)) ||
+                (problemSnippet && userText.includes(problemSnippet)) ||
+                (userText.length > 40 && cleanPrompt.includes(userText.slice(0, 80)));
+    } else {
+      const pageText = clean(document.body.innerText || '');
+      const problemMatch = cleanPrompt.match(/Problem Statement[\s\S]*?(?=\n\s*(?:Input format|Output format|Sample test|Constraints|Note))/i);
+      if (problemMatch && pageText.includes(clean(problemMatch[0]).slice(0, 80))) {
+        isMatch = true;
+      }
+    }
+
+    if (!isMatch) return null;
+
+    if (isGenerating()) {
+      return { generating: true };
+    }
 
     const responses = responseNodes();
     const latestAssistant = responses[responses.length - 1];
     if (!latestAssistant) return null;
 
-    if (latestUser.compareDocumentPosition(latestAssistant) & Node.DOCUMENT_POSITION_FOLLOWING) {
-      if (isGenerating()) return { generating: true };
+    const assistantText = nodeText(latestAssistant);
+    const code = extractCode(assistantText, latestAssistant);
 
-      const assistantText = nodeText(latestAssistant);
-      const code = extractCode(assistantText, latestAssistant);
-
-      if (mode === 'coding' && !code) return null;
-
-      return {
-        text: assistantText,
-        code: mode === 'coding' ? code : (code || assistantText)
-      };
+    if (mode === 'coding' && (!code || code === 'Code not available')) {
+      return null;
     }
 
-    return null;
+    return {
+      text: assistantText,
+      code: mode === 'coding' ? code : (code || assistantText)
+    };
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -349,7 +363,7 @@
         return true;
       }
 
-      if (message.type !== 'FILL_CHATGPT_PROMPT') return false;
+      if (message.type !== 'FILL_CHATGPT_PROMPT' && message.type !== 'FILL_AND_SEND_CHATGPT') return false;
 
       const input = findInput();
       if (!input) {
@@ -360,15 +374,15 @@
 
       state.requestId = message.requestId || Date.now();
       state.mode = message.mode || 'text';
-      state.baseline = new Set(responseSnapshot().map((item) => item.signature));
-      state.baselineNodes = new Set(responseNodes());
+      const initialSnapshot = responseSnapshot();
+      state.baseline = new Set(initialSnapshot.map((item) => item.signature));
       state.baselineCode = new Set(
         [...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
           .map((element) => normalizeSource(nodeText(element)))
           .filter((text) => text.length > 20)
           .map(signature)
       );
-      state.baselineCount = state.baseline.size;
+      state.baselineCount = initialSnapshot.length;
       state.lastSignature = '';
       state.lastSentAt = Date.now();
       clearTimeout(state.quietTimer);
