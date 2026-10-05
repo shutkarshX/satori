@@ -8,7 +8,8 @@
     "scripting",
     "storage",
     "tabs",
-    "alarms"
+    "alarms",
+    "debugger"
   ],
   "host_permissions": [
     "https://www.google.com/*",
@@ -51,8 +52,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -62,12 +67,18 @@
         "https://www.google.co.in/*",
         "https://google.co.in/*"
       ],
-      "js": ["google.js"],
+      "js": [
+        "google.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://gemini.google.com/*"],
-      "js": ["gemini.js"],
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "gemini.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -75,7 +86,9 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ],
-      "js": ["chatgpt.js"],
+      "js": [
+        "chatgpt.js"
+      ],
       "run_at": "document_idle"
     }
   ]
