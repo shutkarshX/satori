@@ -285,46 +285,32 @@
     const cleanPrompt = clean(prompt);
     const users = [...document.querySelectorAll('[data-message-author-role="user"], [data-testid*="user" i]')];
     const latestUser = users[users.length - 1];
+    if (!latestUser) return null;
 
-    let isMatch = false;
-    if (latestUser) {
-      const userText = clean(nodeText(latestUser));
-      const promptSnippet = cleanPrompt.slice(0, 100);
-      const problemMatch = cleanPrompt.match(/Problem Statement[\s\S]*?(?=\n\s*(?:Input format|Output format|Sample test|Constraints|Note))/i);
-      const problemSnippet = problemMatch ? clean(problemMatch[0]).slice(0, 80) : '';
-
-      isMatch = (promptSnippet && userText.includes(promptSnippet)) ||
-                (problemSnippet && userText.includes(problemSnippet)) ||
-                (userText.length > 40 && cleanPrompt.includes(userText.slice(0, 80)));
-    } else {
-      const pageText = clean(document.body.innerText || '');
-      const problemMatch = cleanPrompt.match(/Problem Statement[\s\S]*?(?=\n\s*(?:Input format|Output format|Sample test|Constraints|Note))/i);
-      if (problemMatch && pageText.includes(clean(problemMatch[0]).slice(0, 80))) {
-        isMatch = true;
-      }
-    }
-
-    if (!isMatch) return null;
-
-    if (isGenerating()) {
-      return { generating: true };
-    }
+    const userText = clean(nodeText(latestUser));
+    const promptSnippet = cleanPrompt.slice(0, 220);
+    const matchesPrompt = promptSnippet.length >= 80 && userText.includes(promptSnippet);
+    if (!matchesPrompt) return null;
 
     const responses = responseNodes();
     const latestAssistant = responses[responses.length - 1];
     if (!latestAssistant) return null;
 
-    const assistantText = nodeText(latestAssistant);
-    const code = extractCode(assistantText, latestAssistant);
+    if (latestUser.compareDocumentPosition(latestAssistant) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      if (isGenerating()) return { generating: true };
 
-    if (mode === 'coding' && (!code || code === 'Code not available')) {
-      return null;
+      const assistantText = nodeText(latestAssistant);
+      const code = extractCode(assistantText, latestAssistant);
+
+      if (mode === 'coding' && !code) return null;
+
+      return {
+        text: assistantText,
+        code: mode === 'coding' ? code : (code || assistantText)
+      };
     }
 
-    return {
-      text: assistantText,
-      code: mode === 'coding' ? code : (code || assistantText)
-    };
+    return null;
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
