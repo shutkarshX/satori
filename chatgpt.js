@@ -283,7 +283,7 @@
         code: finalCode,
         capturedAt: Date.now()
       });
-    }, 800);
+    }, 350);
   };
 
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {

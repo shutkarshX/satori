@@ -317,14 +317,29 @@
       if (!element) return null;
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       const radio = element.matches('input[type="radio"]') ? element : element.querySelector('input[type="radio"]');
+
       if (radio) {
+        // Set checked property natively and fire Angular ngModel / ReactiveForms events
+        radio.checked = true;
+        radio.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+        radio.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        radio.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+        radio.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
         radio.click();
-        radio.dispatchEvent(new Event('change', { bubbles: true }));
         radio.dispatchEvent(new Event('input', { bubbles: true }));
-      } else {
-        element.click();
-        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
       }
+
+      // Also trigger on container label so Angular UI updates custom checkmark styles
+      const label = element.closest('label') || element;
+      if (label && label !== radio) {
+        label.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+        label.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        label.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+        label.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        label.click();
+      }
+
       return { matched, type: 'selected' };
     };
 
