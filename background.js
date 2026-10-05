@@ -359,11 +359,76 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questio
   }
 }
 
-// 3. ChatGPT (Reused Conversation, Background)
+// 3. ChatGPT (Reused Conversation, Dedicated Unfocused Window)
+// Chrome can freeze an inactive background tab (Chrome 132+). A frozen tab
+// cannot execute its page tasks until activated, which is exactly the failure
+// mode where ChatGPT only finishes/rendering after the user clicks its tab.
+// Keep ChatGPT active in its own unfocused window instead. The assignment
+// window remains the user's focused window and is never switched by Satori.
+async function getBackgroundChatGPTTab(assignmentTab) {
+  const assignmentWindowId = assignmentTab?.windowId;
+  const stored = await chrome.storage.local.get(['satoriChatGPTTabId', 'satoriChatGPTWindowId']);
+
+  const moveToProviderWindow = async (tab) => {
+    if (!tab?.id) return null;
+    if (tab.windowId !== assignmentWindowId) {
+      try {
+        await chrome.tabs.update(tab.id, { active: true });
+      } catch (_e) {}
+      return await chrome.tabs.get(tab.id);
+    }
+
+    try {
+      const providerWindow = await chrome.windows.create({
+        tabId: tab.id,
+        focused: false,
+        type: 'normal'
+      });
+      await chrome.storage.local.set({
+        satoriChatGPTTabId: tab.id,
+        satoriChatGPTWindowId: providerWindow.id
+      });
+      return await chrome.tabs.get(tab.id);
+    } catch (_e) {
+      return tab;
+    }
+  };
+
+  if (stored.satoriChatGPTTabId) {
+    try {
+      const tab = await chrome.tabs.get(stored.satoriChatGPTTabId);
+      if (tab?.id && /https:\/\/(?:chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '')) {
+        return moveToProviderWindow(tab);
+      }
+    } catch (_e) {}
+  }
+
+  const providerTabs = await chrome.tabs.query({
+    url: ['https://chatgpt.com/*', 'https://chat.openai.com/*']
+  });
+  const existing = providerTabs.find((tab) => tab.id);
+  if (existing) {
+    return moveToProviderWindow(existing);
+  }
+
+  const providerWindow = await chrome.windows.create({
+    url: 'https://chatgpt.com/',
+    focused: false,
+    type: 'normal'
+  });
+  const tab = providerWindow?.tabs?.[0];
+  if (!tab?.id) return null;
+
+  await chrome.storage.local.set({
+    satoriChatGPTTabId: tab.id,
+    satoriChatGPTWindowId: providerWindow.id
+  });
+  return tab;
+}
+
 async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText) {
-  const windowId = assignmentTab?.windowId;
-  let tab = windowId ? await getReusableTab(/https:\/\/(chatgpt\.com|chat\.openai\.com)\//i, 'satoriChatGPTTabId', 'satoriChatGPTWindowId', windowId) : null;
-  activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
+  let tab = await getBackgroundChatGPTTab(assignmentTab);
+  activeChatGPTRequest = { requestId, mode, questionText, tabId: tab?.id || null, assignmentTabId: assignmentTab?.id };
 
   const startChatGPTPolling = (tabId) => {
     let pollCount = 0;
@@ -388,7 +453,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
     chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', prompt, requestId, mode }, (res) => {
       if (chrome.runtime.lastError || !res?.ok) {
         if (retries > 0) setTimeout(() => sendPrompt(tabId, retries - 1), 800);
-        else setStatus('ChatGPT composer was not ready. Check the background ChatGPT tab.', 'error');
+        else setStatus('ChatGPT composer was not ready. Check the background ChatGPT window.', 'error');
       } else {
         addDiagnostic('chatgpt-submit', 'Prompt dispatched to ChatGPT MutationObserver');
         startChatGPTPolling(tabId);
@@ -396,31 +461,31 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
     });
   };
 
-  const url = 'https://chatgpt.com/';
-  if (tab?.id) {
-    activeChatGPTRequest.tabId = tab.id;
-    let isAlive = false;
-    try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['chatgpt.js'] }).catch(() => {});
-      const ping = await Promise.race([
-        chrome.tabs.sendMessage(tab.id, { type: 'PING_CHATGPT' }),
-        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 500))
-      ]);
-      if (ping?.ok) isAlive = true;
-    } catch (_e) {}
-
-    if (isAlive) {
-      setTimeout(() => sendPrompt(tab.id), 50);
-    } else {
-      await chrome.tabs.update(tab.id, { url, active: false });
-      setTimeout(() => sendPrompt(tab.id), 1200);
-    }
-  } else {
-    tab = await chrome.tabs.create({ url, active: false, windowId });
-    activeChatGPTRequest.tabId = tab.id;
-    await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId });
-    setTimeout(() => sendPrompt(tab.id), 1500);
+  if (!tab?.id) {
+    setStatus('Could not create the background ChatGPT window.', 'error');
+    return;
   }
+
+  activeChatGPTRequest.tabId = tab.id;
+
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['chatgpt.js'] }).catch(() => {});
+    const ping = await Promise.race([
+      chrome.tabs.sendMessage(tab.id, { type: 'PING_CHATGPT' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 700))
+    ]);
+
+    if (ping?.ok) {
+      setTimeout(() => sendPrompt(tab.id), 100);
+      return;
+    }
+  } catch (_e) {}
+
+  try {
+    await chrome.tabs.update(tab.id, { url: 'https://chatgpt.com/', active: true });
+  } catch (_e) {}
+
+  setTimeout(() => sendPrompt(tab.id), 1500);
 }
 
 // -------------------------------------------------------------
