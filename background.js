@@ -402,7 +402,10 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
     if (!reused && tab.status === 'complete') handleLoaded();
   } catch (error) {
     chrome.tabs.onUpdated.removeListener(listener);
-    setStatus(`Could not open Google Search: ${error.message}`, 'error');
+    if (requestId === activeRequestId) {
+      await chrome.storage.local.remove('satoriActiveRequest');
+      setStatus(`Could not open Google Search: ${error.message}`, 'error');
+    }
     addDiagnostic('tab-error', error.message);
   }
 }
