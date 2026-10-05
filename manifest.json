@@ -13,14 +13,14 @@
   "commands": {
     "satori-mcq": {
       "suggested_key": {
-        "default": "Ctrl+Shift+M",
+        "default": "Alt+Shift+M",
         "mac": "Command+Shift+M"
       },
       "description": "Solve the current page as an MCQ with Satori"
     },
     "satori-code": {
       "suggested_key": {
-        "default": "Ctrl+Shift+C",
+        "default": "Alt+Shift+C",
         "mac": "Command+Shift+C"
       },
       "description": "Solve the current page as coding with Satori"
