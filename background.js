@@ -272,67 +272,25 @@ async function autoFillAssignment(tabId, providerResult) {
   }
 }
 
-async function readGoogleAIOverview(tabId) {
+async function readGoogleAIOverview(tabId, mode = 'mcq') {
   try {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        const clean = (value) => value.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
-        const codeScore = (text, node) => {
-          let score = 0;
-          if (node?.matches?.('pre, pre code')) score += 100;
-          if (node?.closest?.('pre')) score += 80;
-          if (node?.parentElement?.querySelector?.('button[aria-label*="copy" i], button[title*="copy" i]')) score += 80;
-          if (/#include|\bint\s+main\s*\(|public\s+class\s+Main|\bdef\s+main\s*\(|if\s+__name__/.test(text)) score += 35;
-          if (/[{}();]|\bfor\s*\(|\bwhile\s*\(|\breturn\b/.test(text)) score += 20;
-          if (/^(Here|This|The|Explanation|Algorithm|Complexity|Note|Would you)/im.test(text)) score -= 60;
-          if (text.split('\n').length > 2) score += 10;
-          return score;
-        };
-        const selectors = ['[data-attrid="wa"]', '[data-attrid="AIOverview"]', '[data-mce-source]', 'div[jsname="N760b"]'];
-        const nodes = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
-        const candidates = nodes
-          .map((node) => clean(node.innerText || node.textContent || ''))
-          .filter((text) => text.length > 40);
-        nodes.forEach((node) => {
-          let parent = node;
-          for (let depth = 0; depth < 7 && parent; depth += 1) {
-            const text = clean(parent.innerText || '');
-            if (text.length > 40 && text.length < 40000) candidates.push(text);
-            parent = parent.parentElement;
-          }
-        });
-        const overviewLabel = [...document.querySelectorAll('h1,h2,h3,div,span')]
-          .find((node) => /^AI Overview$/i.test((node.innerText || '').trim()));
-        if (overviewLabel?.parentElement) {
-          const nearby = clean(overviewLabel.parentElement.parentElement?.innerText || overviewLabel.parentElement.innerText || '');
-          if (nearby.length > 40) candidates.push(nearby);
-        }
-        const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
-        const validCandidates = candidates.filter((c) => !isPlaceholder(c));
-        let text = validCandidates.sort((a, b) => b.length - a.length)[0] || '';
-        text = text.replace(/^AI\s+Overview\s*/i, '').trim();
-        if (isPlaceholder(text)) text = '';
-        const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
-          .map((node) => ({ text: clean(node.innerText || node.textContent || ''), score: 0, node }))
-          .filter((candidate) => candidate.text.length > 20)
-          .map((candidate) => ({ ...candidate, score: codeScore(candidate.text, candidate.node) }));
-        const fenced = [...document.body.innerText.matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
-          .map((match) => ({ text: clean(match[1]), score: 70, node: null }))
-          .filter((candidate) => candidate.text.length > 20);
-        const code = [...codeCandidates, ...fenced].sort((a, b) => b.score - a.score || b.text.length - a.text.length)[0]?.text || '';
-        const loading = /generating|loading/i.test(document.body?.innerText || '') && !text;
-        return { text, code, loading };
-      }
-    });
-    return result?.[0]?.result || { text: '', loading: false };
-  } catch (_error) { return { text: '', loading: false }; }
+    let result;
+    try {
+      result = await chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode });
+    } catch (_error) {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['google.js'] });
+      result = await chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode });
+    }
+    return result?.ok ? result : { text: '', code: '', loading: false };
+  } catch (_error) {
+    return { text: '', code: '', loading: false };
+  }
 }
 
 async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, questionText = '', attempts = 60) {
   if (requestId !== activeRequestId) return;
   const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
-  const reading = await readGoogleAIOverview(tabId);
+  const reading = await readGoogleAIOverview(tabId, mode);
   const text = reading.text || '';
   const selected = mode === 'coding' ? (reading.code || '') : text;
   addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
