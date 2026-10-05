@@ -365,6 +365,28 @@
         return true;
       }
 
+      if (message.type === 'POLL_LATEST_RESPONSE') {
+        const candidates = candidateResponses();
+        const latest = candidates[candidates.length - 1];
+        if (latest && latest.signature !== state.lastSignature) {
+          const generating = isGenerating();
+          const code = extractCode(latest.text, latest.node);
+          if (!generating) {
+            state.lastSignature = latest.signature;
+            sendResponse({
+              ok: true,
+              ready: true,
+              result: { text: latest.text, code: code || latest.text, capturedAt: Date.now() }
+            });
+            return true;
+          }
+          sendResponse({ ok: true, ready: false, generating: true });
+          return true;
+        }
+        sendResponse({ ok: true, ready: false });
+        return true;
+      }
+
       if (message.type === 'CHECK_EXISTING_RESPONSE') {
         const existing = checkExistingResponse(message.prompt, message.mode);
         if (existing) {
