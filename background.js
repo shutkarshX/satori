@@ -94,7 +94,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const current = await chrome.storage.local.get(['activeChatGPTRequest', 'activeGeminiRequest', 'satoriActiveRequest']);
   const requests = [current.activeChatGPTRequest, current.activeGeminiRequest, current.satoriActiveRequest].filter(Boolean);
-  if (requests.some((request) => request.tabId === tabId)) {
+  if (requests.some((request) => request.tabId === tabId || request.providerTabId === tabId)) {
     await cancelActiveRequest('Provider tab was closed; request cancelled.');
   }
 });
