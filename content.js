@@ -43,21 +43,24 @@
 
     const pill = root.querySelector('.satori-status-pill');
     let drag = null;
+    let moved = false;
     pill.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
+      moved = false;
       drag = { x: event.clientX, y: event.clientY, left: root.getBoundingClientRect().left, top: root.getBoundingClientRect().top };
       pill.setPointerCapture?.(event.pointerId);
     });
     pill.addEventListener('pointermove', (event) => {
       if (!drag) return;
       const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
       root.style.left = `${Math.max(4, Math.min(window.innerWidth - root.offsetWidth - 4, drag.left + dx))}px`;
       root.style.top = `${Math.max(4, Math.min(window.innerHeight - root.offsetHeight - 4, drag.top + dy))}px`;
       root.style.right = 'auto'; root.style.bottom = 'auto';
     });
     pill.addEventListener('pointerup', () => { drag = null; });
     pill.addEventListener('click', () => {
-      if (drag) return;
+      if (moved) { moved = false; return; }
       statusWidget.expanded = !statusWidget.expanded;
       root.querySelector('.satori-status-panel').hidden = !statusWidget.expanded;
     });
