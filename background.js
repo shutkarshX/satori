@@ -1,4 +1,80 @@
-const setStatus = (text, kind = 'waiting') => chrome.storage.local.set({ satoriStatus: { text, kind, at: Date.now() } });
+const setStatus = (text, kind = 'waiting', extra = {}) => chrome.storage.local.set({
+  satoriStatus: { text, kind, at: Date.now(), ...extra }
+});
+
+const PROVIDER_NAMES = { google: 'Google AI Mode', gemini: 'Gemini', chatgpt: 'ChatGPT' };
+
+function buildShortcutPrompt(provider, mode, pageText) {
+  const extra = '';
+  if (mode === 'mcq') {
+    return `Solve the practice multiple-choice question contained in this page text.
+Identify the actual question and its options yourself. Ignore navigation, buttons, timers, and unrelated page content.
+Return ONLY the correct option in this exact format:
+ANSWER: <Option Letter> - <Exact Option Text>
+
+PAGE:
+${pageText}`;
+  }
+  return `Solve the practice coding problem contained in this page text.
+Identify the actual problem, required language, input/output format, constraints, and examples yourself. Ignore navigation, buttons, timers, and unrelated page content.
+Return exactly one complete submission-ready source file in one code block and nothing else. Include all required imports/headers, helpers, and the complete entry point. Use the exact language requested by the assignment.
+
+PAGE:
+${pageText}`;
+}
+
+async function runShortcut(mode) {
+  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const assignmentTab = tabs.find((tab) => tab.id && !/^https:\/\/(www\\.)?google\\./i.test(tab.url || '') && !/^https:\/\/gemini\\.google\\.com\\//i.test(tab.url || '') && !/^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\\//i.test(tab.url || '')) || tabs[0];
+  if (!assignmentTab?.id) throw new Error('No active assignment tab found.');
+
+  const stored = await chrome.storage.local.get('satoriProvider');
+  const provider = stored.satoriProvider || 'chatgpt';
+  if (/^chrome:\/\//i.test(assignmentTab.url || '')) throw new Error('Chrome internal pages cannot be used with Satori.');
+
+  let page;
+  try {
+    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+  } catch (_error) {
+    await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id }, files: ['content.js'] });
+    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+  }
+  if (!page?.ok || !page.fullText || page.fullText.trim().length < 10) throw new Error('Could not read enough page text.');
+
+  const pageText = page.fullText;
+  const requestId = ++activeRequestId;
+  const prompt = buildShortcutPrompt(provider, mode, pageText);
+  const questionText = page.text || pageText;
+
+  await chrome.storage.local.set({ satoriMode: mode, satoriProvider: provider });
+  await chrome.storage.local.remove([
+    'latestGoogleResponse', 'latestGoogleRawResponse',
+    'latestGeminiResponse', 'latestGeminiRawResponse',
+    'latestChatGPTResponse', 'latestChatGPTRawResponse'
+  ]);
+  await chrome.storage.local.set({
+    satoriActiveRequest: { requestId, provider, mode, assignmentTabId: assignmentTab.id, startedAt: Date.now() }
+  });
+  setStatus(`${PROVIDER_NAMES[provider]} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting', {
+    requestId, provider, mode, startedAt: Date.now(), estimateSec: provider === 'google' ? 10 : provider === 'gemini' ? 8 : 12
+  });
+  addDiagnostic('shortcut', `${mode} shortcut → ${provider} request ${requestId}`);
+
+  if (provider === 'google') startGoogleSearch(pageText, requestId, mode, assignmentTab, questionText);
+  else if (provider === 'gemini') startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
+  else startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText);
+}
+
+chrome.commands.onCommand.addListener(async (command) => {
+  const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-code' ? 'coding' : null;
+  if (!mode) return;
+  try {
+    await runShortcut(mode);
+  } catch (error) {
+    setStatus(error.message, 'error');
+    addDiagnostic('shortcut-error', error.message);
+  }
+});
 let activeRequestId = 0;
 const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnostics', (result) => {
   const entries = Array.isArray(result.satoriDiagnostics) ? result.satoriDiagnostics : [];
