@@ -7,6 +7,7 @@
     requestId: 0,
     mode: 'text',
     baseline: new Set(),
+    baselineNodes: new Set(),
     baselineCode: new Set(),
     baselineCount: 0,
     lastSentAt: 0,
@@ -58,7 +59,7 @@
   });
 
   const candidateResponses = () => {
-    return responseSnapshot().filter((item) => !state.baseline.has(item.signature));
+    return responseSnapshot().filter((item) => !state.baselineNodes.has(item.node));
   };
 
   const report = (type, detail) => {
@@ -152,9 +153,9 @@
       (/[{}();]|\breturn\b|\bfor\s*\(|\bwhile\s*\(/.test(value) ? 30 : 0) +
       Math.min(value.length / 1000, 20) - distance;
 
-    // 1. Check Copy buttons anywhere in assistant message or document
+    // 1. Check Copy buttons inside the current assistant message only.
     const copyAnchored = [];
-    const allButtons = [...(node?.querySelectorAll?.('button') || []), ...document.querySelectorAll('button')];
+    const allButtons = [...(node?.querySelectorAll?.('button') || [])];
     const copyButtons = allButtons.filter((button) =>
       /copy/i.test(`${button.getAttribute('aria-label') || ''} ${button.getAttribute('title') || ''} ${button.innerText || ''} ${button.textContent || ''}`)
     );
@@ -189,7 +190,7 @@
 
     // 3. DOM code elements (pre, code, code-block, etc.)
     const selectors = 'pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]';
-    const elements = [...(node?.querySelectorAll?.(selectors) || []), ...document.querySelectorAll(selectors)];
+    const elements = [...(node?.querySelectorAll?.(selectors) || [])];
     const domCode = elements
       .map((element, index) => ({
         text: normalizeSource(nodeText(element)),
@@ -356,6 +357,7 @@
       state.requestId = message.requestId || Date.now();
       state.mode = message.mode || 'text';
       state.baseline = new Set(responseSnapshot().map((item) => item.signature));
+      state.baselineNodes = new Set(responseNodes());
       state.baselineCode = new Set(
         [...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
           .map((element) => normalizeSource(nodeText(element)))
