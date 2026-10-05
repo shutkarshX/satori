@@ -374,14 +374,15 @@
 
       state.requestId = message.requestId || Date.now();
       state.mode = message.mode || 'text';
-      state.baseline = new Set(responseSnapshot().map((item) => item.signature));
+      const initialSnapshot = responseSnapshot();
+      state.baseline = new Set(initialSnapshot.map((item) => item.signature));
       state.baselineCode = new Set(
         [...document.querySelectorAll('pre code, pre, code-block, [class*="code-block" i], [class*="codeBlock" i], [data-code-block], [data-testid*="code" i]')]
           .map((element) => normalizeSource(nodeText(element)))
           .filter((text) => text.length > 20)
           .map(signature)
       );
-      state.baselineCount = state.baseline.size;
+      state.baselineCount = initialSnapshot.length;
       state.lastSignature = '';
       state.lastSentAt = Date.now();
       clearTimeout(state.quietTimer);
