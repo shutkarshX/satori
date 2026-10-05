@@ -735,7 +735,11 @@ async function handleChatGPTResponse(message) {
   if (requestId) await chrome.alarms.clear(`satori-timeout-${requestId}`);
   activeChatGPTRequest = null;
   await chrome.storage.local.remove(['activeChatGPTRequest', 'satoriActiveRequest']);
-  await autoFillAssignment(assignmentTabId, providerResult);
+  const applied = await autoFillAssignment(assignmentTabId, providerResult);
+  if (!applied?.ok) {
+    addDiagnostic('chatgpt-complete', 'response captured but could not be applied to the assignment');
+    return;
+  }
   const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
   setStatus(`ChatGPT response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
   addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
