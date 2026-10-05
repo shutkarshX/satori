@@ -21,13 +21,13 @@ A small draggable status widget appears on the assignment page while a request i
 - **× ERROR** — the request or assignment action failed.
 - **– CANCELLED** — the request was stopped by the user.
 
-Every request also has a durable two-minute timeout.
+Every request also has a durable two-minute timeout. Provider adapters report their own response events; the background service worker rejects stale events and clears request state on success, cancellation, provider-tab closure, startup failure, or timeout.
 
 Click the widget for the current status detail.
 
 ## Providers
 
-- **Google AI Mode** — searches Google and reads the available AI result.
+- **Google AI Mode** — searches Google and watches the provider page for a newly generated AI result.
 - **Gemini** — reuses a Gemini tab and watches for the provider's response.
 - **ChatGPT** — reuses a ChatGPT conversation, submits the prompt automatically, and captures the new assistant response.
 
