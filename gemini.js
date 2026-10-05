@@ -208,8 +208,6 @@
     childList: true, subtree: true, characterData: true
   });
 
-  setInterval(inspectForNewResponse, 1000);
-
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'PING_GEMINI') {
       sendResponse({ ok: true, input: Boolean(findInput()), responses: responseNodes().length });

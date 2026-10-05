@@ -1,14 +1,53 @@
 {
   "manifest_version": 3,
   "name": "Satori",
-  "version": "0.4.0",
-  "description": "A practice-study assistant for MCQs and coding questions using Google Search AI results.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
-  "host_permissions": ["https://www.google.com/*", "https://google.com/*", "https://www.google.co.in/*", "https://google.co.in/*", "https://gemini.google.com/*", "https://chatgpt.com/*", "https://chat.openai.com/*"],
-  "background": { "service_worker": "background.js" },
+  "version": "1.0.0",
+  "description": "A practice-study assistant for MCQs and coding questions using Google, Gemini, and ChatGPT.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://www.google.com/*",
+    "https://google.com/*",
+    "https://www.google.co.in/*",
+    "https://google.co.in/*",
+    "https://gemini.google.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Satori",
     "default_popup": "popup.html"
+  },
+  "commands": {
+    "satori-mcq": {
+      "suggested_key": {
+        "default": "Alt+Shift+M",
+        "mac": "Command+Shift+M"
+      },
+      "description": "Solve the current page as an MCQ with Satori"
+    },
+    "satori-code": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Command+Shift+C"
+      },
+      "description": "Solve the current page as coding with Satori"
+    },
+    "satori-cancel": {
+      "suggested_key": {
+        "default": "Alt+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "Cancel the active Satori request"
+    }
   },
   "content_scripts": [
     {
@@ -17,12 +56,25 @@
       "run_at": "document_idle"
     },
     {
+      "matches": [
+        "https://www.google.com/*",
+        "https://google.com/*",
+        "https://www.google.co.in/*",
+        "https://google.co.in/*"
+      ],
+      "js": ["google.js"],
+      "run_at": "document_idle"
+    },
+    {
       "matches": ["https://gemini.google.com/*"],
       "js": ["gemini.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
       "js": ["chatgpt.js"],
       "run_at": "document_idle"
     }

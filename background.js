@@ -1,17 +1,69 @@
-const setStatus = (text, kind = 'waiting') => chrome.storage.local.set({ satoriStatus: { text, kind, at: Date.now() } });
+// -------------------------------------------------------------
+// Satori - Background Service Worker (Unified Request Lifecycle)
+// -------------------------------------------------------------
+
 let activeRequestId = 0;
+let activeRequestMeta = null;
+let activeChatGPTRequest = null;
+let activeGeminiRequest = null;
+
+const PROVIDER_NAMES = {
+  google: 'Google AI Mode',
+  gemini: 'Gemini',
+  chatgpt: 'ChatGPT'
+};
+
+const setStatus = (text, kind = 'waiting', extra = {}) => {
+  return chrome.storage.local.set({
+    satoriStatus: {
+      text,
+      kind,
+      at: Date.now(),
+      ...(kind === 'waiting' && activeRequestMeta ? activeRequestMeta : {}),
+      ...extra
+    }
+  });
+};
+
 const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnostics', (result) => {
   const entries = Array.isArray(result.satoriDiagnostics) ? result.satoriDiagnostics : [];
   entries.push({ time: new Date().toLocaleTimeString(), step, detail });
   chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
 });
 
+// -------------------------------------------------------------
+// Unified Prompt Construction (No Question Synthesis Layer)
+// -------------------------------------------------------------
+function buildDirectPrompt(provider, mode, pageContent) {
+  if (mode === 'mcq') {
+    return `Solve the practice multiple-choice question contained in this page text.
+Identify the actual question and its options yourself from the text. Ignore navigation, buttons, timers, and unrelated page elements.
+Output ONLY the correct option in this exact format:
+ANSWER: <Option Letter> - <Exact Option Text>
+
+Example format:
+ANSWER: B - Inserting a new element into the queue
+
+PAGE CONTENT:
+${pageContent}`;
+  }
+
+  return `Solve the practice coding problem contained in this page text.
+Identify the actual problem, required programming language, input/output format, constraints, and examples yourself. Ignore navigation, buttons, timers, and unrelated page elements.
+Return exactly one complete, submission-ready, compilable source file in ONE code block and nothing else outside the code block. Include all required imports/headers, helpers, and the complete entry point.
+
+PAGE CONTENT:
+${pageContent}`;
+}
+
+// -------------------------------------------------------------
+// Normalized Provider Result Builder & Validator
+// -------------------------------------------------------------
 function formatMcqAnswer(text, questionText = '') {
-  if (!text) return '';
-  // Normalize unicode math symbols (e.g. 𝑂 -> O, ∗ -> *, · -> *, × -> *, etc.)
+  if (!text) return { letter: null, text: '', raw: '' };
   let clean = text.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').trim();
 
-  // If questionText is provided, extract options from it and check if any is matched
+  // If question options are known, test against them directly (longest first)
   if (questionText) {
     const stopWords = /^(Question|Marks|Negative|Answer here|Clear|Prev|Next|Submit|Section|Time|View|Multi Choice|Single File|degree|batch|roll number|name|email|test name)/i;
     const knownOptions = questionText
@@ -21,610 +73,468 @@ function formatMcqAnswer(text, questionText = '') {
 
     const norm = (s) => s.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').replace(/\s+/g, '').toLowerCase();
     const normClean = norm(clean);
-
-    // Look for exact options inside the AI explanation (longest first to prefer O(sum*n) over O(n) or O(sum))
     const sorted = [...knownOptions].sort((a, b) => b.length - a.length);
+
     for (const opt of sorted) {
       const normOpt = norm(opt);
       if (normOpt.length >= 2 && normClean.includes(normOpt)) {
-        return opt;
+        return { letter: null, text: opt, raw: clean };
       }
     }
   }
 
-  // 1. Look for explicit answer indicators: "**ANSWER:** A - text", "ANSWER: B", "Correct Option: C", etc.
+  // 1. Explicit answer marker: "ANSWER: B - Text" or "ANSWER: C"
   const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
   if (explicitMatch && explicitMatch[1]) {
     const candidate = explicitMatch[1].replace(/^\*+|\*+$/g, '').trim();
-    if (candidate && !/^(evaluation|analysis|explanation)/i.test(candidate)) {
-      return candidate.replace(/^[\:\-\s]+/, '').replace(/\s+/g, ' ');
+    const parsed = candidate.match(/^(?:Option\s+)?(?:\(?([A-Da-d])\)?[\).\:\-\s]*)\s*(.*)$/);
+    if (parsed) {
+      return {
+        letter: parsed[1].toUpperCase(),
+        text: (parsed[2] || '').trim(),
+        raw: clean
+      };
     }
+    return { letter: null, text: candidate, raw: clean };
   }
 
-  // Check for Big-O notation directly (e.g. O(sum*n), O(N!), O(n2))
-  const cleanFlat = clean.replace(/\r?\n/g, ' ');
-  const bigOMatch = cleanFlat.match(/O\s*\(\s*([A-Za-z0-9_*\s\+\-\^!]+)\s*\)/i);
+  // 2. Direct Big-O formula
+  const bigOMatch = clean.replace(/\r?\n/g, ' ').match(/O\s*\(\s*([A-Za-z0-9_*\s\+\-\^!]+)\s*\)/i);
   if (bigOMatch) {
     const inner = bigOMatch[1].replace(/[\s·×⋅*]+/g, '*').trim();
-    return `O(${inner})`;
+    return { letter: null, text: `O(${inner})`, raw: clean };
   }
 
-  // Pre-process lines: merge consecutive fragmented mathematical tokens (e.g. Google Search rendering 'O' '(' 'sum' '*' 'n' ')' on separate lines)
-  const rawLines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const lines = [];
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i];
-    if (line.length <= 4 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(line)) {
-      let formula = line;
-      while (i + 1 < rawLines.length && rawLines[i + 1].length <= 6 && /^[A-Za-z0-9_()*\+\-\/\^!]+$/.test(rawLines[i + 1])) {
-        i++;
-        formula += rawLines[i];
-      }
-      lines.push(formula);
-    } else {
-      lines.push(line);
-    }
-  }
-
-  // 2. Look for lines starting with an option letter, ignoring markdown headings
+  // 3. Option letter on standalone line
+  const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   for (const line of lines) {
     if (/^(#|option evaluation|evaluation|analysis|explanation|question|note)/i.test(line)) continue;
     const optionMatch = line.match(/^(?:Option\s+)?(?:\*{0,2}\(?([A-Da-d])\)?\*{0,2})[\).\:\-\s]\s*(.*)$/);
     if (optionMatch) {
-      const letter = optionMatch[1].toUpperCase();
-      const rest = (optionMatch[2] || '').replace(/^\*+|\*+$/g, '').trim();
-      return rest ? `${letter} - ${rest}`.replace(/\s+/g, ' ') : letter;
+      return {
+        letter: optionMatch[1].toUpperCase(),
+        text: (optionMatch[2] || '').replace(/^\*+|\*+$/g, '').trim(),
+        raw: clean
+      };
     }
   }
 
-  // 3. Look for standalone option patterns in whole text
-  const standaloneMatch = clean.match(/\b([A-Da-d])\s*[\:\-\)]\s*([^\n\r\.]+)/);
-  if (standaloneMatch && !/^(evaluation|analysis|explanation)/i.test(standaloneMatch[2])) {
-    return `${standaloneMatch[1].toUpperCase()} - ${standaloneMatch[2].trim()}`.replace(/\s+/g, ' ');
-  }
-
-  // 4. Look for declarative sentence endings like "is 2.", "is B.", "equal to 2.", "answer is 2.", "complexity is O(sum*n)"
+  // 4. Declarative sentence ending
   const sentencePattern = /(?:is|equals?|answer is|result is|length is|time complexity is|complexity is)\s*[:\-]?\s*([A-Da-d]\b|[0-9]+(?:\.[0-9]+)?|O\([^\)]+\)|[^\n\.,]+)[.\s]*$/im;
   const sentenceMatch = clean.match(sentencePattern);
   if (sentenceMatch && sentenceMatch[1] && sentenceMatch[1].trim().length < 40) {
     const res = sentenceMatch[1].replace(/[.\s]+$/, '').trim();
-    if (res.length > 1 || /^[A-Da-d0-9]$/.test(res)) return res;
+    if (/^[A-Da-d]$/.test(res)) return { letter: res.toUpperCase(), text: '', raw: clean };
+    if (res.length > 1) return { letter: null, text: res, raw: clean };
   }
 
-  // 5. Look for standalone Big-O complexity in merged lines
-  const bigOMerged = lines.find((l) => /^O\([^\)]+\)$/i.test(l));
-  if (bigOMerged) return bigOMerged;
-
-  // 6. Fallback: filter out heading lines, colon endings, and single non-option characters
-  const filteredLines = lines.filter((l) =>
-    l.length >= 2 &&
-    !/^(#|ai overview|option evaluation|evaluation|analysis|explanation|question|here is|the correct|is\s*:|note)/i.test(l) &&
-    !/^(ai overview|is\s*[:\.]?)$/i.test(l)
-  );
-  let fallback = filteredLines[0] || clean.split(/\.\s+|\n/).find((s) => s.trim().length > 3 && !/^(ai overview|is\s*[:\.]?)$/i.test(s.trim())) || clean;
-  if (/^O$/i.test(fallback.trim())) {
-    const m = clean.match(/O\s*\([^)]+\)/i);
-    if (m) fallback = m[0];
-  }
-  return fallback.length < 80 ? fallback.trim() : fallback.trim().slice(0, 80);
+  // Fallback line
+  const filtered = lines.filter((l) => l.length >= 2 && !/^(#|ai overview|evaluation|analysis|explanation)/i.test(l));
+  const fallback = filtered[0] || clean.slice(0, 80);
+  return { letter: null, text: fallback, raw: clean };
 }
 
-async function autoFillAssignment(tabId, text, provider, mode = 'coding') {
-  if (!tabId || !text || text.trim() === 'Code not available') return;
+function validateProviderResult(provider, requestId, mode, payload, questionText = '') {
+  if (mode === 'mcq') {
+    const raw = typeof payload === 'string' ? payload : (payload.text || payload.code || '');
+    const mcq = formatMcqAnswer(raw, questionText);
+    return {
+      provider,
+      requestId,
+      type: 'mcq',
+      valid: Boolean(mcq.letter || mcq.text),
+      answer: mcq,
+      raw
+    };
+  }
+
+  // Coding validation
+  const code = typeof payload === 'string' ? payload : (payload.code || payload.text || '');
+  const looksLikeCode = /(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\(|\bimport\s+java|\bfunction\b|class\s+\w+)/i.test(code);
+  return {
+    provider,
+    requestId,
+    type: 'coding',
+    valid: looksLikeCode && code.trim().length > 30,
+    code: code.trim(),
+    raw: typeof payload === 'object' ? payload.text : code
+  };
+}
+
+// -------------------------------------------------------------
+// Single Execution & Autofill Pipeline
+// -------------------------------------------------------------
+async function autoFillAssignment(tabId, result) {
+  if (!tabId || !result || !result.valid) return { ok: false, error: 'Invalid AI answer' };
+
   try {
-    const cleanAnswer = text.trim();
-    const msgType = mode === 'mcq' ? 'SELECT_MCQ_OPTION' : 'TYPE_INTO_EDITOR';
-    const payload = mode === 'mcq' ? { type: msgType, answer: cleanAnswer } : { type: msgType, text: cleanAnswer, append: false };
-    let result;
-    try { result = await chrome.tabs.sendMessage(tabId, payload); }
-    catch (_error) {
+    const msgType = result.type === 'mcq' ? 'SELECT_MCQ_OPTION' : 'TYPE_INTO_EDITOR';
+    const payload = result.type === 'mcq'
+      ? { type: msgType, answer: result.answer }
+      : { type: msgType, text: result.code, append: false };
+
+    let res;
+    try {
+      res = await chrome.tabs.sendMessage(tabId, payload);
+    } catch (_error) {
       await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
-      result = await chrome.tabs.sendMessage(tabId, payload);
+      res = await chrome.tabs.sendMessage(tabId, payload);
     }
-    if (result?.ok) {
-      const detail = mode === 'mcq' ? `MCQ option '${result.selected?.matched || 'choice'}' marked on portal` : 'answer placed into the assignment editor';
-      addDiagnostic(`${provider}-autofill`, detail);
-      setStatus(`${provider} answer ${mode === 'mcq' ? 'selected' : 'placed in editor'}. Review before submitting.`, 'ready');
-    } else addDiagnostic(`${provider}-autofill`, result?.error || (mode === 'mcq' ? 'could not locate MCQ option' : 'assignment editor was not found'));
-  } catch (error) { addDiagnostic(`${provider}-autofill`, `could not place answer (${error.message})`); }
+
+    if (res?.ok) {
+      const detail = result.type === 'mcq'
+        ? `Option '${res.selected?.matched || 'choice'}' marked on portal`
+        : 'Code placed into assignment editor';
+      addDiagnostic(`${result.provider}-autofill`, detail);
+      setStatus(`${PROVIDER_NAMES[result.provider] || result.provider} answer applied. Review before submitting.`, 'ready');
+      return { ok: true };
+    }
+
+    const err = res?.error || (result.type === 'mcq' ? 'Could not match option on portal' : 'Assignment editor not found');
+    addDiagnostic(`${result.provider}-autofill`, err);
+    setStatus(err, 'error');
+    return { ok: false, error: err };
+  } catch (error) {
+    addDiagnostic(`${result.provider}-autofill`, error.message);
+    setStatus(`Autofill failed: ${error.message}`, 'error');
+    return { ok: false, error: error.message };
+  }
 }
 
-async function readGoogleAIOverview(tabId) {
-  try {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        const clean = (value) => value.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
-        const codeScore = (text, node) => {
-          let score = 0;
-          if (node?.matches?.('pre, pre code')) score += 100;
-          if (node?.closest?.('pre')) score += 80;
-          if (node?.parentElement?.querySelector?.('button[aria-label*="copy" i], button[title*="copy" i]')) score += 80;
-          if (/#include|\bint\s+main\s*\(|public\s+class\s+Main|\bdef\s+main\s*\(|if\s+__name__/.test(text)) score += 35;
-          if (/[{}();]|\bfor\s*\(|\bwhile\s*\(|\breturn\b/.test(text)) score += 20;
-          if (/^(Here|This|The|Explanation|Algorithm|Complexity|Note|Would you)/im.test(text)) score -= 60;
-          if (text.split('\n').length > 2) score += 10;
-          return score;
-        };
-        const selectors = ['[data-attrid="wa"]', '[data-attrid="AIOverview"]', '[data-mce-source]', 'div[jsname="N760b"]'];
-        const nodes = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
-        const candidates = nodes
-          .map((node) => clean(node.innerText || node.textContent || ''))
-          .filter((text) => text.length > 40);
-        nodes.forEach((node) => {
-          let parent = node;
-          for (let depth = 0; depth < 7 && parent; depth += 1) {
-            const text = clean(parent.innerText || '');
-            if (text.length > 40 && text.length < 40000) candidates.push(text);
-            parent = parent.parentElement;
-          }
-        });
-        const overviewLabel = [...document.querySelectorAll('h1,h2,h3,div,span')]
-          .find((node) => /^AI Overview$/i.test((node.innerText || '').trim()));
-        if (overviewLabel?.parentElement) {
-          const nearby = clean(overviewLabel.parentElement.parentElement?.innerText || overviewLabel.parentElement.innerText || '');
-          if (nearby.length > 40) candidates.push(nearby);
-        }
-        const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
-        const validCandidates = candidates.filter((c) => !isPlaceholder(c));
-        let text = validCandidates.sort((a, b) => b.length - a.length)[0] || '';
-        text = text.replace(/^AI\s+Overview\s*/i, '').trim();
-        if (isPlaceholder(text)) text = '';
-        const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
-          .map((node) => ({ text: clean(node.innerText || node.textContent || ''), score: 0, node }))
-          .filter((candidate) => candidate.text.length > 20)
-          .map((candidate) => ({ ...candidate, score: codeScore(candidate.text, candidate.node) }));
-        const fenced = [...document.body.innerText.matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
-          .map((match) => ({ text: clean(match[1]), score: 70, node: null }))
-          .filter((candidate) => candidate.text.length > 20);
-        const code = [...codeCandidates, ...fenced].sort((a, b) => b.score - a.score || b.text.length - a.text.length)[0]?.text || '';
-        const loading = /generating|loading/i.test(document.body?.innerText || '') && !text;
-        return { text, code, loading };
-      }
-    });
-    return result?.[0]?.result || { text: '', loading: false };
-  } catch (_error) { return { text: '', loading: false }; }
-}
-
-async function pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, questionText = '', attempts = 60) {
-  if (requestId !== activeRequestId) return;
-  const isPlaceholder = (str) => /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i.test(str);
-  const reading = await readGoogleAIOverview(tabId);
-  const text = reading.text || '';
-  const selected = mode === 'coding' ? (reading.code || '') : text;
-  addDiagnostic('response-check', text ? `response found (${text.length} chars), code candidate=${reading.code ? 'yes' : 'no'}` : 'no AI response candidate');
-  if (selected && !isPlaceholder(selected) && (!before || selected !== before)) {
-    const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, questionText) : selected;
-    chrome.storage.local.set({ latestGoogleResponse: finalSelected, latestGoogleRawResponse: text, latestGoogleAt: Date.now(), latestProvider: 'google' });
-    let quality = 'response captured and stored';
-    let warning = '';
-    if (mode === 'mcq' && !/\b(answer|correct answer|option)\s*[:\-]/i.test(text)) {
-      warning = ' Response captured, but no explicit MCQ answer was found.';
-      quality += '; MCQ answer marker missing';
-    } else if (mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected)) {
-      warning = ' Response captured, but it does not look like a complete program.';
-      quality += '; code completeness warning';
-    }
-    setStatus(`Google AI Overview captured.${warning}`, warning ? 'error' : 'ready');
-    addDiagnostic('complete', quality);
-    autoFillAssignment(assignmentTabId, finalSelected, 'Google AI', mode);
+async function handleCompletedResult(provider, requestId, rawPayload) {
+  const current = await chrome.storage.local.get('satoriActiveRequest');
+  const active = current.satoriActiveRequest;
+  if (!active || active.requestId !== requestId) {
+    addDiagnostic('lifecycle', `Ignored stale/cancelled response from ${provider} (request ${requestId})`);
     return;
   }
-  if (selected && isPlaceholder(selected)) {
-    addDiagnostic('response-check', 'placeholder / overview unavailable detected; waiting for generation to complete');
-  }
-  if (mode === 'coding' && text && !reading.code) addDiagnostic('parser', 'response found but no reliable code block detected');
-  if (attempts > 0) setTimeout(() => pollGoogleAIOverview(tabId, before, requestId, mode, assignmentTabId, questionText, attempts - 1), 1000);
-  else setStatus('No Google AI Overview was detected. Check the search tab or try again.', 'error');
-}
 
-async function getReusableGoogleTab(windowId) {
-  const stored = await chrome.storage.local.get(['satoriGoogleTabId', 'satoriGoogleWindowId']);
-  if (stored.satoriGoogleTabId && stored.satoriGoogleWindowId === windowId) {
-    try {
-      const tab = await chrome.tabs.get(stored.satoriGoogleTabId);
-      if (tab?.windowId === windowId && /^https:\/\/(www\.)?google\./i.test(tab.url || '')) return tab;
-    } catch (_error) {
-      addDiagnostic('tab', 'saved Google tab no longer exists');
-    }
-  }
-  const tabs = await chrome.tabs.query({ windowId });
-  const inactiveGoogleTab = tabs.find((tab) => !tab.active && /^https:\/\/(www\.)?google\./i.test(tab.url || ''));
-  if (inactiveGoogleTab?.id) {
-    await chrome.storage.local.set({ satoriGoogleTabId: inactiveGoogleTab.id, satoriGoogleWindowId: windowId });
-    addDiagnostic('tab', `adopted existing inactive Google tab ${inactiveGoogleTab.id}`);
-    return inactiveGoogleTab;
-  }
-  return null;
-}
+  await chrome.alarms.clear(`satori-timeout-${requestId}`);
+  activeRequestMeta = null;
+  await chrome.storage.local.remove('satoriActiveRequest');
 
-async function startGoogleSearch(query, requestId, mode, assignmentTab, questionText = '') {
-  const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
-  await chrome.storage.local.remove(['latestGoogleResponse', 'latestGoogleRawResponse']);
-  const windowId = assignmentTab?.windowId;
-  let tab = windowId ? await getReusableGoogleTab(windowId) : null;
-  const reused = Boolean(tab?.id);
-  addDiagnostic('tab', tab ? `reusing Google Search tab ${tab.id}` : 'creating reusable Google Search tab');
-  setStatus('Opening Google Search for AI Overview in the background…', 'waiting');
-  let targetTabId = tab?.id || null;
-  let handled = false;
-  const handleLoaded = async () => {
-    if (handled || requestId !== activeRequestId || !targetTabId) return;
-    handled = true;
-    chrome.tabs.onUpdated.removeListener(listener);
-    setStatus('Google Search loaded — checking for AI Overview…', 'waiting');
-    addDiagnostic('page', `Google Search tab ${targetTabId} loaded`);
-    pollGoogleAIOverview(targetTabId, '', requestId, mode, assignmentTab?.id, questionText);
+  const validated = validateProviderResult(provider, requestId, active.mode, rawPayload, active.questionText);
+
+  if (!validated.valid) {
+    const reason = active.mode === 'mcq'
+      ? 'No reliable MCQ option found in response.'
+      : 'Response did not contain a complete compilable code block.';
+    setStatus(reason, 'error');
+    addDiagnostic('validation-failed', reason);
+    return;
+  }
+
+  // Store in cache for popup display
+  const storageUpdate = {
+    latestProvider: provider,
+    [`latest${provider.charAt(0).toUpperCase() + provider.slice(1)}Response`]: active.mode === 'mcq' ? (validated.answer.text || validated.answer.letter) : validated.code,
+    [`latest${provider.charAt(0).toUpperCase() + provider.slice(1)}RawResponse`]: validated.raw
   };
-  const listener = (updatedTabId, changeInfo) => {
-    if (updatedTabId === targetTabId && changeInfo.status === 'complete') handleLoaded();
-  };
-  chrome.tabs.onUpdated.addListener(listener);
-  try {
-    if (tab?.id) {
-      await chrome.tabs.update(tab.id, { url, active: false });
-    } else {
-      tab = await chrome.tabs.create({ url, active: false, windowId });
-      if (!tab?.id) throw new Error('Chrome did not create the tab.');
-      targetTabId = tab.id;
-      await chrome.storage.local.set({ satoriGoogleTabId: tab.id, satoriGoogleWindowId: tab.windowId });
-    }
-    if (!reused && tab.status === 'complete') handleLoaded();
-  } catch (error) {
-    chrome.tabs.onUpdated.removeListener(listener);
-    setStatus(`Could not open Google Search: ${error.message}`, 'error');
-    addDiagnostic('tab-error', error.message);
-  }
+  await chrome.storage.local.set(storageUpdate);
+
+  await autoFillAssignment(active.assignmentTabId, validated);
 }
 
-let activeGeminiRequest = null;
-
-async function getReusableGeminiTab(windowId) {
-  const stored = await chrome.storage.local.get(['satoriGeminiTabId', 'satoriGeminiWindowId']);
-  if (stored.satoriGeminiTabId && stored.satoriGeminiWindowId === windowId) {
-    try {
-      const tab = await chrome.tabs.get(stored.satoriGeminiTabId);
-      if (tab?.windowId === windowId && /^https:\/\/gemini\.google\.com\//i.test(tab.url || '')) return tab;
-    } catch (_error) {
-      addDiagnostic('gemini-tab', 'saved Gemini tab no longer exists');
-    }
+// -------------------------------------------------------------
+// Request Lifecycle & Cancellation Management
+// -------------------------------------------------------------
+async function cancelActiveRequest(reason = 'Request cancelled by user.') {
+  const current = await chrome.storage.local.get('satoriActiveRequest');
+  if (current.satoriActiveRequest?.requestId) {
+    await chrome.alarms.clear(`satori-timeout-${current.satoriActiveRequest.requestId}`);
   }
-  const tabs = await chrome.tabs.query({ windowId });
-  const inactive = tabs.find((tab) => !tab.active && /^https:\/\/gemini\.google\.com\//i.test(tab.url || ''));
-  if (inactive?.id) {
-    await chrome.storage.local.set({ satoriGeminiTabId: inactive.id, satoriGeminiWindowId: windowId });
-    addDiagnostic('gemini-tab', `adopted existing inactive Gemini tab ${inactive.id}`);
-    return inactive;
-  }
-  return null;
-}
-
-async function sendGeminiPrompt(tabId, requestId, prompt, mode, retries = 15) {
-  if (requestId !== activeRequestId) return;
-  try {
-    let result;
-    try {
-      result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', requestId, prompt, mode });
-    } catch (_e) {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['gemini.js'] }).catch(() => {});
-      result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', requestId, prompt, mode });
-    }
-    if (result?.ok) {
-      addDiagnostic('gemini-input', `prompt dispatched; baseline responses=${result.baselineCount ?? 'unknown'}`);
-      setStatus('Gemini prompt sent — waiting for a new response…', 'waiting');
-      return;
-    }
-    addDiagnostic('gemini-input', result?.error || 'Gemini adapter rejected the prompt');
-  } catch (error) {
-    addDiagnostic('gemini-input', `adapter not ready (${error.message})`);
-  }
-  if (retries > 0) setTimeout(() => sendGeminiPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
-  else {
-    setStatus('Gemini input was not ready. Open Gemini once, then try again.', 'error');
-    addDiagnostic('gemini-error', 'input not found after retries');
-  }
-}
-
-async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText = '') {
-  await chrome.storage.local.remove(['latestGeminiResponse', 'latestGeminiRawResponse']);
-  const windowId = assignmentTab?.windowId;
-  let tab = windowId ? await getReusableGeminiTab(windowId) : null;
-  activeGeminiRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
-  await chrome.storage.local.set({ activeGeminiRequest });
-  addDiagnostic('gemini-tab', tab ? `reusing Gemini tab ${tab.id}` : 'creating reusable Gemini tab');
-  setStatus('Opening Gemini in the background…', 'waiting');
-  try {
-    const url = 'https://gemini.google.com/app';
-    if (tab?.id) {
-      activeGeminiRequest.tabId = tab.id;
-      await chrome.storage.local.set({ activeGeminiRequest });
-      await chrome.tabs.update(tab.id, { url, active: false });
-      setTimeout(() => sendGeminiPrompt(tab.id, requestId, prompt, mode), 1200);
-    } else {
-      tab = await chrome.tabs.create({ url, active: false, windowId });
-      if (!tab?.id) throw new Error('Chrome did not create the Gemini tab.');
-      activeGeminiRequest.tabId = tab.id;
-      await chrome.storage.local.set({ satoriGeminiTabId: tab.id, satoriGeminiWindowId: tab.windowId, activeGeminiRequest });
-      setTimeout(() => sendGeminiPrompt(tab.id, requestId, prompt, mode), 1800);
-    }
-  } catch (error) {
-    setStatus(`Could not open Gemini: ${error.message}`, 'error');
-    addDiagnostic('gemini-error', error.message);
-  }
-}
-
-async function handleGeminiResponse(message) {
-  const responsePayload = message.detail ?? message.text;
-  const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
-  
-  if (!activeGeminiRequest) {
-    const stored = await chrome.storage.local.get(['activeGeminiRequest', 'satoriMode']);
-    if (stored.activeGeminiRequest) activeGeminiRequest = stored.activeGeminiRequest;
-    else if (stored.satoriMode) activeGeminiRequest = { mode: stored.satoriMode };
-  }
-  const mode = payload.mode || activeGeminiRequest?.mode || 'coding';
-  const raw = String(payload.text || '').trim();
-  const selected = mode === 'coding' ? String(payload.code || '').trim() : raw;
-  if (!selected) {
-    setStatus(mode === 'coding' ? 'Gemini responded, but no reliable code block was found.' : 'Gemini returned an empty response.', 'error');
-    addDiagnostic('gemini-parser', mode === 'coding' ? 'response found but code block missing' : 'empty response');
-    return;
-  }
-  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, activeGeminiRequest?.questionText || '') : selected;
-  chrome.storage.local.set({ latestGeminiResponse: finalSelected, latestGeminiRawResponse: raw, latestGeminiAt: Date.now(), latestProvider: 'gemini' });
-  const assignmentTabId = activeGeminiRequest?.assignmentTabId;
-  activeGeminiRequest = null;
-  await chrome.storage.local.remove('activeGeminiRequest');
-  autoFillAssignment(assignmentTabId, finalSelected, 'Gemini', mode);
-  const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
-  setStatus(`Gemini response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
-  addDiagnostic('gemini-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
-}
-
-let activeChatGPTRequest = null;
-async function getReusableChatGPTTab(windowId) {
-  const stored = await chrome.storage.local.get(['satoriChatGPTTabId', 'satoriChatGPTWindowId']);
-  if (stored.satoriChatGPTTabId && stored.satoriChatGPTWindowId === windowId) {
-    try {
-      const tab = await chrome.tabs.get(stored.satoriChatGPTTabId);
-      if (tab?.windowId === windowId && /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '')) return tab;
-    } catch (_error) { addDiagnostic('chatgpt-tab', 'saved ChatGPT tab no longer exists'); }
-  }
-  const tabs = await chrome.tabs.query({ windowId });
-  const inactive = tabs.find((tab) => !tab.active && /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || ''));
-  if (inactive?.id) {
-    await chrome.storage.local.set({ satoriChatGPTTabId: inactive.id, satoriChatGPTWindowId: windowId });
-    addDiagnostic('chatgpt-tab', `adopted existing inactive ChatGPT tab ${inactive.id}`);
-    return inactive;
-  }
-  return null;
-}
-async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
-  if (requestId !== activeRequestId) return;
-  try {
-    const result = await Promise.race([
-      chrome.tabs.sendMessage(tabId, { type: 'FILL_CHATGPT_PROMPT', requestId, prompt, mode }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for adapter response')), 4000))
-    ]);
-    if (result?.ok) {
-      addDiagnostic('chatgpt-input', `prompt ready; baseline responses=${result.baselineCount ?? 'unknown'}`);
-      setStatus('ChatGPT prompt sent in background — waiting for response…', 'waiting');
-      return;
-    }
-    addDiagnostic('chatgpt-input', result?.error || 'ChatGPT adapter rejected the prompt');
-  } catch (error) {
-    addDiagnostic('chatgpt-input', `adapter not ready (${error.message})`);
-    if (retries === 13) {
-      try {
-        addDiagnostic('chatgpt-recovery', 'reloading ChatGPT tab to reset adapter connection');
-        await chrome.tabs.reload(tabId);
-        setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 1800);
-        return;
-      } catch (_e) {}
-    } else if (retries === 6) {
-      try {
-        addDiagnostic('chatgpt-recovery', 'replacing tab with fresh background ChatGPT tab');
-        await chrome.tabs.remove(tabId).catch(() => {});
-        await chrome.storage.local.remove(['satoriChatGPTTabId']);
-        const freshTab = await chrome.tabs.create({ url: 'https://chatgpt.com/', active: false });
-        if (freshTab?.id) {
-          if (activeChatGPTRequest) activeChatGPTRequest.tabId = freshTab.id;
-          await chrome.storage.local.set({ satoriChatGPTTabId: freshTab.id, activeChatGPTRequest });
-          setTimeout(() => sendChatGPTPrompt(freshTab.id, requestId, prompt, mode, retries - 1), 2000);
-          return;
-        }
-      } catch (_e) {}
-    }
-  }
-  if (retries > 0) setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 800);
-  else {
-    setStatus('ChatGPT composer was not ready. Close existing ChatGPT tabs and try again.', 'error');
-    addDiagnostic('chatgpt-error', 'composer not found after retries');
-  }
-}
-async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText = '') {
-  await chrome.storage.local.remove(['latestChatGPTResponse', 'latestChatGPTRawResponse']);
-  const windowId = assignmentTab?.windowId;
-  let tab = windowId ? await getReusableChatGPTTab(windowId) : null;
-
-  activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
-  await chrome.storage.local.set({ activeChatGPTRequest });
-
-  const url = 'https://chatgpt.com/';
-  try {
-    if (tab?.id) {
-      activeChatGPTRequest.tabId = tab.id;
-      const isChatGPTUrl = /https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '');
-
-      let isAlive = false;
-      if (isChatGPTUrl && !tab.discarded) {
-        try {
-          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['chatgpt.js'] }).catch(() => {});
-        } catch (_e) {}
-
-        try {
-          const check = await Promise.race([
-            chrome.tabs.sendMessage(tab.id, { type: 'CHECK_EXISTING_RESPONSE', prompt, mode }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('check timeout')), 600))
-          ]);
-          if (check?.ok && check.existing) {
-            if (check.existing.generating) {
-              addDiagnostic('chatgpt-tab', `ChatGPT is generating answer in tab ${tab.id}; waiting for completion…`);
-              setStatus('ChatGPT is generating response in the background…', 'waiting');
-              return;
-            }
-            if (check.existing.code || check.existing.text) {
-              const raw = check.existing.code || check.existing.text;
-              const text = check.existing.text || raw;
-              const final = mode === 'mcq' ? formatMcqAnswer(text, questionText) : raw;
-              addDiagnostic('chatgpt-instant', `captured existing answer from tab ${tab.id} (${final.length} chars)`);
-              chrome.storage.local.set({
-                latestChatGPTResponse: final,
-                latestChatGPTRawResponse: text,
-                latestChatGPTAt: Date.now(),
-                latestProvider: 'chatgpt'
-              });
-              autoFillAssignment(assignmentTab?.id, final, 'ChatGPT', mode);
-              setStatus('ChatGPT response captured.', 'ready');
-              return;
-            }
-          }
-        } catch (_e) {}
-
-        try {
-          const ping = await Promise.race([
-            chrome.tabs.sendMessage(tab.id, { type: 'PING_CHATGPT' }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('ping timeout')), 500))
-          ]);
-          if (ping?.ok) isAlive = true;
-        } catch (_e) {}
-      }
-
-      if (isAlive) {
-        addDiagnostic('chatgpt-tab', `reusing active ChatGPT tab ${tab.id}`);
-        setStatus('Preparing ChatGPT prompt…', 'waiting');
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 30);
-      } else {
-        addDiagnostic('chatgpt-tab', `reloading ChatGPT tab ${tab.id} for fresh connection`);
-        setStatus('Opening ChatGPT in the background…', 'waiting');
-        await chrome.tabs.update(tab.id, { url, active: false });
-        setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1200);
-      }
-    } else {
-      addDiagnostic('chatgpt-tab', 'creating reusable ChatGPT tab in the background');
-      setStatus('Opening ChatGPT in the background…', 'waiting');
-      tab = await chrome.tabs.create({ url, active: false, windowId });
-      if (!tab?.id) throw new Error('Chrome did not create the ChatGPT tab.');
-      activeChatGPTRequest.tabId = tab.id;
-      await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId, activeChatGPTRequest });
-      setTimeout(() => sendChatGPTPrompt(tab.id, requestId, prompt, mode), 1500);
-    }
-  } catch (error) {
-    setStatus(`Could not prepare ChatGPT: ${error.message}`, 'error');
-    addDiagnostic('chatgpt-error', error.message);
-  }
-}
-
-async function handleChatGPTResponse(message) {
-  if (!activeChatGPTRequest) {
-    const stored = await chrome.storage.local.get('activeChatGPTRequest');
-    if (stored.activeChatGPTRequest) activeChatGPTRequest = stored.activeChatGPTRequest;
-  }
-
-  const mode = activeChatGPTRequest?.mode || 'coding';
-  const responsePayload = message.detail ?? message.text;
-  const payload = typeof responsePayload === 'string' ? { text: responsePayload, code: '' } : (responsePayload || {});
-  const raw = String(payload.text || '').trim();
-  const selected = mode === 'coding' ? String(payload.code || '').trim() : raw;
-
-  if (!selected) {
-    setStatus('ChatGPT did not return a valid answer.', 'error');
-    addDiagnostic('chatgpt-validation', 'empty response');
-    return;
-  }
-
-  const finalSelected = mode === 'mcq' ? formatMcqAnswer(selected, activeChatGPTRequest?.questionText || '') : selected;
-  chrome.storage.local.set({
-    latestChatGPTResponse: finalSelected,
-    latestChatGPTRawResponse: raw,
-    latestChatGPTAt: Date.now(),
-    latestProvider: 'chatgpt'
-  });
-  const assignmentTabId = activeChatGPTRequest?.assignmentTabId;
-  activeChatGPTRequest = null;
-  await chrome.storage.local.remove('activeChatGPTRequest');
-  autoFillAssignment(assignmentTabId, finalSelected, 'ChatGPT', mode);
-  const warning = mode === 'coding' && !/(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\()/i.test(selected);
-  setStatus(`ChatGPT response captured.${warning ? ' It may be incomplete.' : ''}`, warning ? 'error' : 'ready');
-  addDiagnostic('chatgpt-complete', `${selected.length} chars captured${mode === 'coding' ? ' as code' : ''}`);
-}
-
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.type === 'GEMINI_RESPONSE') {
-    handleGeminiResponse(message);
-    return;
-  }
-  if (message.type === 'GEMINI_DIAGNOSTIC') {
-    addDiagnostic('gemini', message.detail || 'Gemini adapter diagnostic');
-    return;
-  }
-  if (message.type === 'GEMINI_SUBMITTED') {
-    addDiagnostic('gemini-submit', message.detail || 'Gemini prompt submitted');
-    return;
-  }
-  if (message.type === 'CHATGPT_RESPONSE') { handleChatGPTResponse(message); return; }
-  if (message.type === 'CHATGPT_DIAGNOSTIC') { addDiagnostic('chatgpt', message.detail || 'ChatGPT adapter diagnostic'); return; }
-  if (message.type === 'CHATGPT_SUBMITTED') { addDiagnostic('chatgpt-submit', message.detail || 'ChatGPT prompt submitted'); return; }
-  if (message.type === 'CHATGPT_ASSIGNMENT_ENTER') {
-    addDiagnostic('chatgpt-submit', 'assignment-tab Enter received');
-    if (!activeChatGPTRequest?.tabId) {
-      const stored = await chrome.storage.local.get('activeChatGPTRequest');
-      if (stored.activeChatGPTRequest?.tabId) {
-        activeChatGPTRequest = stored.activeChatGPTRequest;
-        addDiagnostic('chatgpt-submit', `restored active ChatGPT request for tab ${activeChatGPTRequest.tabId}`);
-      }
-    }
-    if (!activeChatGPTRequest?.tabId) {
-      addDiagnostic('chatgpt-submit', 'ignored assignment-tab Enter: no active ChatGPT request');
-      return;
-    }
-    try {
-      const result = await chrome.tabs.sendMessage(activeChatGPTRequest.tabId, { type: 'SUBMIT_CHATGPT_PROMPT', requestId: activeChatGPTRequest.requestId });
-      if (result?.ok) addDiagnostic('chatgpt-submit', 'assignment-tab Enter forwarded to the existing ChatGPT conversation');
-      else addDiagnostic('chatgpt-submit', result?.error || 'ChatGPT rejected assignment-tab Enter');
-    } catch (error) {
-      addDiagnostic('chatgpt-submit', `could not forward assignment-tab Enter (${error.message})`);
-    }
-    return;
-  }
-  if (!['OPEN_GOOGLE_SEARCH', 'OPEN_GEMINI_REQUEST', 'OPEN_CHATGPT_REQUEST'].includes(message.type)) return;
   activeRequestId += 1;
-  const requestId = activeRequestId;
-  const provider = message.type === 'OPEN_GEMINI_REQUEST' ? 'gemini' : message.type === 'OPEN_CHATGPT_REQUEST' ? 'chatgpt' : 'google';
-  chrome.storage.local.set({ satoriDiagnostics: [{ time: new Date().toLocaleTimeString(), step: 'request', detail: `provider=${provider}` }] });
-  const query = provider === 'google' ? (message.googleQuery || message.prompt || '') : (message.prompt || '');
-  addDiagnostic('prompt', `${provider} query length=${query.length}`);
-  let assignmentTab = null;
-  if (message.assignmentTabId) {
+  activeRequestMeta = null;
+  activeChatGPTRequest = null;
+  activeGeminiRequest = null;
+  await chrome.storage.local.remove(['satoriActiveRequest', 'activeChatGPTRequest', 'activeGeminiRequest']);
+  setStatus(reason, 'cancelled');
+  addDiagnostic('cancel', reason);
+}
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (!alarm.name.startsWith('satori-timeout-')) return;
+  const current = await chrome.storage.local.get('satoriActiveRequest');
+  if (!current.satoriActiveRequest) return;
+  const requestId = Number(alarm.name.replace('satori-timeout-', ''));
+  if (current.satoriActiveRequest.requestId === requestId) {
+    await cancelActiveRequest('Satori request timed out after 2 minutes.');
+  }
+});
+
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const current = await chrome.storage.local.get('satoriActiveRequest');
+  if (current.satoriActiveRequest?.providerTabId === tabId) {
+    await cancelActiveRequest('AI provider tab was closed; request cancelled.');
+  }
+});
+
+// -------------------------------------------------------------
+// Provider Tab Management (Reused, Never Steals Window Focus)
+// -------------------------------------------------------------
+async function getReusableTab(domainMatch, storageKeyTab, storageKeyWin, windowId) {
+  const stored = await chrome.storage.local.get([storageKeyTab, storageKeyWin]);
+  if (stored[storageKeyTab] && stored[storageKeyWin] === windowId) {
     try {
-      assignmentTab = await chrome.tabs.get(message.assignmentTabId);
+      const tab = await chrome.tabs.get(stored[storageKeyTab]);
+      if (tab?.windowId === windowId && domainMatch.test(tab.url || '')) return tab;
     } catch (_e) {}
   }
-  if (!assignmentTab?.windowId) {
-    assignmentTab = sender.tab;
+
+  const tabs = await chrome.tabs.query({ windowId });
+  const inactive = tabs.find((t) => !t.active && domainMatch.test(t.url || ''));
+  if (inactive?.id) {
+    await chrome.storage.local.set({ [storageKeyTab]: inactive.id, [storageKeyWin]: windowId });
+    return inactive;
   }
-  if (!assignmentTab?.windowId) {
-    const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    assignmentTab = activeTabs.find((tab) => tab.id && !/^https:\/\/(www\.)?google\./i.test(tab.url || '') && !/^https:\/\/gemini\.google\.com\//i.test(tab.url || '')) || activeTabs[0];
-  }
-  addDiagnostic('tab', assignmentTab?.windowId ? `assignment window=${assignmentTab.windowId} tab=${assignmentTab.id}` : 'assignment window unavailable');
-  const questionText = message.questionText || '';
-  if (provider === 'google') {
-    startGoogleSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
-  } else if (provider === 'gemini') {
-    startGeminiSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
+  return null;
+}
+
+// 1. Google AI Mode
+async function startGoogleSearch(query, requestId, mode, assignmentTab, questionText) {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
+  const windowId = assignmentTab?.windowId;
+  let tab = windowId ? await getReusableTab(/^https:\/\/(www\.)?google\./i, 'satoriGoogleTabId', 'satoriGoogleWindowId', windowId) : null;
+  const targetTabId = tab?.id || null;
+
+  const initiateWatch = async (tabId) => {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['google.js'] }).catch(() => {});
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'START_GOOGLE_WATCH',
+        requestId,
+        mode
+      });
+      addDiagnostic('google-watch', `MutationObserver attached to Google Search tab ${tabId}`);
+    } catch (err) {
+      addDiagnostic('google-error', err.message);
+    }
+  };
+
+  let handled = false;
+  const listener = (updatedTabId, changeInfo) => {
+    if (updatedTabId === targetTabId && changeInfo.status === 'complete' && !handled) {
+      handled = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      initiateWatch(targetTabId);
+    }
+  };
+  chrome.tabs.onUpdated.addListener(listener);
+
+  if (tab?.id) {
+    await chrome.tabs.update(tab.id, { url, active: false });
   } else {
-    startChatGPTSearch(query, requestId, message.mode || 'text', assignmentTab, questionText);
+    tab = await chrome.tabs.create({ url, active: false, windowId });
+    await chrome.storage.local.set({ satoriGoogleTabId: tab.id, satoriGoogleWindowId: tab.windowId });
   }
-  sendResponse({ ok: true });
+}
+
+// 2. Gemini
+async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText) {
+  const windowId = assignmentTab?.windowId;
+  let tab = windowId ? await getReusableTab(/^https:\/\/gemini\.google\.com\//i, 'satoriGeminiTabId', 'satoriGeminiWindowId', windowId) : null;
+  activeGeminiRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
+
+  const sendPrompt = (tabId, retries = 15) => {
+    chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_GEMINI', prompt, requestId, mode }, (res) => {
+      if (chrome.runtime.lastError || !res?.ok) {
+        if (retries > 0) setTimeout(() => sendPrompt(tabId, retries - 1), 1000);
+        else setStatus('Gemini composer was not ready. Check the background Gemini tab.', 'error');
+      } else {
+        addDiagnostic('gemini-submit', 'Prompt dispatched to Gemini MutationObserver');
+      }
+    });
+  };
+
+  const url = 'https://gemini.google.com/app';
+  if (tab?.id) {
+    activeGeminiRequest.tabId = tab.id;
+    await chrome.tabs.update(tab.id, { url, active: false });
+    setTimeout(() => sendPrompt(tab.id), 1200);
+  } else {
+    tab = await chrome.tabs.create({ url, active: false, windowId });
+    activeGeminiRequest.tabId = tab.id;
+    await chrome.storage.local.set({ satoriGeminiTabId: tab.id, satoriGeminiWindowId: tab.windowId });
+    setTimeout(() => sendPrompt(tab.id), 1800);
+  }
+}
+
+// 3. ChatGPT (Reused Conversation, Background)
+async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText) {
+  const windowId = assignmentTab?.windowId;
+  let tab = windowId ? await getReusableTab(/https:\/\/(chatgpt\.com|chat\.openai\.com)\//i, 'satoriChatGPTTabId', 'satoriChatGPTWindowId', windowId) : null;
+  activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
+
+  const sendPrompt = (tabId, retries = 15) => {
+    chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', prompt, requestId, mode }, (res) => {
+      if (chrome.runtime.lastError || !res?.ok) {
+        if (retries > 0) setTimeout(() => sendPrompt(tabId, retries - 1), 800);
+        else setStatus('ChatGPT composer was not ready. Check the background ChatGPT tab.', 'error');
+      } else {
+        addDiagnostic('chatgpt-submit', 'Prompt dispatched to ChatGPT MutationObserver');
+      }
+    });
+  };
+
+  const url = 'https://chatgpt.com/';
+  if (tab?.id) {
+    activeChatGPTRequest.tabId = tab.id;
+    let isAlive = false;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['chatgpt.js'] }).catch(() => {});
+      const ping = await Promise.race([
+        chrome.tabs.sendMessage(tab.id, { type: 'PING_CHATGPT' }),
+        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 500))
+      ]);
+      if (ping?.ok) isAlive = true;
+    } catch (_e) {}
+
+    if (isAlive) {
+      setTimeout(() => sendPrompt(tab.id), 50);
+    } else {
+      await chrome.tabs.update(tab.id, { url, active: false });
+      setTimeout(() => sendPrompt(tab.id), 1200);
+    }
+  } else {
+    tab = await chrome.tabs.create({ url, active: false, windowId });
+    activeChatGPTRequest.tabId = tab.id;
+    await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId });
+    setTimeout(() => sendPrompt(tab.id), 1500);
+  }
+}
+
+// -------------------------------------------------------------
+// Unified Request Dispatcher
+// -------------------------------------------------------------
+async function dispatchSatoriRequest({ provider, mode, pageContent, questionText, assignmentTabId, windowId }) {
+  let assignmentTab = null;
+  if (assignmentTabId) {
+    try { assignmentTab = await chrome.tabs.get(assignmentTabId); } catch (_e) {}
+  }
+  if (!assignmentTab?.id) {
+    const active = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    assignmentTab = active[0];
+  }
+  if (!assignmentTab?.id) throw new Error('No active assignment tab found.');
+
+  activeRequestId += 1;
+  const requestId = activeRequestId;
+  activeRequestMeta = {
+    requestId,
+    provider,
+    mode,
+    startedAt: Date.now(),
+    estimateSec: provider === 'google' ? 10 : provider === 'gemini' ? 8 : 12
+  };
+
+  await chrome.storage.local.set({
+    satoriActiveRequest: {
+      requestId,
+      provider,
+      mode,
+      assignmentTabId: assignmentTab.id,
+      questionText,
+      startedAt: Date.now()
+    }
+  });
+
+  await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 2 });
+  setStatus(`${PROVIDER_NAMES[provider] || provider} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting');
+  addDiagnostic('request', `Started ${provider} ${mode} (request ${requestId})`);
+
+  const prompt = buildDirectPrompt(provider, mode, pageContent);
+
+  if (provider === 'google') {
+    startGoogleSearch(pageContent, requestId, mode, assignmentTab, questionText);
+  } else if (provider === 'gemini') {
+    startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
+  } else {
+    startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText);
+  }
+}
+
+// -------------------------------------------------------------
+// Keyboard Shortcut Commands (Alt+Shift+M, Alt+Shift+C, Alt+Shift+X)
+// -------------------------------------------------------------
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command === 'satori-cancel') {
+    await cancelActiveRequest();
+    return;
+  }
+
+  const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-code' ? 'coding' : null;
+  if (!mode) return;
+
+  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const assignmentTab = tabs.find((t) => t.id && !/google\.|gemini\.|chatgpt\./i.test(t.url || '')) || tabs[0];
+  if (!assignmentTab?.id) return;
+
+  let page;
+  try {
+    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+  } catch (_e) {
+    await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id }, files: ['content.js'] });
+    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+  }
+
+  if (!page?.ok || !page.fullText || page.fullText.trim().length < 10) {
+    setStatus('Could not read enough page text to solve question.', 'error');
+    return;
+  }
+
+  const stored = await chrome.storage.local.get(['satoriProvider']);
+  const provider = stored.satoriProvider || 'chatgpt';
+
+  await dispatchSatoriRequest({
+    provider,
+    mode,
+    pageContent: page.fullText,
+    questionText: page.text || page.fullText,
+    assignmentTabId: assignmentTab.id,
+    windowId: assignmentTab.windowId
+  });
+});
+
+// -------------------------------------------------------------
+// Message Gateway (Provider Responses & Popup Triggers)
+// -------------------------------------------------------------
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'CANCEL_REQUEST') {
+    cancelActiveRequest();
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message.type === 'GOOGLE_RESPONSE') {
+    handleCompletedResult('google', message.requestId || message.detail?.requestId, message.detail);
+    return true;
+  }
+  if (message.type === 'GEMINI_RESPONSE') {
+    handleCompletedResult('gemini', message.requestId || message.detail?.requestId, message.detail);
+    return true;
+  }
+  if (message.type === 'CHATGPT_RESPONSE') {
+    handleCompletedResult('chatgpt', message.requestId || message.detail?.requestId, message.detail);
+    return true;
+  }
+
+  if (message.type === 'GEMINI_DIAGNOSTIC' || message.type === 'CHATGPT_DIAGNOSTIC') {
+    addDiagnostic(message.type.toLowerCase(), message.detail);
+    return true;
+  }
+
+  if (message.type === 'OPEN_PROVIDER_REQUEST') {
+    dispatchSatoriRequest({
+      provider: message.provider,
+      mode: message.mode,
+      pageContent: message.pageContent,
+      questionText: message.questionText,
+      assignmentTabId: message.assignmentTabId,
+      windowId: message.windowId
+    }).then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  return false;
 });

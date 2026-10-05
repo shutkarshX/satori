@@ -267,7 +267,6 @@
   new MutationObserver(inspectForNewResponse).observe(document.documentElement, {
     childList: true, subtree: true, characterData: true
   });
-  setInterval(inspectForNewResponse, 1000);
 
   const checkExistingResponse = (prompt, mode) => {
     const cleanPrompt = clean(prompt);
