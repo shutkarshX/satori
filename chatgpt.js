@@ -264,8 +264,24 @@
     }
   };
 
+  const keepLatestTurnRendered = () => {
+    // ChatGPT can virtualize older conversation turns. When the reused provider
+    // tab is left away from the bottom, the newest assistant turn may exist
+    // server-side but not be mounted in the DOM. Keep the provider viewport at
+    // the latest turn while Satori is waiting, without focusing the tab.
+    try {
+      const scrollingElement = document.scrollingElement || document.documentElement;
+      const distanceFromBottom = scrollingElement.scrollHeight -
+        (window.scrollY + window.innerHeight);
+      if (distanceFromBottom > 160) {
+        window.scrollTo({ top: scrollingElement.scrollHeight, behavior: 'auto' });
+      }
+    } catch (_e) {}
+  };
+
   const inspectForNewResponse = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
+    keepLatestTurnRendered();
     const candidates = candidateResponses();
     const latest = candidates[candidates.length - 1];
     if (!latest || latest.signature === state.lastSignature) return;
@@ -424,7 +440,10 @@
 
       setInput(input, message.prompt || '');
 
-      state.responsePollTimer = setInterval(inspectForNewResponse, 1000);
+      // Render the newest conversation turn before polling. This is important
+      // for ChatGPT's virtualized/reused conversation view in a background tab.
+      keepLatestTurnRendered();
+      state.responsePollTimer = setInterval(inspectForNewResponse, 700);
 
       setTimeout(() => {
         if (clickSend()) {
