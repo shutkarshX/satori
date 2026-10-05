@@ -458,6 +458,9 @@ async function sendGeminiPrompt(tabId, requestId, prompt, mode, retries = 15) {
   }
   if (retries > 0) setTimeout(() => sendGeminiPrompt(tabId, requestId, prompt, mode, retries - 1), 1000);
   else {
+    await chrome.alarms.clear(`satori-timeout-${requestId}`);
+    activeGeminiRequest = null;
+    await chrome.storage.local.remove(['activeGeminiRequest', 'satoriActiveRequest']);
     setStatus('Gemini input was not ready. Open Gemini once, then try again.', 'error');
     addDiagnostic('gemini-error', 'input not found after retries');
   }
@@ -606,6 +609,9 @@ async function sendChatGPTPrompt(tabId, requestId, prompt, mode, retries = 15) {
   }
   if (retries > 0) setTimeout(() => sendChatGPTPrompt(tabId, requestId, prompt, mode, retries - 1), 800);
   else {
+    await chrome.alarms.clear(`satori-timeout-${requestId}`);
+    activeChatGPTRequest = null;
+    await chrome.storage.local.remove(['activeChatGPTRequest', 'satoriActiveRequest']);
     setStatus('ChatGPT composer was not ready. Close existing ChatGPT tabs and try again.', 'error');
     addDiagnostic('chatgpt-error', 'composer not found after retries');
   }
