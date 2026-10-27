@@ -125,12 +125,15 @@ function formatMcqAnswer(text, questionText = '') {
   if (sentenceMatch && sentenceMatch[1] && sentenceMatch[1].trim().length < 40) {
     const res = sentenceMatch[1].replace(/[.\s]+$/, '').trim();
     if (/^[A-Da-d]$/.test(res)) return { letter: res.toUpperCase(), text: '', raw: clean };
-    if (res.length > 1) return { letter: null, text: res, raw: clean };
+    // Require at least 3 characters and not a common suffix like "ed"
+    if (res.length >= 3 && !/^(ed|ing|ly|es|s|th|st|nd|rd)$/i.test(res)) {
+      return { letter: null, text: res, raw: clean };
+    }
   }
 
-  // Fallback line
-  const filtered = lines.filter((l) => l.length >= 2 && !/^(#|ai overview|evaluation|analysis|explanation)/i.test(l));
-  const fallback = filtered[0] || clean.slice(0, 80);
+  // Fallback: pick the first complete sentence or line with substantive content (> 10 chars)
+  const filtered = lines.filter((l) => l.length >= 8 && !/^(#|ai overview|evaluation|analysis|explanation|here is|note)/i.test(l));
+  const fallback = filtered[0] || clean.slice(0, 120);
   return { letter: null, text: fallback, raw: clean };
 }
 
