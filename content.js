@@ -321,14 +321,22 @@
     const click = (element, matched) => {
       if (!element) return null;
       console.log('[Satori Content] Clicking matched element:', element, 'Label/Text:', matched);
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      try {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (_e) {}
 
+      // Find all clickable targets associated with this option:
+      // 1. The input radio/checkbox
+      // 2. The surrounding <label>
+      // 3. Any custom styled checkmark/circle elements (e.g. .radio, .custom-radio, .mat-radio, etc.)
       const label = element.closest('label') || (element.matches('label') ? element : null);
       const radio = element.matches('input[type="radio"], input[type="checkbox"]')
         ? element
-        : element.querySelector('input[type="radio"], input[type="checkbox"]');
+        : element.querySelector('input[type="radio"], input[type="checkbox"]') ||
+          (label ? label.querySelector('input[type="radio"], input[type="checkbox"]') : null);
 
-      // Dispatch full pointer and mouse event sequence for Angular/React/Vue/TCS portals
+      const customCheckmark = element.querySelector('[class*="radio" i], [class*="circle" i], [class*="check" i], span, [role="radio"]') || element;
+
       const triggerFullClick = (el) => {
         if (!el) return;
         ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach((evtName) => {
@@ -339,6 +347,7 @@
         if (typeof el.click === 'function') el.click();
       };
 
+      // 1. Click native radio
       if (radio) {
         radio.checked = true;
         triggerFullClick(radio);
@@ -346,9 +355,18 @@
         radio.dispatchEvent(new Event('change', { bubbles: true }));
       }
 
+      // 2. Click label
       if (label && label !== radio) {
         triggerFullClick(label);
-      } else if (!radio) {
+      }
+
+      // 3. Click custom checkmark element (essential for custom Angular/React UI frameworks)
+      if (customCheckmark && customCheckmark !== radio && customCheckmark !== label) {
+        triggerFullClick(customCheckmark);
+      }
+
+      // 4. Click the element container itself as fallback
+      if (element !== radio && element !== label && element !== customCheckmark) {
         triggerFullClick(element);
       }
 
