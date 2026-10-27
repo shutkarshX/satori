@@ -398,36 +398,25 @@
     // 2. Letter matching candidates (A -> 0, B -> 1, ...)
     const letterIndex = targetLetter ? targetLetter.charCodeAt(0) - 65 : -1;
     let letterTarget = null;
-    if (letterIndex >= 0) {
-      const explicit = visibleRadios.find((input) => {
-        const idAndLabel = `${input.id || ''} ${input.getAttribute('aria-label') || ''}`.toUpperCase();
-        // Check for standalone letter in id/aria-label (e.g. "choice-B", "option_B")
-        if (new RegExp(`(?:^|[^A-Z])${targetLetter}(?:[^A-Z]|$)`).test(idAndLabel)) return true;
-        // Check if value is literally just the option index or letter
-        const val = (input.value || '').trim().toUpperCase();
-        return val === targetLetter || val === String(letterIndex);
-      });
-      letterTarget = explicit || visibleRadios[letterIndex] || null;
+    if (letterIndex >= 0 && visibleRadios.length > letterIndex) {
+      // Direct sequential radio index (A = 0, B = 1, C = 2, D = 3)
+      letterTarget = visibleRadios[letterIndex];
       if (letterTarget) {
         letterTarget = letterTarget.closest('label, [class*="option" i], [class*="choice" i], [role="radio"]') || letterTarget;
       }
     }
 
     // 3. Verification & Selection Strategy
-    // A. If exact match exists, prefer it immediately
+    // A. Priority 1: Letter match directly to option index (A -> radio 0, B -> radio 1, etc.)
+    if (letterTarget) {
+      console.log(`[Satori Content] Selecting option by Letter [${targetLetter}]:`, letterTarget);
+      return click(letterTarget, targetLetter);
+    }
+
+    // B. Priority 2: If exact text match exists, prefer it immediately
     const exactMatches = textMatches.filter(node => norm(visibleText(node)) === norm(cleanAnswer));
     if (exactMatches.length === 1) {
       return click(exactMatches[0], visibleText(exactMatches[0]).slice(0, 80));
-    }
-
-    // B. Both text and letter match: ensure they point to the exact same option
-    if (textMatches.length === 1 && letterTarget) {
-      const textElement = textMatches[0];
-      const sameTarget = textElement === letterTarget || textElement.contains(letterTarget) || letterTarget.contains(textElement);
-      if (!sameTarget) {
-        throw new Error(`MCQ conflict: text matched option '${visibleText(textElement).slice(0, 30)}', but letter matched '${targetLetter}'. No option selected.`);
-      }
-      return click(textElement, visibleText(textElement).slice(0, 80));
     }
 
     // C. Single unique text match
@@ -435,10 +424,9 @@
       return click(textMatches[0], visibleText(textMatches[0]).slice(0, 80));
     }
 
-    // D. If multiple text elements matched (e.g. sibling li, label, or radio row), pick the highest scoring best match
+    // D. If multiple text elements matched, pick the highest scoring best match
     if (textMatches.length > 1) {
       const target = norm(cleanAnswer);
-      // Sort by length closest to the target answer, or highest token overlap
       const scored = textMatches.map(node => {
         const text = norm(visibleText(node));
         let score = 0;
@@ -452,37 +440,41 @@
         return { node, score };
       }).sort((a, b) => b.score - a.score);
 
-      // If top match has a clear lead over the second match, select it safely
       if (scored.length > 0) {
-        // If top score is strictly higher than the next candidate, or if top score is an exact match
-        if (scored.length === 1 || scored[0].score > scored[1].score) {
-          console.log(`[Satori Content] Disambiguated multiple options, selected top scored (${scored[0].score} pts):`, scored[0].node);
-          return click(scored[0].node, visibleText(scored[0].node).slice(0, 80));
-        }
-      }
-
-      // If tied between identical elements or labels wrapping the same radio input, take the first one
-      if (scored.length > 1) {
-        console.log(`[Satori Content] Selecting best candidate from tied options:`, scored[0].node);
+        console.log(`[Satori Content] Disambiguated multiple options, selected top scored (${scored[0].score} pts):`, scored[0].node);
         return click(scored[0].node, visibleText(scored[0].node).slice(0, 80));
       }
-    }
-
-    // E. Unique letter fallback
-    if (letterTarget) {
-      return click(letterTarget, targetLetter);
     }
 
     throw new Error(`Could not find a unique page option matching: ${cleanAnswer.slice(0, 80) || targetLetter}`);
   }
 
+  function extractStructuredMcq() {
+    // 1. Gather all visible radio inputs and their associated labels
+    const visibleRadios = [...document.querySelectorAll('input[type="radio"], [role="radio"]')]
+      .filter((node) => node.offsetParent !== null || node.matches('[role="radio"]'));
+
+    if (visibleRadios.length >= 2) {
+      const options = visibleRadios.map((radio, idx) => {
+        const letter = String.fromCharCode(65 + idx); // A, B, C, D...
+        const label = radio.closest('label, li, tr, [class*="option" i]') || radio.parentElement;
+        const text = visibleText(label).replace(/^[A-Da-d][\).\:\-\s]+/, '').trim();
+        return { letter, text, element: radio };
+      });
+      return options;
+    }
+    return [];
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       if (message.type === 'EXTRACT_QUESTION') {
+        const structuredOptions = extractStructuredMcq();
         sendResponse({
           ok: true,
           text: extractQuestion(),
           fullText: extractFullPage(),
+          options: structuredOptions.map(o => ({ letter: o.letter, text: o.text })),
           title: document.title,
           url: location.href
         });
