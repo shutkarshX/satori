@@ -494,7 +494,7 @@
       const code = e.code;
       let cmd = null;
       if (code === 'KeyM') cmd = 'satori-mcq';
-      else if (code === 'KeyC') cmd = 'satori-code';
+      else if (code === 'KeyC' || code === 'KeyS') cmd = 'satori-code';
       else if (code === 'KeyX') cmd = 'satori-cancel';
 
       if (cmd) {
