@@ -500,11 +500,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
   const prompt = buildDirectPrompt(provider, mode, pageContent);
 
   if (provider === 'google') {
-    // For Google Search in MCQ mode, query clean question + options instead of raw entire page DOM
-    const searchQuery = (mode === 'mcq' && questionText && questionText.trim().length > 10)
-      ? questionText.trim()
-      : (pageContent || questionText);
-    startGoogleSearch(searchQuery, requestId, mode, assignmentTab, questionText);
+    startGoogleSearch(pageContent, requestId, mode, assignmentTab, questionText);
   } else if (provider === 'gemini') {
     startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
   } else {
