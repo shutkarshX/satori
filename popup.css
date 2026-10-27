@@ -53,3 +53,58 @@ hr { border: 0; border-top: 1px solid #e4e6e8; margin: 16px 0; }
 .check input { width: auto; height: auto; }
 #status { min-height: 18px; margin: 9px 0 0; color: #4a5560; }
 small { display: block; margin-top: 10px; color: #687078; }
+
+.autopilot-card {
+  background: #f0f7ff;
+  border: 1px solid #c7dfff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.autopilot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.autopilot-title {
+  font-weight: 600;
+  color: #0b57d0;
+  font-size: 13px;
+}
+.autopilot-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.autopilot-badge.off {
+  background: #e2e8f0;
+  color: #475569;
+}
+.autopilot-badge.on {
+  background: #dcfce7;
+  color: #166534;
+}
+.autopilot-desc {
+  margin: 6px 0 8px;
+  font-size: 11px;
+  color: #475569;
+  line-height: 1.35;
+}
+.autopilot-btn {
+  margin-top: 2px;
+  background: #0b57d0;
+  color: #ffffff;
+  border: 1px solid #0842a0;
+  font-weight: 500;
+}
+.autopilot-btn:hover {
+  background: #0842a0;
+}
+.autopilot-btn.running {
+  background: #dc2626;
+  border-color: #b91c1c;
+}
+.autopilot-btn.running:hover {
+  background: #b91c1c;
+}

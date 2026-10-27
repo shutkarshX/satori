@@ -17,7 +17,9 @@
     "https://google.co.in/*",
     "https://gemini.google.com/*",
     "https://chatgpt.com/*",
-    "https://chat.openai.com/*"
+    "https://chat.openai.com/*",
+    "*://*.futureskillsprime.in/*",
+    "https://www.futureskillsprime.in/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -51,9 +53,14 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
       "matches": [
@@ -62,12 +69,18 @@
         "https://www.google.co.in/*",
         "https://google.co.in/*"
       ],
-      "js": ["google.js"],
+      "js": [
+        "google.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://gemini.google.com/*"],
-      "js": ["gemini.js"],
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "gemini.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -75,8 +88,21 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ],
-      "js": ["chatgpt.js"],
+      "js": [
+        "chatgpt.js"
+      ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.futureskillsprime.in/*",
+        "https://futureskillsprime.in/*"
+      ],
+      "js": [
+        "autopilot.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }

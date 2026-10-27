@@ -1,3 +1,7 @@
+// -------------------------------------------------------------------------
+// Satori - Popup Controller (with Autopilot Broadcasting)
+// -------------------------------------------------------------------------
+
 const $ = (id) => document.getElementById(id);
 let fullPageContent = '';
 
@@ -82,10 +86,10 @@ async function sendToAssignment(tabId, message) {
     return await chrome.tabs.sendMessage(tabId, message);
   } catch (_firstError) {
     try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['content.js', 'autopilot.js'] });
       return await chrome.tabs.sendMessage(tabId, message);
     } catch (_retryError) {
-      throw new Error('Cannot access this tab. Reload the assignment page, then try again.');
+      throw new Error('Cannot access this tab. Reload the course page, then try again.');
     }
   }
 }
@@ -99,21 +103,10 @@ async function extract() {
 
   $('question').value = result.text;
   fullPageContent = result.fullText || result.text;
-
-  // Auto-detect question type
-  const combined = `${result.text}\n${fullPageContent}`.toLowerCase();
-  const isMcq = /\b(mcq|multiple choice|choose the correct|select the correct|option [a-d]|which of the following)\b/i.test(combined)
-    || (!/\b(single file programming|problem statement|code constraints|sample test cases)\b/i.test(combined) && /\b(option|a\)|b\)|c\)|d\))\b/i.test(combined));
-
-  const detectedMode = isMcq ? 'mcq' : 'coding';
-  $('mode').value = detectedMode;
-  chrome.storage.local.set({ satoriMode: detectedMode });
-  status(`Read ${result.text.length.toLocaleString()} characters (detected ${detectedMode.toUpperCase()}).`);
+  status('Page content read successfully.');
 }
 
-$('extract').addEventListener('click', async () => {
-  try { await extract(); } catch (e) { status(e.message, true); }
-});
+$('extract').addEventListener('click', () => extract().catch((e) => status(e.message, true)));
 
 $('runSearch').addEventListener('click', async () => {
   try {
@@ -152,4 +145,65 @@ $('type').addEventListener('click', async () => {
     if (!result?.ok) throw new Error(result?.error || 'Click inside the assignment editor first.');
     status('Text placed into assignment editor. Review it before submitting.');
   } catch (e) { status(e.message, true); }
+});
+
+
+// -------------------------------------------------------------------------
+// Autopilot UI Controls & Direct Injection
+// -------------------------------------------------------------------------
+function updateAutopilotUI(isRunning) {
+  const badge = $('autopilotBadge');
+  const btn = $('toggleAutopilot');
+  if (!badge || !btn) return;
+  if (isRunning) {
+    badge.textContent = 'ON';
+    badge.className = 'autopilot-badge on';
+    btn.textContent = 'Stop Autopilot';
+    btn.className = 'autopilot-btn running';
+  } else {
+    badge.textContent = 'OFF';
+    badge.className = 'autopilot-badge off';
+    btn.textContent = 'Start Autopilot';
+    btn.className = 'autopilot-btn';
+  }
+}
+
+chrome.storage.local.get(['satoriAutopilotRunning'], (res) => {
+  updateAutopilotUI(Boolean(res.satoriAutopilotRunning));
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.satoriAutopilotRunning) {
+    updateAutopilotUI(Boolean(changes.satoriAutopilotRunning.newValue));
+  }
+});
+
+$('toggleAutopilot').addEventListener('click', async () => {
+  try {
+    const tab = await activeTab();
+    const stored = await chrome.storage.local.get(['satoriAutopilotRunning']);
+    const isRunning = Boolean(stored.satoriAutopilotRunning);
+    const nextState = !isRunning;
+
+    // Save state first so content script picks it up reactively
+    await chrome.storage.local.set({ satoriAutopilotRunning: nextState });
+
+    // Inject scripts safely into tab
+    try {
+      await chrome.scripting.executeScript({ 
+        target: { tabId: tab.id, allFrames: true }, 
+        files: ['autopilot.js'] 
+      });
+    } catch (_scriptErr) {}
+
+    // Send direct event message
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: nextState ? 'START_AUTOPILOT' : 'STOP_AUTOPILOT' });
+    } catch (_msgErr) {}
+
+    updateAutopilotUI(nextState);
+    status(nextState ? 'Autopilot running! Advancing course...' : 'Autopilot stopped.');
+  } catch (e) {
+    status(e.message, true);
+  }
 });

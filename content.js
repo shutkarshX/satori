@@ -15,6 +15,7 @@
   };
 
   function ensureStatusWidget() {
+    if (window.location.hostname.includes("futureskillsprime.in")) return;
     // If an existing widget element already exists in document, clean up duplicates
     const existing = [...document.querySelectorAll('#satori-status-widget')];
     if (existing.length > 0) {
