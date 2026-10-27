@@ -400,8 +400,14 @@
       }
     }
 
-    // 3. Verification & Conflict Detection
-    // Both text and letter match: ensure they point to the exact same option
+    // 3. Verification & Selection Strategy
+    // A. If exact match exists, prefer it immediately
+    const exactMatches = textMatches.filter(node => norm(visibleText(node)) === norm(cleanAnswer));
+    if (exactMatches.length === 1) {
+      return click(exactMatches[0], visibleText(exactMatches[0]).slice(0, 80));
+    }
+
+    // B. Both text and letter match: ensure they point to the exact same option
     if (textMatches.length === 1 && letterTarget) {
       const textElement = textMatches[0];
       const sameTarget = textElement === letterTarget || textElement.contains(letterTarget) || letterTarget.contains(textElement);
@@ -411,17 +417,38 @@
       return click(textElement, visibleText(textElement).slice(0, 80));
     }
 
-    // Unique text match
+    // C. Single unique text match
     if (textMatches.length === 1) {
       return click(textMatches[0], visibleText(textMatches[0]).slice(0, 80));
     }
 
-    // Ambiguous multiple text matches -> DO NOTHING (safety)
+    // D. If multiple text elements matched (e.g. sibling li, label, or radio row), pick the highest scoring best match
     if (textMatches.length > 1) {
+      const target = norm(cleanAnswer);
+      // Sort by length closest to the target answer, or highest token overlap
+      const scored = textMatches.map(node => {
+        const text = norm(visibleText(node));
+        let score = 0;
+        if (text === target) score += 100;
+        if (text.startsWith(target) || target.startsWith(text)) score += 30;
+        const targetWords = target.split(/\s+/).filter(w => w.length > 2);
+        const textWords = text.split(/\s+/).filter(w => w.length > 2);
+        const overlap = targetWords.filter(w => textWords.includes(w)).length;
+        score += overlap * 10;
+        score -= Math.abs(text.length - target.length) * 0.1;
+        return { node, score };
+      }).sort((a, b) => b.score - a.score);
+
+      // If top match has a clear lead over the second match, select it safely
+      if (scored.length > 0 && (scored.length === 1 || scored[0].score > scored[1].score + 5)) {
+        console.log(`[Satori Content] Disambiguated multiple options, selected top scored (${scored[0].score} pts):`, scored[0].node);
+        return click(scored[0].node, visibleText(scored[0].node).slice(0, 80));
+      }
+
       throw new Error('MCQ answer matches multiple page options. Nothing was selected to prevent incorrect submission.');
     }
 
-    // Unique letter fallback
+    // E. Unique letter fallback
     if (letterTarget) {
       return click(letterTarget, targetLetter);
     }
