@@ -309,11 +309,43 @@ async function getReusableTab(domainMatch, storageKeyTab, storageKeyWin, windowI
   return null;
 }
 
-// 1. Google AI Mode
+// 1. Google AI Mode (Polling + Mutation Observer for instantaneous capture)
 async function startGoogleSearch(query, requestId, mode, assignmentTab, questionText) {
   const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableTab(/^https:\/\/(www\.)?google\./i, 'satoriGoogleTabId', 'satoriGoogleWindowId', windowId) : null;
+
+  const startPollingGoogle = (tabId) => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      const current = await chrome.storage.local.get('satoriActiveRequest');
+      if (current.satoriActiveRequest?.requestId !== requestId || attempts > 60) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode }, (res) => {
+          if (chrome.runtime.lastError || !res?.ok) return;
+          const text = (res.text || '').trim();
+          if (text && text.length > 30) {
+            clearInterval(interval);
+            addDiagnostic('google-poll', `Answer captured directly via polling (${text.length} chars)`);
+            handleCompletedResult('google', requestId, {
+              requestId,
+              mode,
+              text: res.text,
+              code: res.code,
+              capturedAt: Date.now()
+            });
+          }
+        });
+      } catch (_e) {
+        clearInterval(interval);
+      }
+    }, 1000);
+  };
 
   const initiateWatch = async (tabId) => {
     try {
@@ -323,9 +355,11 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
         requestId,
         mode
       });
-      addDiagnostic('google-watch', `MutationObserver attached to Google Search tab ${tabId}`);
+      addDiagnostic('google-watch', `Watch attached to Google Search tab ${tabId}`);
+      startPollingGoogle(tabId);
     } catch (err) {
       addDiagnostic('google-error', err.message);
+      startPollingGoogle(tabId);
     }
   };
 
@@ -341,7 +375,6 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
     };
     chrome.tabs.onUpdated.addListener(listener);
     await chrome.tabs.update(tab.id, { url, active: false });
-    // Safety fallback: if onUpdated already fired or page cached, attach watch after delay
     setTimeout(() => { if (!handled) { handled = true; initiateWatch(targetTabId); } }, 1500);
   } else {
     tab = await chrome.tabs.create({ url, active: false, windowId });
