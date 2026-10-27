@@ -510,9 +510,11 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!mode) return;
 
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const assignmentTab = tabs.find((t) => t.id && !/google\.|gemini\.|chatgpt\./i.test(t.url || '')) || tabs[0];
+  // Never target internal chrome:// or extension pages
+  const assignmentTab = tabs.find((t) => t.id && !/^(chrome|edge|chrome-extension|about):/i.test(t.url || '') && !/google\.|gemini\.|chatgpt\./i.test(t.url || ''));
   if (!assignmentTab?.id) {
-    console.warn('[Satori Background] No valid active tab found for shortcut.');
+    console.warn('[Satori Background] Active tab is an internal or provider page. Ignoring shortcut.');
+    setStatus('Cannot run on internal browser pages (e.g. chrome://). Switch to an assignment tab.', 'error');
     return;
   }
 
