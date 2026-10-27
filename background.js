@@ -333,7 +333,9 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
           if (chrome.runtime.lastError || !res?.ok) return;
           const text = (res.text || '').trim();
           const code = (res.code || '').trim();
-          const isReady = mode === 'coding' ? Boolean(code && code.length > 20) : Boolean(text && text.length > 30);
+          const isReady = mode === 'coding'
+            ? Boolean(code && code.length > 20 && !code.includes('var(--') && !code.includes('.o3lpyf'))
+            : Boolean(text && text.length > 30 && !text.includes('var(--') && !text.includes('.o3lpyf'));
           if (isReady) {
             clearInterval(interval);
             addDiagnostic('google-poll', `Answer captured directly via polling (${mode === 'coding' ? code.length : text.length} chars)`);

@@ -62,7 +62,7 @@
 
     // Filter out shopping ads, product results, and unavailable banners
     const text = candidates
-      .filter((value) => !unavailable.test(value) && !/^(Shopping|Sponsored|Ads|Top ads)/i.test(value))
+      .filter((value) => !unavailable.test(value) && !/^(Shopping|Sponsored|Ads|Top ads)/i.test(value) && !value.includes('.o3lpyf') && !value.includes('var(--'))
       .sort((a, b) => b.length - a.length)[0]
       ?.replace(/^AI\s+Overview\s*/i, '')
       .trim() || '';
@@ -75,7 +75,7 @@
     // Find any copy button inside Google Search: buttons with "Copy", aria-label="Copy", title="Copy", etc.
     const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => {
       const label = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').toLowerCase();
-      return label.includes('copy') || btn.querySelector('svg, [data-icon*="copy" i], path');
+      return label.includes('copy') || Boolean(btn.querySelector('svg, [data-icon*="copy" i], path'));
     });
 
     copyButtons.forEach(btn => {
@@ -83,19 +83,23 @@
       // In Google Search AI Overview, the copy button sits inside or next to the code container
       let container = btn.closest('[jscontroller], pre, [class*="code" i], div');
       // Walk up if needed to find the container holding pre or code
-      for (let d = 0; d < 5 && container; d++) {
+      for (let d = 0; d < 6 && container; d++) {
         const foundPre = container.querySelector('pre, code, [role="textbox"]');
         if (foundPre) {
           const rawCode = clean(foundPre.innerText || foundPre.textContent || '');
-          if (rawCode.length > 20) codeCandidates.push(rawCode);
-          break;
+          if (rawCode.length > 20 && !rawCode.includes('var(--')) {
+            codeCandidates.push(rawCode);
+            break;
+          }
         }
         // Also check if container itself contains code text
         const text = clean(container.innerText || '');
-        if (/(#include|def |function|int |public |class |return |import )/i.test(text) && text.length > 30) {
+        if (/(#include|def |function|int |public |class |return |import )/i.test(text) && text.length > 30 && !text.includes('var(--')) {
           const filtered = text.replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '').trim();
-          if (filtered.length > 20) codeCandidates.push(filtered);
-          break;
+          if (filtered.length > 20) {
+            codeCandidates.push(filtered);
+            break;
+          }
         }
         container = container.parentElement;
       }
@@ -107,20 +111,22 @@
       const c = clean(el.innerText || el.textContent || '')
         .replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '')
         .trim();
-      if (c.length > 20) codeCandidates.push(c);
+      if (c.length > 20 && !c.includes('var(--')) codeCandidates.push(c);
     });
 
     // Strategy 3: Markdown fenced blocks
     const fenced = [...(document.body.innerText || '').matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
       .map((match) => clean(match[1]))
-      .filter((value) => value.length > 20);
+      .filter((value) => value.length > 20 && !value.includes('var(--'));
 
-    const code = [...codeCandidates, ...fenced].sort((a, b) => b.length - a.length)[0] || '';
+    const code = [...codeCandidates, ...fenced]
+      .filter((c) => !unavailable.test(c) && !c.includes('var(--') && !c.includes('.o3lpyf'))
+      .sort((a, b) => b.length - a.length)[0] || '';
 
     return {
       text,
       code,
-      loading: /generating|loading/i.test(document.body?.innerText || '') && !text
+      loading: /generating|loading/i.test(document.body?.innerText || '') && !code && !text
     };
   }
 
@@ -134,7 +140,7 @@
     if (!state.requestId) return;
     const reading = readOverview(state.mode);
     const selected = state.mode === 'coding' ? reading.code : reading.text;
-    if (!selected || unavailable.test(selected)) return;
+    if (!selected || unavailable.test(selected) || selected.includes('var(--') || selected.includes('.o3lpyf')) return;
 
     const baseline = state.mode === 'coding' ? state.baselineCode : state.baselineText;
     const sig = signature(selected);
@@ -146,7 +152,7 @@
       const current = readOverview(state.mode);
       const finalSelected = state.mode === 'coding' ? current.code : current.text;
       const finalSig = signature(finalSelected);
-      if (!finalSelected || unavailable.test(finalSelected) || finalSig === state.lastSignature) return;
+      if (!finalSelected || unavailable.test(finalSelected) || finalSelected.includes('var(--') || finalSig === state.lastSignature) return;
 
       state.lastSignature = finalSig;
       const capturedRequestId = state.requestId;
