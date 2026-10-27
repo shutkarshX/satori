@@ -314,7 +314,6 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
   const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableTab(/^https:\/\/(www\.)?google\./i, 'satoriGoogleTabId', 'satoriGoogleWindowId', windowId) : null;
-  const targetTabId = tab?.id || null;
 
   const initiateWatch = async (tabId) => {
     try {
@@ -330,21 +329,34 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
     }
   };
 
-  let handled = false;
-  const listener = (updatedTabId, changeInfo) => {
-    if (updatedTabId === targetTabId && changeInfo.status === 'complete' && !handled) {
-      handled = true;
-      chrome.tabs.onUpdated.removeListener(listener);
-      initiateWatch(targetTabId);
-    }
-  };
-  chrome.tabs.onUpdated.addListener(listener);
-
   if (tab?.id) {
+    const targetTabId = tab.id;
+    let handled = false;
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId === targetTabId && changeInfo.status === 'complete' && !handled) {
+        handled = true;
+        chrome.tabs.onUpdated.removeListener(listener);
+        initiateWatch(targetTabId);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
     await chrome.tabs.update(tab.id, { url, active: false });
+    // Safety fallback: if onUpdated already fired or page cached, attach watch after delay
+    setTimeout(() => { if (!handled) { handled = true; initiateWatch(targetTabId); } }, 1500);
   } else {
     tab = await chrome.tabs.create({ url, active: false, windowId });
+    const targetTabId = tab.id;
     await chrome.storage.local.set({ satoriGoogleTabId: tab.id, satoriGoogleWindowId: tab.windowId });
+    let handled = false;
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId === targetTabId && changeInfo.status === 'complete' && !handled) {
+        handled = true;
+        chrome.tabs.onUpdated.removeListener(listener);
+        initiateWatch(targetTabId);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => { if (!handled) { handled = true; initiateWatch(targetTabId); } }, 1800);
   }
 }
 
@@ -488,7 +500,11 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
   const prompt = buildDirectPrompt(provider, mode, pageContent);
 
   if (provider === 'google') {
-    startGoogleSearch(pageContent, requestId, mode, assignmentTab, questionText);
+    // For Google Search in MCQ mode, query clean question + options instead of raw entire page DOM
+    const searchQuery = (mode === 'mcq' && questionText && questionText.trim().length > 10)
+      ? questionText.trim()
+      : (pageContent || questionText);
+    startGoogleSearch(searchQuery, requestId, mode, assignmentTab, questionText);
   } else if (provider === 'gemini') {
     startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
   } else {
