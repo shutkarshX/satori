@@ -292,11 +292,13 @@
   // MCQ Option Selection (Safety First: Letter + Text Verification)
   // -------------------------------------------------------------
   function selectMcqOption(answerInput) {
+    console.log('[Satori Content] selectMcqOption called with input:', answerInput);
     const answer = typeof answerInput === 'string'
       ? { letter: null, text: answerInput, raw: answerInput }
       : (answerInput || {});
     const cleanAnswer = String(answer.text || answer.raw || '').trim();
     const targetLetter = String(answer.letter || '').trim().toUpperCase() || null;
+    console.log('[Satori Content] Parsing answer:', { cleanAnswer, targetLetter });
     if (!cleanAnswer && !targetLetter) throw new Error('No answer provided for MCQ.');
 
     const norm = (str) => (str || '')
@@ -314,8 +316,11 @@
     const visibleRadios = [...document.querySelectorAll('input[type="radio"], [role="radio"]')]
       .filter((node) => node.offsetParent !== null || node.matches('[role="radio"]'));
 
+    console.log(`[Satori Content] Found ${candidates.length} candidate option elements, ${visibleRadios.length} visible radios.`);
+
     const click = (element, matched) => {
       if (!element) return null;
+      console.log('[Satori Content] Clicking matched element:', element, 'Label/Text:', matched);
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
       const label = element.closest('label') || (element.matches('label') ? element : null);
@@ -360,6 +365,7 @@
       });
       // Deduplicate nested elements: if a parent already matched (e.g. <label> contains <span>), keep only the top-level option container
       textMatches = rawMatches.filter((node) => !rawMatches.some((other) => other !== node && other.contains(node)));
+      console.log(`[Satori Content] Text matching for "${target}": found ${rawMatches.length} raw, ${textMatches.length} deduplicated matches.`);
     }
 
     // 2. Letter matching candidates (A -> 0, B -> 1, ...)
