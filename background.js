@@ -500,6 +500,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
 // Keyboard Shortcut Commands (Alt+Shift+M, Alt+Shift+C, Alt+Shift+X)
 // -------------------------------------------------------------
 chrome.commands.onCommand.addListener(async (command) => {
+  console.log('[Satori Background] Command triggered:', command);
   if (command === 'satori-cancel') {
     await cancelActiveRequest();
     return;
@@ -510,18 +511,27 @@ chrome.commands.onCommand.addListener(async (command) => {
 
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const assignmentTab = tabs.find((t) => t.id && !/google\.|gemini\.|chatgpt\./i.test(t.url || '')) || tabs[0];
-  if (!assignmentTab?.id) return;
+  if (!assignmentTab?.id) {
+    console.warn('[Satori Background] No valid active tab found for shortcut.');
+    return;
+  }
 
+  // Inject content.js safely into all frames if needed
   let page;
   try {
     page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
   } catch (_e) {
-    await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id }, files: ['content.js'] });
-    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] });
+      page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+    } catch (injErr) {
+      console.error('[Satori Background] Injection error:', injErr);
+    }
   }
 
   if (!page?.ok || !page.fullText || page.fullText.trim().length < 10) {
     setStatus('Could not read enough page text to solve question.', 'error');
+    addDiagnostic('shortcut-error', 'Too little page text extracted from active tab.');
     return;
   }
 
