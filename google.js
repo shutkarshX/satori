@@ -87,14 +87,14 @@
         const foundPre = container.querySelector('pre, code, [role="textbox"]');
         if (foundPre) {
           const rawCode = clean(foundPre.innerText || foundPre.textContent || '');
-          if (rawCode.length > 20 && !rawCode.includes('var(--')) {
+          if (rawCode.length > 20 && !rawCode.includes('var(--') && !rawCode.includes('window.sn=')) {
             codeCandidates.push(rawCode);
             break;
           }
         }
         // Also check if container itself contains code text
         const text = clean(container.innerText || '');
-        if (/(#include|def |function|int |public |class |return |import )/i.test(text) && text.length > 30 && !text.includes('var(--')) {
+        if (/(#include|def |function|int |public |class |return |import )/i.test(text) && text.length > 30 && !text.includes('var(--') && !text.includes('window.sn=')) {
           const filtered = text.replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '').trim();
           if (filtered.length > 20) {
             codeCandidates.push(filtered);
@@ -111,16 +111,16 @@
       const c = clean(el.innerText || el.textContent || '')
         .replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '')
         .trim();
-      if (c.length > 20 && !c.includes('var(--')) codeCandidates.push(c);
+      if (c.length > 20 && !c.includes('var(--') && !c.includes('window.sn=')) codeCandidates.push(c);
     });
 
     // Strategy 3: Markdown fenced blocks
     const fenced = [...(document.body.innerText || '').matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
       .map((match) => clean(match[1]))
-      .filter((value) => value.length > 20 && !value.includes('var(--'));
+      .filter((value) => value.length > 20 && !value.includes('var(--') && !value.includes('window.sn='));
 
     const code = [...codeCandidates, ...fenced]
-      .filter((c) => !unavailable.test(c) && !c.includes('var(--') && !c.includes('.o3lpyf'))
+      .filter((c) => !unavailable.test(c) && !c.includes('var(--') && !c.includes('.o3lpyf') && !c.includes('window.sn='))
       .sort((a, b) => b.length - a.length)[0] || '';
 
     return {
@@ -140,7 +140,7 @@
     if (!state.requestId) return;
     const reading = readOverview(state.mode);
     const selected = state.mode === 'coding' ? reading.code : reading.text;
-    if (!selected || unavailable.test(selected) || selected.includes('var(--') || selected.includes('.o3lpyf')) return;
+    if (!selected || unavailable.test(selected) || selected.includes('var(--') || selected.includes('.o3lpyf') || selected.includes('window.sn=')) return;
 
     const baseline = state.mode === 'coding' ? state.baselineCode : state.baselineText;
     const sig = signature(selected);
@@ -152,7 +152,7 @@
       const current = readOverview(state.mode);
       const finalSelected = state.mode === 'coding' ? current.code : current.text;
       const finalSig = signature(finalSelected);
-      if (!finalSelected || unavailable.test(finalSelected) || finalSelected.includes('var(--') || finalSig === state.lastSignature) return;
+      if (!finalSelected || unavailable.test(finalSelected) || finalSelected.includes('var(--') || finalSelected.includes('window.sn=') || finalSig === state.lastSignature) return;
 
       state.lastSignature = finalSig;
       const capturedRequestId = state.requestId;
