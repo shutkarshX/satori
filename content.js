@@ -490,6 +490,25 @@
   // directly in the webpage DOM so browser shortcut conflicts never block it
   // -------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
+  // Debug: log key info for any Alt+Shift combination
+  if (e.altKey && e.shiftKey) {
+    console.log('[Satori Content] keydown detected', {code:e.code, key:e.key, keyCode:e.keyCode});
+    const normalized = (e.code || '').toUpperCase();
+    let cmd = null;
+    // Accept both C and S (or any key that maps to our commands)
+    if (normalized === 'KEYM' || e.key?.toLowerCase() === 'm' || e.keyCode === 77) cmd = 'satori-mcq';
+    else if (normalized === 'KEYC' || e.key?.toLowerCase() === 'c' || e.keyCode === 67) cmd = 'satori-code';
+    else if (normalized === 'KEYS' || e.key?.toLowerCase() === 's' || e.keyCode === 83) cmd = 'satori-code'; // S as alias for coding
+    else if (normalized === 'KEYX' || e.key?.toLowerCase() === 'x' || e.keyCode === 88) cmd = 'satori-cancel';
+
+    if (cmd) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('[Satori Content] In-page shortcut detected:', cmd);
+      chrome.runtime.sendMessage({ type: 'TRIGGER_SHORTCUT_DIRECT', command: cmd });
+    }
+  }
+}, true);
     if (e.altKey && e.shiftKey) {
       const code = e.code;
       let cmd = null;
