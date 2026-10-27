@@ -67,12 +67,37 @@
       ?.replace(/^AI\s+Overview\s*/i, '')
       .trim() || '';
 
-    const codeCandidates = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i]')]
-      .map((node) => clean(node.innerText || node.textContent || ''))
-      .filter((value) => value.length > 20);
+    // Extract Code Blocks specifically
+    // Strategy 1: Look for Google's code container / copy box
+    // Google AI Overview renders code in elements with copy buttons, code blocks, or role="textbox"
+    const codeCandidates = [];
+
+    // Find any copy button inside AI overview or code blocks: buttons with "Copy", aria-label="Copy code", etc.
+    const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => 
+      /copy(\s*code)?/i.test(btn.innerText || btn.getAttribute('aria-label') || '')
+    );
+    copyButtons.forEach(btn => {
+      // The code snippet is in the parent/sibling container of the copy button
+      const container = btn.closest('[jscontroller], pre, [class*="code" i], div') || btn.parentElement;
+      if (container) {
+        const rawCode = clean(container.querySelector('pre, code, [role="textbox"]')?.innerText || container.innerText || '');
+        const filtered = rawCode.replace(/^copy(\s*code)?\s*/i, '').trim();
+        if (filtered.length > 20) codeCandidates.push(filtered);
+      }
+    });
+
+    // Strategy 2: Pre / Code tags and textboxes
+    const standardCodeEls = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i], .code-block, div[class*="highlight" i]')];
+    standardCodeEls.forEach(el => {
+      const c = clean(el.innerText || el.textContent || '');
+      if (c.length > 20) codeCandidates.push(c);
+    });
+
+    // Strategy 3: Markdown fenced blocks
     const fenced = [...(document.body.innerText || '').matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
       .map((match) => clean(match[1]))
       .filter((value) => value.length > 20);
+
     const code = [...codeCandidates, ...fenced].sort((a, b) => b.length - a.length)[0] || '';
 
     return {

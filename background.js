@@ -557,7 +557,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 
   const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-code' ? 'coding' : null;
   if (!mode) return;
-  setStatus('MCQ shortcut detected. Reading the active assignment tab…', 'waiting');
+  setStatus(`${mode === 'coding' ? 'Coding' : 'MCQ'} shortcut detected. Reading the active assignment tab…`, 'waiting');
 
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   // Never target internal chrome:// or extension pages
