@@ -21,7 +21,16 @@
   const unavailable = /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i;
 
   function readOverview(mode = 'mcq') {
-    const selectors = ['[data-attrid="wa"]', '[data-attrid="AIOverview"]', '[data-mce-source]', 'div[jsname="N760b"]'];
+    const selectors = [
+      '[data-attrid="wa"]',
+      '[data-attrid="AIOverview"]',
+      '[data-mce-source]',
+      'div[jsname="N760b"]',
+      'div[data-async-context*="generative"]',
+      'div[aria-label*="AI Overview" i]',
+      'div[jscontroller][data-md]',
+      '#rso'
+    ];
     const nodes = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
     const candidates = nodes.map((node) => clean(node.innerText || node.textContent || '')).filter((text) => text.length > 40);
     nodes.forEach((node) => {
@@ -30,6 +39,13 @@
         const text = clean(parent.innerText || '');
         if (text.length > 40 && text.length < 40000) candidates.push(text);
       }
+    });
+
+    // Also look for Google search featured snippets or top answer boxes
+    const featuredSnippets = [...document.querySelectorAll('.kp-blk, .xpdopen, .g, [data-tts="answers"]')];
+    featuredSnippets.forEach((node) => {
+      const text = clean(node.innerText || '');
+      if (text.length > 40) candidates.push(text);
     });
 
     const label = [...document.querySelectorAll('h1,h2,h3,div,span')]
