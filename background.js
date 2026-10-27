@@ -549,6 +549,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
 // -------------------------------------------------------------
 chrome.commands.onCommand.addListener(async (command) => {
   console.log('[Satori Background] Command triggered:', command);
+  addDiagnostic('shortcut-command', `Chrome delivered command: ${command}`);
   if (command === 'satori-cancel') {
     await cancelActiveRequest();
     return;
@@ -556,6 +557,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 
   const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-code' ? 'coding' : null;
   if (!mode) return;
+  setStatus('MCQ shortcut detected. Reading the active assignment tab…', 'waiting');
 
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   // Never target internal chrome:// or extension pages

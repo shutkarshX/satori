@@ -31,24 +31,34 @@
       'div[aria-label*="AI Overview" i]'
     ];
     const nodes = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
+    const isExcluded = (node) => Boolean(node.closest?.('.commercial-unit, #tads, .pla-unit, [data-text-ad]'));
     const candidates = nodes.map((node) => clean(node.innerText || node.textContent || '')).filter((text) => text.length > 40);
     nodes.forEach((node) => {
+      if (isExcluded(node)) return;
       let parent = node;
-      for (let depth = 0; depth < 5 && parent; depth += 1, parent = parent.parentElement) {
+      for (let depth = 0; depth < 8 && parent; depth += 1, parent = parent.parentElement) {
         // Exclude organic search results, google ads, shopping carousel
-        if (parent.id === 'rso' || parent.matches('.commercial-unit, #tads, .pla-unit')) continue;
+        if (parent.id === 'rso') break;
+        if (isExcluded(parent)) break;
         const text = clean(parent.innerText || '');
-        if (text.length > 40 && text.length < 40000) candidates.push(text);
+        if (text.length > 40 && text.length < 20000) candidates.push(text);
       }
     });
 
-    const label = [...document.querySelectorAll('h1,h2,h3,div,span')]
-      .find((node) => /^AI Overview$/i.test((node.innerText || '').trim()));
-    if (label?.parentElement) {
-      const container = label.closest('div[jscontroller], div[jsname], [data-attrid]') || label.parentElement;
-      const nearby = clean(container.innerText || '');
-      if (nearby.length > 40) candidates.push(nearby);
-    }
+    const labels = [...document.querySelectorAll('h1,h2,h3,[role="heading"],div,span')]
+      .filter((node) => /^AI Overview$/i.test((node.innerText || '').trim()));
+    labels.forEach((label) => {
+      let parent = label;
+      for (let depth = 0; depth < 8 && parent; depth += 1, parent = parent.parentElement) {
+        if (parent.id === 'rso') break;
+        if (isExcluded(parent)) break;
+        const nearby = clean(parent.innerText || '');
+        if (nearby.length > 60 && nearby.length < 20000) {
+          candidates.push(nearby);
+          break;
+        }
+      }
+    });
 
     // Filter out shopping ads, product results, and unavailable banners
     const text = candidates
