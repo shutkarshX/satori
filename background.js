@@ -332,9 +332,11 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
         chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode }, (res) => {
           if (chrome.runtime.lastError || !res?.ok) return;
           const text = (res.text || '').trim();
-          if (text && text.length > 30) {
+          const code = (res.code || '').trim();
+          const isReady = mode === 'coding' ? Boolean(code && code.length > 20) : Boolean(text && text.length > 30);
+          if (isReady) {
             clearInterval(interval);
-            addDiagnostic('google-poll', `Answer captured directly via polling (${text.length} chars)`);
+            addDiagnostic('google-poll', `Answer captured directly via polling (${mode === 'coding' ? code.length : text.length} chars)`);
             handleCompletedResult('google', requestId, {
               requestId,
               mode,

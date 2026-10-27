@@ -69,27 +69,44 @@
 
     // Extract Code Blocks specifically
     // Strategy 1: Look for Google's code container / copy box
-    // Google AI Overview renders code in elements with copy buttons, code blocks, or role="textbox"
+    // Google AI Overview renders code in dark container boxes with a copy icon button (like aria-label="Copy" or svg with copy icon)
     const codeCandidates = [];
 
-    // Find any copy button inside AI overview or code blocks: buttons with "Copy", aria-label="Copy code", etc.
-    const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => 
-      /copy(\s*code)?/i.test(btn.innerText || btn.getAttribute('aria-label') || '')
-    );
+    // Find any copy button inside Google Search: buttons with "Copy", aria-label="Copy", title="Copy", etc.
+    const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => {
+      const label = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').toLowerCase();
+      return label.includes('copy') || btn.querySelector('svg, [data-icon*="copy" i], path');
+    });
+
     copyButtons.forEach(btn => {
-      // The code snippet is in the parent/sibling container of the copy button
-      const container = btn.closest('[jscontroller], pre, [class*="code" i], div') || btn.parentElement;
-      if (container) {
-        const rawCode = clean(container.querySelector('pre, code, [role="textbox"]')?.innerText || container.innerText || '');
-        const filtered = rawCode.replace(/^copy(\s*code)?\s*/i, '').trim();
-        if (filtered.length > 20) codeCandidates.push(filtered);
+      // Find the code block container associated with this copy button
+      // In Google Search AI Overview, the copy button sits inside or next to the code container
+      let container = btn.closest('[jscontroller], pre, [class*="code" i], div');
+      // Walk up if needed to find the container holding pre or code
+      for (let d = 0; d < 5 && container; d++) {
+        const foundPre = container.querySelector('pre, code, [role="textbox"]');
+        if (foundPre) {
+          const rawCode = clean(foundPre.innerText || foundPre.textContent || '');
+          if (rawCode.length > 20) codeCandidates.push(rawCode);
+          break;
+        }
+        // Also check if container itself contains code text
+        const text = clean(container.innerText || '');
+        if (/(#include|def |function|int |public |class |return |import )/i.test(text) && text.length > 30) {
+          const filtered = text.replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '').trim();
+          if (filtered.length > 20) codeCandidates.push(filtered);
+          break;
+        }
+        container = container.parentElement;
       }
     });
 
-    // Strategy 2: Pre / Code tags and textboxes
-    const standardCodeEls = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i], .code-block, div[class*="highlight" i]')];
+    // Strategy 2: Pre / Code tags, elements with dark code backgrounds, and textboxes
+    const standardCodeEls = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i], .code-block, div[class*="highlight" i], [jsname*="code" i]')];
     standardCodeEls.forEach(el => {
-      const c = clean(el.innerText || el.textContent || '');
+      const c = clean(el.innerText || el.textContent || '')
+        .replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '')
+        .trim();
       if (c.length > 20) codeCandidates.push(c);
     });
 
