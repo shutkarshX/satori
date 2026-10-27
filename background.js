@@ -547,9 +547,9 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
 // -------------------------------------------------------------
 // Keyboard Shortcut Commands (Alt+Shift+M, Alt+Shift+C, Alt+Shift+X)
 // -------------------------------------------------------------
-chrome.commands.onCommand.addListener(async (command) => {
-  console.log('[Satori Background] Command triggered:', command);
-  addDiagnostic('shortcut-command', `Chrome delivered command: ${command}`);
+async function executeShortcutCommand(command, senderTab = null) {
+  console.log('[Satori Background] Command executing:', command);
+  addDiagnostic('shortcut-command', `Command executing: ${command}`);
   if (command === 'satori-cancel') {
     await cancelActiveRequest();
     return;
@@ -559,9 +559,12 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!mode) return;
   setStatus(`${mode === 'coding' ? 'Coding' : 'MCQ'} shortcut detected. Reading the active assignment tab…`, 'waiting');
 
-  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  // Never target internal chrome:// or extension pages
-  const assignmentTab = tabs.find((t) => t.id && !/^(chrome|edge|chrome-extension|about):/i.test(t.url || '') && !/google\.|gemini\.|chatgpt\./i.test(t.url || ''));
+  let assignmentTab = senderTab;
+  if (!assignmentTab?.id) {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    assignmentTab = tabs.find((t) => t.id && !/^(chrome|edge|chrome-extension|about):/i.test(t.url || '') && !/google\.|gemini\.|chatgpt\./i.test(t.url || ''));
+  }
+
   if (!assignmentTab?.id) {
     console.warn('[Satori Background] Active tab is an internal or provider page. Ignoring shortcut.');
     setStatus('Cannot run on internal browser pages (e.g. chrome://). Switch to an assignment tab.', 'error');
@@ -598,12 +601,22 @@ chrome.commands.onCommand.addListener(async (command) => {
     assignmentTabId: assignmentTab.id,
     windowId: assignmentTab.windowId
   });
+}
+
+chrome.commands.onCommand.addListener(async (command) => {
+  await executeShortcutCommand(command);
 });
 
 // -------------------------------------------------------------
 // Message Gateway (Provider Responses & Popup Triggers)
 // -------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'TRIGGER_SHORTCUT_DIRECT') {
+    executeShortcutCommand(message.command, _sender?.tab);
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (message.type === 'CANCEL_REQUEST') {
     cancelActiveRequest();
     sendResponse({ ok: true });
