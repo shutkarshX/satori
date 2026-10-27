@@ -21,42 +21,38 @@
   const unavailable = /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i;
 
   function readOverview(mode = 'mcq') {
+    // 1. Strict AI Overview selectors ONLY
     const selectors = [
       '[data-attrid="wa"]',
       '[data-attrid="AIOverview"]',
       '[data-mce-source]',
       'div[jsname="N760b"]',
       'div[data-async-context*="generative"]',
-      'div[aria-label*="AI Overview" i]',
-      'div[jscontroller][data-md]',
-      '#rso'
+      'div[aria-label*="AI Overview" i]'
     ];
     const nodes = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
     const candidates = nodes.map((node) => clean(node.innerText || node.textContent || '')).filter((text) => text.length > 40);
     nodes.forEach((node) => {
       let parent = node;
-      for (let depth = 0; depth < 7 && parent; depth += 1, parent = parent.parentElement) {
+      for (let depth = 0; depth < 5 && parent; depth += 1, parent = parent.parentElement) {
+        // Exclude organic search results, google ads, shopping carousel
+        if (parent.id === 'rso' || parent.matches('.commercial-unit, #tads, .pla-unit')) continue;
         const text = clean(parent.innerText || '');
         if (text.length > 40 && text.length < 40000) candidates.push(text);
       }
     });
 
-    // Also look for Google search featured snippets or top answer boxes
-    const featuredSnippets = [...document.querySelectorAll('.kp-blk, .xpdopen, .g, [data-tts="answers"]')];
-    featuredSnippets.forEach((node) => {
-      const text = clean(node.innerText || '');
-      if (text.length > 40) candidates.push(text);
-    });
-
     const label = [...document.querySelectorAll('h1,h2,h3,div,span')]
       .find((node) => /^AI Overview$/i.test((node.innerText || '').trim()));
     if (label?.parentElement) {
-      const nearby = clean(label.parentElement.parentElement?.innerText || label.parentElement.innerText || '');
+      const container = label.closest('div[jscontroller], div[jsname], [data-attrid]') || label.parentElement;
+      const nearby = clean(container.innerText || '');
       if (nearby.length > 40) candidates.push(nearby);
     }
 
+    // Filter out shopping ads, product results, and unavailable banners
     const text = candidates
-      .filter((value) => !unavailable.test(value))
+      .filter((value) => !unavailable.test(value) && !/^(Shopping|Sponsored|Ads|Top ads)/i.test(value))
       .sort((a, b) => b.length - a.length)[0]
       ?.replace(/^AI\s+Overview\s*/i, '')
       .trim() || '';
