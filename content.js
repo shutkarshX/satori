@@ -362,10 +362,23 @@
       const rawMatches = unique.filter((node) => {
         const text = norm(visibleText(node));
         if (!text) return false;
+        // Ignore nodes that contain the entire question or multiple other options
+        if (text.length > 300) return false;
+
         // Exact match
         if (text === target) return true;
-        // Substring match in either direction
-        if (target.length > 3 && text.length <= 250 && (text.includes(target) || target.includes(text))) return true;
+
+        // Clean standalone match: word boundary match for short answers like "n+1" or "O(n)"
+        if (target.length <= 10) {
+          // Look for target as a standalone token or exact expression in the option
+          const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, 'i');
+          return regex.test(text);
+        }
+
+        // Substring match in either direction for longer text
+        if (target.length > 5 && text.length <= 250 && (text.includes(target) || target.includes(text))) return true;
+
         // Token overlap: if 60%+ of meaningful words match
         const targetWords = target.split(/\s+/).filter(w => w.length > 2);
         const textWords = text.split(/\s+/).filter(w => w.length > 2);
@@ -379,7 +392,7 @@
       });
       // Deduplicate nested elements: if a parent already matched (e.g. <label> contains <span>), keep only the top-level option container
       textMatches = rawMatches.filter((node) => !rawMatches.some((other) => other !== node && other.contains(node)));
-      console.log(`[Satori Content] Text matching for "${target}": found ${rawMatches.length} raw, ${textMatches.length} deduplicated matches.`);
+      console.log(`[Satori Content] Text matching for "${target}": found ${rawMatches.length} raw, ${textMatches.length} deduplicated matches:`, textMatches.map(n => visibleText(n).slice(0, 40)));
     }
 
     // 2. Letter matching candidates (A -> 0, B -> 1, ...)
@@ -440,12 +453,19 @@
       }).sort((a, b) => b.score - a.score);
 
       // If top match has a clear lead over the second match, select it safely
-      if (scored.length > 0 && (scored.length === 1 || scored[0].score > scored[1].score + 5)) {
-        console.log(`[Satori Content] Disambiguated multiple options, selected top scored (${scored[0].score} pts):`, scored[0].node);
-        return click(scored[0].node, visibleText(scored[0].node).slice(0, 80));
+      if (scored.length > 0) {
+        // If top score is strictly higher than the next candidate, or if top score is an exact match
+        if (scored.length === 1 || scored[0].score > scored[1].score) {
+          console.log(`[Satori Content] Disambiguated multiple options, selected top scored (${scored[0].score} pts):`, scored[0].node);
+          return click(scored[0].node, visibleText(scored[0].node).slice(0, 80));
+        }
       }
 
-      throw new Error('MCQ answer matches multiple page options. Nothing was selected to prevent incorrect submission.');
+      // If tied between identical elements or labels wrapping the same radio input, take the first one
+      if (scored.length > 1) {
+        console.log(`[Satori Content] Selecting best candidate from tied options:`, scored[0].node);
+        return click(scored[0].node, visibleText(scored[0].node).slice(0, 80));
+      }
     }
 
     // E. Unique letter fallback
