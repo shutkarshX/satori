@@ -68,59 +68,53 @@
       .trim() || '';
 
     // Extract Code Blocks specifically
-    // Strategy 1: Look for Google's code container / copy box
-    // Google AI Overview renders code in dark container boxes with a copy icon button (like aria-label="Copy" or svg with copy icon)
+    // In Google AI Mode, code is rendered inside a dedicated dark code card containing "Use code with caution" and a Copy button at the bottom.
     const codeCandidates = [];
 
-    // Find any copy button inside Google Search: buttons with "Copy", aria-label="Copy", title="Copy", etc.
+    // Find the Copy buttons on Google Search
     const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => {
       const label = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').toLowerCase();
-      return label.includes('copy') || Boolean(btn.querySelector('svg, [data-icon*="copy" i], path'));
+      // Match copy button text or icons
+      const hasCopyIcon = Boolean(btn.querySelector('svg, path[d*="M16 1H4"], path[d*="M19 3H5"], path[d*="copy" i]'));
+      return label.includes('copy') || hasCopyIcon || btn.closest('[class*="code" i]')?.querySelector('button') === btn;
     });
 
     copyButtons.forEach(btn => {
-      // Find the code block container associated with this copy button
-      // In Google Search AI Overview, the copy button sits inside or next to the code container
-      let container = btn.closest('[jscontroller], pre, [class*="code" i], div');
-      // Walk up if needed to find the container holding pre or code
-      for (let d = 0; d < 6 && container; d++) {
-        const foundPre = container.querySelector('pre, code, [role="textbox"]');
-        if (foundPre) {
-          const rawCode = clean(foundPre.innerText || foundPre.textContent || '');
-          if (rawCode.length > 20 && !rawCode.includes('var(--') && !rawCode.includes('window.sn=')) {
+      // Find the code card: walk up until we find the container with pre, code, or the code block
+      let card = btn.closest('pre, [class*="code-block" i], [class*="snippet" i], div');
+      for (let depth = 0; depth < 5 && card; depth++) {
+        const pre = card.querySelector('pre, code');
+        if (pre) {
+          const rawCode = clean(pre.innerText || pre.textContent || '');
+          if (rawCode.length > 20 && !rawCode.includes('window.sn=')) {
             codeCandidates.push(rawCode);
-            break;
+            return;
           }
         }
-        // Also check if container itself contains code text
-        const text = clean(container.innerText || '');
-        if (/(#include|def |function|int |public |class |return |import )/i.test(text) && text.length > 30 && !text.includes('var(--') && !text.includes('window.sn=')) {
-          const filtered = text.replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '').trim();
-          // Do not include the whole page if container is too high up
-          if (filtered.length > 20 && filtered.length < 15000 && !filtered.includes('People also search for')) {
-            codeCandidates.push(filtered);
-            break;
-          }
-        }
-        container = container.parentElement;
+        card = card.parentElement;
       }
     });
 
-    // Strategy 2: Pre / Code tags, elements with dark code backgrounds, and textboxes
-    const standardCodeEls = [...document.querySelectorAll('pre code, pre, [role="textbox"][aria-label*="code" i], .code-block, div[class*="highlight" i], [jsname*="code" i]')];
-    standardCodeEls.forEach(el => {
-      const c = clean(el.innerText || el.textContent || '')
-        .replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '')
-        .trim();
-      if (c.length > 20 && !c.includes('var(--') && !c.includes('window.sn=')) codeCandidates.push(c);
-    });
+    // Strategy 2: Pre or Code elements directly (the code box itself)
+    if (codeCandidates.length === 0) {
+      const preElements = [...document.querySelectorAll('pre, [role="region"] pre, .code-block pre')];
+      preElements.forEach(pre => {
+        const text = clean(pre.innerText || pre.textContent || '');
+        if (text.length > 20 && !text.includes('window.sn=')) {
+          codeCandidates.push(text);
+        }
+      });
+    }
 
-    // Strategy 3: Markdown fenced blocks
-    const fenced = [...(document.body.innerText || '').matchAll(/```[^\n]*\n?([\s\S]*?)```/g)]
-      .map((match) => clean(match[1]))
-      .filter((value) => value.length > 20 && !value.includes('var(--') && !value.includes('window.sn='));
+    // Strategy 3: Markdown fenced code blocks (if raw text generated)
+    if (codeCandidates.length === 0) {
+      const fenced = [...(document.body.innerText || '').matchAll(/```(?:c|cpp|c\+\+|java|python|javascript)?\s*([\s\S]*?)```/g)]
+        .map(match => clean(match[1]))
+        .filter(val => val.length > 20 && !val.includes('window.sn='));
+      codeCandidates.push(...fenced);
+    }
 
-    const code = [...codeCandidates, ...fenced]
+    const code = codeCandidates
       .filter((c) => !unavailable.test(c) && !c.includes('var(--') && !c.includes('.o3lpyf') && !c.includes('window.sn='))
       .sort((a, b) => b.length - a.length)[0] || '';
 
