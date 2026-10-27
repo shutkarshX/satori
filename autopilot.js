@@ -61,25 +61,52 @@
   }
 
   // -------------------------------------------------------------------------
-  // PHASE 3A: VIDEO HANDLING (Mute, Seek Bar, Complete)
+  // CONTINUOUS AUDIO SILENCER & MEDIA MUTING
+  // Unconditionally mutes all video & audio elements across the page
+  // -------------------------------------------------------------------------
+  function enforceMuteAllMedia() {
+    document.querySelectorAll('video, audio').forEach(m => {
+      m.muted = true;
+      m.volume = 0;
+      m.defaultMuted = true;
+    });
+  }
+
+  // Global capture listener: silence any video/audio the instant it plays
+  window.addEventListener('play', (e) => {
+    if (e.target && (e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO')) {
+      e.target.muted = true;
+      e.target.volume = 0;
+      e.target.defaultMuted = true;
+    }
+  }, true);
+
+  // -------------------------------------------------------------------------
+  // PHASE 3A: VIDEO HANDLING (Mute, Seek Bar, Complete, Pause)
   // -------------------------------------------------------------------------
   async function handleVideoElement(video) {
     fspLog('VIDEO', 'Handling video player...');
-    video.muted = true;
-    video.volume = 0;
+    enforceMuteAllMedia();
 
     if (!video.ended) {
       if (video.paused) video.play().catch(() => {});
       // Allow video to register metadata, then seek to 99%
       await sleep(400);
+      enforceMuteAllMedia();
+
       if (video.duration && video.currentTime < video.duration - 0.5) {
         video.currentTime = Math.max(0, video.duration - 0.2);
         fspLog('VIDEO', `Seek bar moved to ${Math.round(video.duration)}s (Complete)`);
       }
       // Wait 1.0s for the video player's internal 'ended' event to propagate
       await sleep(1000);
+      // Explicitly pause so finished videos don't loop or continue playing in background
+      try {
+        video.pause();
+      } catch (_e) {}
     }
-    fspLog('VIDEO', 'Video finished cleanly.');
+    enforceMuteAllMedia();
+    fspLog('VIDEO', 'Video finished cleanly and silenced.');
     return true;
   }
 
