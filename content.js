@@ -361,7 +361,21 @@
       const target = norm(cleanAnswer);
       const rawMatches = unique.filter((node) => {
         const text = norm(visibleText(node));
-        return text && (text === target || (target.length > 4 && text.length <= 180 && (text.includes(target) || target.includes(text))));
+        if (!text) return false;
+        // Exact match
+        if (text === target) return true;
+        // Substring match in either direction
+        if (target.length > 3 && text.length <= 250 && (text.includes(target) || target.includes(text))) return true;
+        // Token overlap: if 60%+ of meaningful words match
+        const targetWords = target.split(/\s+/).filter(w => w.length > 2);
+        const textWords = text.split(/\s+/).filter(w => w.length > 2);
+        if (targetWords.length >= 2 && textWords.length >= 2) {
+          const matchedWords = targetWords.filter(w => textWords.includes(w));
+          if (matchedWords.length / targetWords.length >= 0.6 || matchedWords.length / textWords.length >= 0.6) {
+            return true;
+          }
+        }
+        return false;
       });
       // Deduplicate nested elements: if a parent already matched (e.g. <label> contains <span>), keep only the top-level option container
       textMatches = rawMatches.filter((node) => !rawMatches.some((other) => other !== node && other.contains(node)));
