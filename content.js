@@ -318,16 +318,33 @@
       if (!element) return null;
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+      const label = element.closest('label') || (element.matches('label') ? element : null);
+      const radio = element.matches('input[type="radio"], input[type="checkbox"]')
+        ? element
+        : element.querySelector('input[type="radio"], input[type="checkbox"]');
+
+      // Dispatch full pointer and mouse event sequence for Angular/React/Vue/TCS portals
+      const triggerFullClick = (el) => {
+        if (!el) return;
+        ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach((evtName) => {
+          try {
+            el.dispatchEvent(new MouseEvent(evtName, { bubbles: true, cancelable: true, view: window }));
+          } catch (_e) {}
+        });
+        if (typeof el.click === 'function') el.click();
+      };
+
       if (radio) {
         radio.checked = true;
-        radio.click();
+        triggerFullClick(radio);
         radio.dispatchEvent(new Event('input', { bubbles: true }));
         radio.dispatchEvent(new Event('change', { bubbles: true }));
       }
+
       if (label && label !== radio) {
-        label.click();
+        triggerFullClick(label);
       } else if (!radio) {
-        element.click();
+        triggerFullClick(element);
       }
 
       return { matched, type: 'selected' };
