@@ -171,16 +171,40 @@ function validateProviderResult(provider, requestId, mode, payload, questionText
   }
 
   // Coding validation
-  const code = typeof payload === 'string' ? payload : (payload.code || payload.text || '');
-  const looksLikeCode = /(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\(|\bimport\s+java|\bfunction\b|class\s+\w+)/i.test(code);
+  const code = typeof payload === 'string'
+    ? payload
+    : (payload.code || (looksLikeCode(payload.text) ? extractCodeBlock(payload.text) : ''));
+  const isValid = looksLikeCode(code) && code.trim().length > 30;
   return {
     provider,
     requestId,
     type: 'coding',
-    valid: looksLikeCode && code.trim().length > 30,
+    valid: isValid,
     code: code.trim(),
-    raw: typeof payload === 'object' ? payload.text : code
+    raw: typeof payload === 'object' ? (payload.text || payload.code) : code
   };
+}
+
+function looksLikeCode(str) {
+  if (!str) return false;
+  return /(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\(|\bimport\s+java|\bvoid\s+main\b|class\s+\w+)/i.test(str);
+}
+
+function extractCodeBlock(text) {
+  if (!text) return '';
+  // Match code between markdown blocks
+  const fenced = text.match(/```(?:c|cpp|c\+\+|java|python|javascript)?\s*([\s\S]*?)```/i);
+  if (fenced && fenced[1]) return fenced[1].trim();
+  // Match starting from #include or class or import
+  const start = text.search(/(?:^|\n)\s*(#include|import\s+|class\s+|def\s+|void\s+|int\s+main)/i);
+  if (start !== -1) {
+    const sub = text.slice(start);
+    // Cut off explanations at common end markers
+    const end = sub.search(/(?:\n\s*(?:Key Highlights|Note|Explanation|Output|Refer to|Here is|If you run))/i);
+    if (end !== -1) return sub.slice(0, end).trim();
+    return sub.trim();
+  }
+  return text.trim();
 }
 
 // -------------------------------------------------------------

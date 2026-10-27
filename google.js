@@ -96,7 +96,8 @@
         const text = clean(container.innerText || '');
         if (/(#include|def |function|int |public |class |return |import )/i.test(text) && text.length > 30 && !text.includes('var(--') && !text.includes('window.sn=')) {
           const filtered = text.replace(/^(copy(\s*code)?|use code with caution\.?)/gim, '').trim();
-          if (filtered.length > 20) {
+          // Do not include the whole page if container is too high up
+          if (filtered.length > 20 && filtered.length < 15000 && !filtered.includes('People also search for')) {
             codeCandidates.push(filtered);
             break;
           }
