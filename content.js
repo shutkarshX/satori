@@ -206,11 +206,20 @@
   // -------------------------------------------------------------
   const isEditable = (el) => {
     if (!el) return false;
-    return el.matches?.('textarea, input:not([type="hidden"]), [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea') || el.isContentEditable;
+    return el.matches?.('textarea, input:not([type="hidden"]), [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea, .ace_text-input, [class*="editor" i] textarea') || el.isContentEditable;
   };
 
   document.addEventListener('focusin', (event) => {
     if (isEditable(event.target)) lastEditable = event.target;
+  }, true);
+
+  // Track clicks on editor containers (e.g. Ace, Monaco, CodeMirror) even if the underlying textarea isn't focused yet
+  document.addEventListener('click', (event) => {
+    const editor = event.target?.closest?.('.monaco-editor, .CodeMirror, .ace_editor, [class*="editor" i], [class*="code" i]');
+    if (editor) {
+      const textarea = editor.querySelector('textarea, [contenteditable="true"]');
+      if (textarea) lastEditable = textarea;
+    }
   }, true);
 
   const visibleText = (node) => {
@@ -271,20 +280,52 @@
   }
 
   function typeIntoEditor(text, append = false) {
-    const fallback = [...document.querySelectorAll('textarea, [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea')]
+    const fallback = [...document.querySelectorAll('textarea, [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea, .ace_text-input, [class*="editor" i] textarea')]
       .find((element) => isEditable(element) && element.offsetParent !== null) || null;
     const target = lastEditable || (isEditable(document.activeElement) ? document.activeElement : fallback);
-    if (!isEditable(target)) throw new Error('Click inside the assignment answer box first, then try again.');
+    if (!target) throw new Error('Click inside the assignment answer box first, then try again.');
+
+    // 1. Monaco Editor support
+    if (window.monaco?.editor) {
+      const models = window.monaco.editor.getModels?.();
+      if (models && models.length > 0) {
+        models[0].setValue(text);
+        return true;
+      }
+    }
+
+    // 2. Ace Editor support
+    const aceEl = target.closest?.('.ace_editor') || document.querySelector('.ace_editor');
+    if (aceEl && window.ace?.edit) {
+      try {
+        const editor = window.ace.edit(aceEl);
+        if (editor) {
+          editor.setValue(text, 1);
+          return true;
+        }
+      } catch (_e) {}
+    }
+
+    // 3. CodeMirror support
+    const cmEl = target.closest?.('.CodeMirror') || document.querySelector('.CodeMirror');
+    if (cmEl && cmEl.CodeMirror) {
+      cmEl.CodeMirror.setValue(text);
+      return true;
+    }
+
+    // 4. ContentEditable target
     if (target.isContentEditable || target.matches('[contenteditable="true"]')) {
       const existing = append ? target.innerText : '';
       target.focus();
       document.execCommand('selectAll', false);
       document.execCommand('insertText', false, existing + text);
-    } else {
-      const existing = append ? target.value : '';
-      setNativeValue(target, existing + text);
-      target.focus();
+      return true;
     }
+
+    // 5. Standard Textarea/Input target
+    const existing = append ? target.value : '';
+    setNativeValue(target, existing + text);
+    target.focus();
     return true;
   }
 
