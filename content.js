@@ -280,53 +280,85 @@
   }
 
   function typeIntoEditor(text, append = false) {
-    const fallback = [...document.querySelectorAll('textarea, [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea, .ace_text-input, [class*="editor" i] textarea')]
-      .find((element) => isEditable(element) && element.offsetParent !== null) || null;
-    const target = lastEditable || (isEditable(document.activeElement) ? document.activeElement : fallback);
-    if (!target) throw new Error('Click inside the assignment answer box first, then try again.');
+    console.log('[Satori Content] typeIntoEditor called, code length:', text?.length);
 
-    // 1. Monaco Editor support
-    if (window.monaco?.editor) {
-      const models = window.monaco.editor.getModels?.();
-      if (models && models.length > 0) {
-        models[0].setValue(text);
-        return true;
-      }
-    }
-
-    // 2. Ace Editor support
-    const aceEl = target.closest?.('.ace_editor') || document.querySelector('.ace_editor');
-    if (aceEl && window.ace?.edit) {
-      try {
-        const editor = window.ace.edit(aceEl);
-        if (editor) {
-          editor.setValue(text, 1);
+    // 1. Monaco Editor (Global window.monaco)
+    try {
+      if (window.monaco?.editor) {
+        const models = window.monaco.editor.getModels?.();
+        if (models && models.length > 0) {
+          models[0].setValue(text);
+          console.log('[Satori Content] Typed via window.monaco.editor');
           return true;
         }
-      } catch (_e) {}
+      }
+    } catch (_e) {}
+
+    // 2. Ace Editor (Global or DOM instance)
+    try {
+      const aceEl = document.querySelector('.ace_editor');
+      if (aceEl) {
+        if (aceEl.env?.editor) {
+          aceEl.env.editor.setValue(text, 1);
+          console.log('[Satori Content] Typed via aceEl.env.editor');
+          return true;
+        }
+        if (window.ace?.edit) {
+          const editor = window.ace.edit(aceEl);
+          if (editor) {
+            editor.setValue(text, 1);
+            console.log('[Satori Content] Typed via window.ace.edit');
+            return true;
+          }
+        }
+      }
+    } catch (_e) {}
+
+    // 3. CodeMirror (DOM instance)
+    try {
+      const cmEl = document.querySelector('.CodeMirror');
+      if (cmEl && cmEl.CodeMirror) {
+        cmEl.CodeMirror.setValue(text);
+        console.log('[Satori Content] Typed via CodeMirror.setValue');
+        return true;
+      }
+    } catch (_e) {}
+
+    // 4. Target element (focused, last clicked, or any candidate in DOM)
+    const candidates = [
+      lastEditable,
+      document.activeElement,
+      document.querySelector('.monaco-editor textarea'),
+      document.querySelector('.CodeMirror textarea'),
+      document.querySelector('.ace_text-input'),
+      document.querySelector('[class*="editor" i] textarea'),
+      document.querySelector('textarea:not([aria-hidden="true"])'),
+      document.querySelector('textarea'),
+      document.querySelector('[contenteditable="true"]')
+    ].filter(el => Boolean(el));
+
+    for (const target of candidates) {
+      try {
+        if (target.isContentEditable || target.matches?.('[contenteditable="true"]')) {
+          const existing = append ? target.innerText : '';
+          target.focus();
+          document.execCommand('selectAll', false);
+          document.execCommand('insertText', false, existing + text);
+          console.log('[Satori Content] Typed via contentEditable target');
+          return true;
+        }
+
+        if (target.tagName?.toLowerCase() === 'textarea' || target.tagName?.toLowerCase() === 'input') {
+          const existing = append ? target.value : '';
+          setNativeValue(target, existing + text);
+          target.focus();
+          console.log('[Satori Content] Typed via textarea/input target');
+          return true;
+        }
+      } catch (_err) {}
     }
 
-    // 3. CodeMirror support
-    const cmEl = target.closest?.('.CodeMirror') || document.querySelector('.CodeMirror');
-    if (cmEl && cmEl.CodeMirror) {
-      cmEl.CodeMirror.setValue(text);
-      return true;
-    }
-
-    // 4. ContentEditable target
-    if (target.isContentEditable || target.matches('[contenteditable="true"]')) {
-      const existing = append ? target.innerText : '';
-      target.focus();
-      document.execCommand('selectAll', false);
-      document.execCommand('insertText', false, existing + text);
-      return true;
-    }
-
-    // 5. Standard Textarea/Input target
-    const existing = append ? target.value : '';
-    setNativeValue(target, existing + text);
-    target.focus();
-    return true;
+    throw new Error('Click inside the assignment answer box first, then try again.');
   }
 
   // -------------------------------------------------------------
