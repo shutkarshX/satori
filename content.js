@@ -64,7 +64,7 @@
         transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
       }
       #satori-status-widget .satori-status-pill:active { cursor: grabbing; }
-      #satori-status-widget .satori-status-cat { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+      #satori-status-widget .satori-status-cat { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 6px rgba(0,0,0,0.25); border: 1.5px solid #e6b432; }
       #satori-status-widget .satori-status-icon { font-size: 11px; line-height: 1; margin-left: -2px; }
       #satori-status-widget .satori-status-time { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 11px; }
       #satori-status-widget .satori-status-panel {
