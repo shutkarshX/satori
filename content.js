@@ -80,6 +80,30 @@
       #satori-status-widget .satori-status-panel strong { display: block; font-size: 12px; font-weight: 600; }
       #satori-status-widget .satori-status-panel span { display: block; margin-top: 4px; color: #5f6368; font-size: 11px; word-break: break-word; }
       
+      
+      @keyframes satori-pulse {
+        0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(230,180,50,0)); }
+        50% { transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(230,180,50,0.85)); }
+        100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(230,180,50,0)); }
+      }
+      @keyframes satori-sword-slash {
+        0% { transform: rotate(0deg); }
+        25% { transform: rotate(-15deg); }
+        75% { transform: rotate(15deg); }
+        100% { transform: rotate(0deg); }
+      }
+      @keyframes satori-victory {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-4px) scale(1.1); filter: drop-shadow(0 0 6px rgba(99,183,122,0.9)); }
+      }
+
+      #satori-status-widget.satori-waiting .satori-status-cat {
+        animation: satori-pulse 1.4s infinite ease-in-out, satori-sword-slash 2s infinite ease-in-out;
+      }
+      #satori-status-widget.satori-ready .satori-status-cat {
+        animation: satori-victory 0.8s ease-out 2;
+      }
+
       #satori-status-widget.satori-waiting .satori-status-pill { border-color: #e5b84b; background: #fff8df; color: #7a5800; }
       #satori-status-widget.satori-ready .satori-status-pill   { border-color: #63b77a; background: #eaf7ee; color: #1e6633; }
       #satori-status-widget.satori-error .satori-status-pill   { border-color: #e28a83; background: #fdf0ef; color: #a51d14; }
