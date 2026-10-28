@@ -1,437 +1,112 @@
-/* -------------------------------------------------------------------------
-   Satori - Haute Zen Aesthetic
-   Palette: Champagne Gold, Warm Ivory & Deep Muted Taupe
-   3D Tactile Buttons & Translucent Bespoke Glass Skin
-   ------------------------------------------------------------------------- */
 * { box-sizing: border-box; }
+body { width: 360px; margin: 0; padding: 16px; font: 13px/1.4 system-ui, sans-serif; color: #202124; background: #fff; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 15px; }
+.header-brand { display: flex; align-items: center; gap: 8px; }
+.header-logo { width: 32px; height: 32px; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.2); object-fit: cover; border: 2px solid #e6b432; }
+.badge { color: #176b3a; background: #e7f5ec; border-radius: 999px; padding: 3px 7px; font-size: 10px; }
 
-body {
-  width: 370px;
-  margin: 0;
-  padding: 18px;
-  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
-  color: #faf6f0;
-  background: radial-gradient(circle at 50% 0%, #2c2523 0%, #1c1817 55%, #12100f 100%);
-  user-select: none;
-  overflow-x: hidden;
-}
-
-/* Header */
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(223, 184, 114, 0.15);
-}
-
-.header-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.header-brand strong {
-  font-size: 16px;
-  letter-spacing: 0.6px;
-  background: linear-gradient(135deg, #fffdfa 0%, #f7e7ce 45%, #dfb872 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-weight: 700;
-  text-shadow: 0 0 18px rgba(223, 184, 114, 0.3);
-}
-
-.header-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1.5px solid #dfb872;
-  box-shadow: 0 0 10px rgba(223, 184, 114, 0.45), 0 2px 6px rgba(0, 0, 0, 0.6);
-  animation: satori-zen-aura 3.2s infinite ease-in-out, satori-zen-float 4s infinite ease-in-out;
-  transition: transform 0.25s ease;
-}
-
-.header-logo:hover {
-  transform: scale(1.1) rotate(5deg);
-}
-
-.badge {
-  color: #e5c287;
-  background: rgba(223, 184, 114, 0.12);
-  border: 1px solid rgba(223, 184, 114, 0.3);
-  border-radius: 999px;
-  padding: 3px 9px;
-  font-size: 10px;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  font-weight: 600;
-  box-shadow: 0 0 8px rgba(223, 184, 114, 0.15);
-}
-
-/* Muted Taupe & Warm Ivory Glassmorphic Cards */
-.shortcuts-card, .autopilot-card {
-  background: rgba(44, 38, 36, 0.62);
-  border: 1px solid rgba(223, 184, 114, 0.2);
-  border-radius: 11px;
-  padding: 10px 14px;
+.shortcuts-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
   margin-bottom: 12px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 250, 240, 0.12);
-  backdrop-filter: blur(10px);
 }
-
 .shortcut-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11.5px;
-  color: #a89f91;
-  margin: 5px 0;
+  font-size: 11px;
+  color: #475569;
+  margin: 4px 0;
 }
-
 kbd {
-  background: linear-gradient(180deg, #332c2a 0%, #201b19 100%);
-  border: 1px solid rgba(223, 184, 114, 0.25);
-  border-bottom: 2.5px solid #0f0d0c;
-  border-radius: 5px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.05);
   font: 10px ui-monospace, monospace;
-  padding: 3px 7px;
-  color: #f7e7ce;
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  color: #1e293b;
 }
 
-/* Autopilot Section */
+label { display: block; margin: 10px 0 5px; font-weight: 600; }
+select, input, textarea, button { width: 100%; border: 1px solid #c8cdd3; border-radius: 7px; font: inherit; }
+select, input { height: 34px; padding: 6px 8px; }
+textarea { min-height: 92px; padding: 8px; resize: vertical; }
+#question { min-height: 100px; }
+#response { min-height: 140px; background: #f8fafc; }
+.ai-status { margin-top: 8px; padding: 7px 9px; border-radius: 6px; font-size: 12px; }
+.ai-status.idle { color: #5f6368; background: #f1f3f4; }
+.ai-status.waiting { color: #8a5300; background: #fff4d6; }
+.ai-status.ready { color: #176b3a; background: #e7f5ec; }
+.ai-status.error { color: #b3261e; background: #fce8e6; }
+.ai-status.cancelled { color: #5f6368; background: #f1f3f4; }
+#diagnostics { margin-top: 9px; border: 1px solid #e4e6e8; border-radius: 6px; padding: 6px 8px; }
+#diagnostics summary { cursor: pointer; font-weight: 600; }
+#diagnosticLog { max-height: 150px; overflow: auto; white-space: pre-wrap; font: 11px/1.4 ui-monospace, monospace; color: #4a5560; }
+#draft { min-height: 95px; }
+button { margin-top: 9px; padding: 8px 10px; cursor: pointer; background: #f6f7f8; }
+button:hover { background: #eceff1; }
+button.primary { color: #fff; border-color: #1a73e8; background: #1a73e8; }
+button.primary:hover { background: #155fc0; }
+hr { border: 0; border-top: 1px solid #e4e6e8; margin: 16px 0; }
+.check { display: flex; gap: 6px; align-items: center; font-weight: 400; }
+.check input { width: auto; height: auto; }
+#status { min-height: 18px; margin: 9px 0 0; color: #4a5560; }
+small { display: block; margin-top: 10px; color: #687078; }
+
+.autopilot-card {
+  background: #f0f7ff;
+  border: 1px solid #c7dfff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
 .autopilot-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .autopilot-title {
   font-weight: 600;
-  color: #e5c287;
+  color: #0b57d0;
   font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
 }
-
 .autopilot-badge {
   font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
+  font-weight: 600;
+  padding: 2px 7px;
   border-radius: 999px;
-  letter-spacing: 0.5px;
 }
-
 .autopilot-badge.off {
-  background: rgba(168, 159, 145, 0.15);
-  color: #a89f91;
-  border: 1px solid rgba(168, 159, 145, 0.25);
+  background: #e2e8f0;
+  color: #475569;
 }
-
 .autopilot-badge.on {
-  background: rgba(223, 184, 114, 0.25);
-  color: #f7e7ce;
-  border: 1px solid rgba(223, 184, 114, 0.5);
-  box-shadow: 0 0 10px rgba(223, 184, 114, 0.35);
+  background: #dcfce7;
+  color: #166534;
 }
-
 .autopilot-desc {
-  margin: 6px 0 10px;
+  margin: 6px 0 8px;
   font-size: 11px;
-  color: #a89f91;
-  line-height: 1.4;
+  color: #475569;
+  line-height: 1.35;
 }
-
-/* Form Elements */
-label {
-  display: block;
-  margin: 12px 0 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #dfd7ce;
-  letter-spacing: 0.2px;
-}
-
-select, input, textarea {
-  width: 100%;
-  background: #171413;
-  border: 1px solid rgba(223, 184, 114, 0.22);
-  border-radius: 8px;
-  color: #faf6f0;
-  font: inherit;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.55);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-select:focus, input:focus, textarea:focus {
-  outline: none;
-  border-color: #dfb872;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.55), 0 0 10px rgba(223, 184, 114, 0.35);
-}
-
-select {
-  height: 36px;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-textarea {
-  min-height: 90px;
-  padding: 10px;
-  resize: vertical;
-  line-height: 1.4;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 11.5px;
-}
-
-#response {
-  min-height: 140px;
-  background: #12100f;
-  color: #f7e7ce;
-  border-color: rgba(223, 184, 114, 0.25);
-}
-
-/* 3D Tactile Buttons & Bespoke Skins */
-button {
-  width: 100%;
-  margin-top: 10px;
-  padding: 9px 14px;
-  cursor: pointer;
-  border: 1px solid rgba(223, 184, 114, 0.22);
-  border-bottom: 3.5px solid #141110;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #faf6f0;
-  background: linear-gradient(180deg, #38302d 0%, #26211f 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 250, 240, 0.12);
-  transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-}
-
-button:hover {
-  background: linear-gradient(180deg, #443b37 0%, #2f2927 100%);
-  border-color: rgba(223, 184, 114, 0.4);
-  transform: translateY(-1.5px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 250, 240, 0.2);
-}
-
-button:active {
-  transform: translateY(2px);
-  border-bottom-width: 1px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-/* Primary Solve Button (Rich Champagne Gold 3D) */
-button.primary {
-  color: #1a1510;
-  font-weight: 700;
-  text-shadow: 0 1px 0 rgba(255, 255, 240, 0.4);
-  background: linear-gradient(180deg, #e8c688 0%, #c99b50 55%, #a87932 100%);
-  border: 1px solid #dfb872;
-  border-bottom: 4px solid #6b4d1b;
-  box-shadow: 0 4px 16px rgba(184, 137, 60, 0.35), inset 0 1px 0 rgba(255, 255, 240, 0.6);
-}
-
-button.primary:hover {
-  background: linear-gradient(180deg, #f2d49e 0%, #d6a960 50%, #b8863d 100%);
-  box-shadow: 0 6px 22px rgba(223, 184, 114, 0.5), inset 0 1px 0 rgba(255, 255, 240, 0.7);
-  transform: translateY(-1.5px);
-}
-
-button.primary:active {
-  transform: translateY(2.5px);
-  border-bottom-width: 1px;
-  box-shadow: 0 2px 6px rgba(107, 77, 27, 0.4);
-}
-
-/* Autopilot Button (Burnished Antique Bronze 3D) */
 .autopilot-btn {
-  background: linear-gradient(180deg, #8c6d48 0%, #6d5232 55%, #543d22 100%);
-  border: 1px solid #b89366;
-  border-bottom: 4px solid #332412;
-  color: #fffdfa;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 250, 240, 0.25);
-}
-
-.autopilot-btn:hover {
-  background: linear-gradient(180deg, #9e7d54 0%, #7d5f3b 55%, #614629 100%);
-  box-shadow: 0 6px 20px rgba(140, 109, 72, 0.45), inset 0 1px 0 rgba(255, 250, 240, 0.35);
-  transform: translateY(-1.5px);
-}
-
-.autopilot-btn:active {
-  transform: translateY(2.5px);
-  border-bottom-width: 1px;
-}
-
-.autopilot-btn.running {
-  background: linear-gradient(180deg, #a6443c 0%, #872e27 60%, #681f19 100%);
-  border-color: #c96b63;
-  border-bottom: 4px solid #45100c;
-  box-shadow: 0 4px 14px rgba(166, 68, 60, 0.45), inset 0 1px 0 rgba(255, 250, 240, 0.25);
-}
-
-/* Status Pill Indicators */
-.ai-status {
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 11.5px;
+  margin-top: 2px;
+  background: #0b57d0;
+  color: #ffffff;
+  border: 1px solid #0842a0;
   font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
-
-.ai-status.idle {
-  color: #a89f91;
-  background: rgba(168, 159, 145, 0.1);
-  border: 1px solid rgba(168, 159, 145, 0.2);
+.autopilot-btn:hover {
+  background: #0842a0;
 }
-
-.ai-status.waiting {
-  color: #f7e7ce;
-  background: rgba(223, 184, 114, 0.14);
-  border: 1px solid rgba(223, 184, 114, 0.45);
-  box-shadow: 0 0 14px rgba(223, 184, 114, 0.25);
-  animation: satori-status-glow 2s infinite ease-in-out;
+.autopilot-btn.running {
+  background: #dc2626;
+  border-color: #b91c1c;
 }
-
-.ai-status.ready {
-  color: #d8ebd3;
-  background: rgba(85, 107, 79, 0.22);
-  border: 1px solid rgba(138, 168, 130, 0.45);
-  box-shadow: 0 0 12px rgba(138, 168, 130, 0.25);
-}
-
-.ai-status.error {
-  color: #f6c0bc;
-  background: rgba(166, 68, 60, 0.2);
-  border: 1px solid rgba(166, 68, 60, 0.4);
-}
-
-.ai-status.cancelled {
-  color: #dfd7ce;
-  background: rgba(84, 73, 69, 0.2);
-  border: 1px solid rgba(84, 73, 69, 0.35);
-}
-
-/* Diagnostics Accordion */
-#diagnostics {
-  margin-top: 12px;
-  border: 1px solid rgba(223, 184, 114, 0.15);
-  border-radius: 8px;
-  padding: 8px 12px;
-  background: rgba(20, 17, 16, 0.55);
-}
-
-#diagnostics summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: #a89f91;
-  font-size: 11px;
-}
-
-#diagnostics summary:hover {
-  color: #faf6f0;
-}
-
-#diagnosticLog {
-  max-height: 140px;
-  overflow: auto;
-  white-space: pre-wrap;
-  font: 10.5px/1.4 ui-monospace, monospace;
-  color: #8a8277;
-  margin-top: 6px;
-}
-
-hr {
-  border: 0;
-  border-top: 1px solid rgba(223, 184, 114, 0.12);
-  margin: 18px 0;
-}
-
-.check {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 12px;
-  color: #dfd7ce;
-  margin-top: 6px;
-  cursor: pointer;
-}
-
-.check input {
-  width: 15px;
-  height: 15px;
-  accent-color: #dfb872;
-  cursor: pointer;
-}
-
-#status {
-  min-height: 18px;
-  margin: 10px 0 0;
-  font-size: 11.5px;
-  color: #a89f91;
-}
-
-small {
-  display: block;
-  margin-top: 12px;
-  color: #8a8277;
-  font-size: 10.5px;
-  text-align: center;
-}
-
-/* Animations */
-@keyframes satori-zen-aura {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(223, 184, 114, 0.6), 0 2px 8px rgba(0, 0, 0, 0.6);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(223, 184, 114, 0), 0 4px 16px rgba(223, 184, 114, 0.45);
-  }
-}
-
-@keyframes satori-zen-float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-3.5px) rotate(1.5deg);
-  }
-}
-
-@keyframes satori-status-glow {
-  0%, 100% {
-    border-color: rgba(223, 184, 114, 0.35);
-    box-shadow: 0 0 10px rgba(223, 184, 114, 0.2);
-  }
-  50% {
-    border-color: rgba(223, 184, 114, 0.7);
-    box-shadow: 0 0 18px rgba(223, 184, 114, 0.4);
-  }
-}
-
-/* Custom Sleek Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: rgba(20, 17, 16, 0.6);
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(223, 184, 114, 0.3);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(223, 184, 114, 0.55);
+.autopilot-btn.running:hover {
+  background: #b91c1c;
 }
