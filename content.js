@@ -231,32 +231,6 @@
       .trim();
   };
 
-  
-  function extractCodingSnippets() {
-    let headerCode = '';
-    let footerCode = '';
-
-    const allCards = [...document.querySelectorAll('div, section, [class*="card" i], [class*="box" i]')];
-    for (const card of allCards) {
-      const heading = (card.querySelector('h1, h2, h3, h4, h5, h6, strong, b, [class*="title" i]')?.innerText || '').trim();
-      if (/Header Snippet/i.test(heading)) {
-        headerCode = (card.querySelector('.ace_editor, .CodeMirror, pre, [class*="editor" i]')?.innerText || '').trim();
-      } else if (/Footer Snippet/i.test(heading)) {
-        footerCode = (card.querySelector('.ace_editor, .CodeMirror, pre, [class*="editor" i]')?.innerText || '').trim();
-      }
-    }
-
-    if (!headerCode) {
-      const headerLabel = [...document.querySelectorAll('span, div, p, label')].find(el => /^Header Snippet$/i.test(el.innerText?.trim()));
-      if (headerLabel) {
-        const parent = headerLabel.closest('div, section') || headerLabel.parentElement;
-        headerCode = (parent?.parentElement?.querySelector('.ace_editor, .CodeMirror, pre, [class*="editor" i]')?.innerText || '').trim();
-      }
-    }
-
-    return { headerCode, footerCode };
-  }
-
   function extractQuestion() {
     const selection = window.getSelection()?.toString().trim();
     if (selection && selection.length > 20) return selection;
@@ -563,7 +537,6 @@
       let cmd = null;
       if (code === 'KeyM' || key === 'm' || e.keyCode === 77) cmd = 'satori-mcq';
       else if (code === 'KeyC' || key === 'c' || e.keyCode === 67 || code === 'KeyS' || key === 's' || e.keyCode === 83) cmd = 'satori-code';
-      else if (code === 'KeyF' || key === 'f' || e.keyCode === 70) cmd = 'satori-fill';
       else if (code === 'KeyX' || key === 'x' || e.keyCode === 88) cmd = 'satori-cancel';
 
       if (cmd) {
@@ -583,7 +556,6 @@
           ok: true,
           text: extractQuestion(),
           fullText: extractFullPage(),
-          snippets: extractCodingSnippets(),
           options: structuredOptions.map(o => ({ letter: o.letter, text: o.text })),
           title: document.title,
           url: location.href
