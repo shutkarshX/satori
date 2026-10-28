@@ -233,16 +233,12 @@
 
   function cleanProblemText(text) {
     if (!text) return '';
-    // Strip portal header junk (student info, test metadata, timer) preceding the actual problem
-    const match = text.match(/(?:problem\s*statement|question\s*no\s*[:\d]|single\s*file\s*programming)/i);
-    if (match && match.index > 0 && match.index < 1200) {
+    // Start strictly from Question No / Problem Statement, stripping preceding portal/student header
+    const match = text.match(/(?:question\s*no\s*[:\d]|problem\s*statement|single\s*file\s*programming)/i);
+    if (match && match.index > 0 && match.index < 2500) {
       text = text.slice(match.index);
     }
-    // Strip bottom portal controls (Fill your code here, Compile & Run, Submit Code)
-    const endMatch = text.match(/(?:\n|^)(?:Provide Custom Input|Compile & Run|Submit Code|Fill your code here)/i);
-    if (endMatch && endMatch.index > 100) {
-      text = text.slice(0, endMatch.index);
-    }
+    // Keep all following details intact (language C (17), fill your code here, testcases, instructions)
     return text.trim();
   }
 
