@@ -347,7 +347,7 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
     const interval = setInterval(async () => {
       attempts++;
       const current = await chrome.storage.local.get('satoriActiveRequest');
-      if (current.satoriActiveRequest?.requestId !== requestId || attempts > 60) {
+      if (current.satoriActiveRequest?.requestId !== requestId || attempts > 180) {
         clearInterval(interval);
         return;
       }
@@ -557,7 +557,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
     }
   });
 
-  await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 2 });
+  await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 5 });
   setStatus(`${PROVIDER_NAMES[provider] || provider} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting');
   addDiagnostic('request', `Started ${provider} ${mode} (request ${requestId})`);
 
