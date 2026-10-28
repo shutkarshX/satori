@@ -568,7 +568,12 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
   const prompt = buildDirectPrompt(provider, mode, pageContent);
 
   if (provider === 'google') {
-    startGoogleSearch(pageContent, requestId, mode, assignmentTab, questionText);
+    // For Google AI Mode, keep the actual question text at the start so Google triggers AI Overview,
+    // and append strict grading & blacklist/whitelist constraints at the end
+    const googleQuery = mode === 'coding'
+      ? `${pageContent}\n\nStrictly follow all blacklisted and whitelisted constraints, pass all sample test cases, and return complete code.`
+      : pageContent;
+    startGoogleSearch(googleQuery, requestId, mode, assignmentTab, questionText);
   } else if (provider === 'gemini') {
     startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
   } else {
