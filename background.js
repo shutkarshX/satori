@@ -76,7 +76,44 @@ ${pageContent}`;
 }
 
 // -------------------------------------------------------------
-// Normalized Provider Result Builder & Validator
+// Strip Redundant Header and Footer Code
+// -------------------------------------------------------------
+function stripHeaderAndFooter(code, snippets) {
+  if (!code) return '';
+  let cleanCode = code;
+
+  // 1. Remove #include directives if they are already in Header Snippet
+  if (snippets?.headerCode && snippets.headerCode.includes('#include')) {
+    cleanCode = cleanCode.replace(/^\s*#include\s*<[^>]+>\s*$/gmi, '');
+  }
+
+  // 2. Remove re-declarations of structs found in Header Snippet (e.g. struct BTreeNode { ... };)
+  if (snippets?.headerCode) {
+    const structMatches = [...snippets.headerCode.matchAll(/struct\s+([A-Za-z0-9_]+)\s*\{/g)];
+    for (const match of structMatches) {
+      const structName = match[1];
+      const structRegex = new RegExp(`struct\\s+${structName}\\s*\\{[\\s\\S]*?\\};`, 'g');
+      cleanCode = cleanCode.replace(structRegex, '');
+    }
+    // Remove #define MAX / MIN if already in Header Snippet
+    const defineMatches = [...snippets.headerCode.matchAll(/#define\s+([A-Za-z0-9_]+)\s+[^\n]+/g)];
+    for (const match of defineMatches) {
+      const defName = match[1];
+      cleanCode = cleanCode.replace(new RegExp(`^\\s*#define\\s+${defName}\\s+[^\\n]+`, 'gmi'), '');
+    }
+  }
+
+  // 3. Remove main() function if platform provides Footer Snippet or Header Snippet already has main
+  const hasExternalMain = (snippets?.footerCode && /int\s+main\s*\(/i.test(snippets.footerCode)) ||
+                          (snippets?.headerCode && /int\s+main\s*\(/i.test(snippets.headerCode));
+  if (hasExternalMain || snippets?.headerCode) {
+    // If the question explicitly says "write the deletion code" / "insertion code is already given", strip main()
+    const mainRegex = /int\s+main\s*\([^)]*\)\s*\{[\s\S]*?\n\}/g;
+    cleanCode = cleanCode.replace(mainRegex, '');
+  }
+
+  return cleanCode.replace(/^\s*\n+/g, '').trim();
+}
 // -------------------------------------------------------------
 function formatMcqAnswer(text, questionText = '') {
   if (!text) return { letter: null, text: '', raw: '' };
@@ -287,6 +324,11 @@ async function handleCompletedResult(provider, requestId, rawPayload) {
     setStatus(reason, 'error');
     addDiagnostic('validation-failed', reason);
     return;
+  }
+
+  // If in snippet_fill mode, strip out redundant header structs, #includes, and main()
+  if (active.mode === 'snippet_fill' && active.snippets) {
+    validated.code = stripHeaderAndFooter(validated.code, active.snippets);
   }
 
   // Store in cache for popup display
@@ -572,6 +614,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
       mode,
       assignmentTabId: assignmentTab.id,
       questionText,
+      snippets,
       startedAt: Date.now()
     }
   });
