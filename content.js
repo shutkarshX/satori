@@ -29,7 +29,7 @@
     root.id = 'satori-status-widget';
     root.innerHTML = `
       <button type="button" class="satori-status-pill" aria-label="Satori status">
-        <span class="satori-status-icon">◉</span>
+        <img class="satori-status-cat" src="${chrome.runtime.getURL('icons/icon32.png')}" alt="cat" /><span class="satori-status-icon">◉</span>
         <span class="satori-status-time">—</span>
       </button>
       <div class="satori-status-panel" hidden>
@@ -64,7 +64,8 @@
         transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
       }
       #satori-status-widget .satori-status-pill:active { cursor: grabbing; }
-      #satori-status-widget .satori-status-icon { font-size: 13px; line-height: 1; }
+      #satori-status-widget .satori-status-cat { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+      #satori-status-widget .satori-status-icon { font-size: 11px; line-height: 1; margin-left: -2px; }
       #satori-status-widget .satori-status-time { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 11px; }
       #satori-status-widget .satori-status-panel {
         margin-top: 7px;
