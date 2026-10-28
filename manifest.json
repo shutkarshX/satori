@@ -26,13 +26,7 @@
   },
   "action": {
     "default_title": "Satori",
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_popup": "popup.html"
   },
   "commands": {
     "satori-mcq": {
@@ -109,22 +103,6 @@
       ],
       "run_at": "document_idle",
       "all_frames": true
-    }
-  ],
-  "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "icons/*"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
     }
   ]
 }
