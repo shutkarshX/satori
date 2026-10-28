@@ -77,15 +77,22 @@
         box-shadow: 0 2px 8px rgba(0,0,0,0.4);
       }
       #satori-status-widget .satori-status-cat {
-        display: inline-block;
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        object-fit: cover;
-        box-shadow: 0 0 10px rgba(223, 184, 114, 0.55), 0 2px 8px rgba(0,0,0,0.6);
-        border: 1.5px solid #dfb872;
-        transition: all 0.3s ease;
-        animation: satori-zen-aura 2.6s infinite ease-in-out, satori-zen-float 3.5s infinite ease-in-out;
+        display: inline-block !important;
+        width: 32px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+        min-height: 32px !important;
+        max-width: 32px !important;
+        max-height: 32px !important;
+        border-radius: 50% !important;
+        object-fit: cover !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        vertical-align: middle !important;
+        box-shadow: 0 0 10px rgba(223, 184, 114, 0.55), 0 2px 8px rgba(0,0,0,0.6) !important;
+        border: 1.5px solid #dfb872 !important;
+        transition: all 0.3s ease !important;
+        animation: satori-zen-aura 2.6s infinite ease-in-out, satori-zen-float 3.5s infinite ease-in-out !important;
       }
       #satori-status-widget .satori-status-icon {
         font-size: 11px;
