@@ -50,7 +50,11 @@ ${pageContent}`;
 
   return `Solve the practice coding problem contained in this page text.
 Identify the actual problem, required programming language, input/output format, constraints, and examples yourself. Ignore navigation, buttons, timers, and unrelated page elements.
-Return exactly one complete, submission-ready, compilable source file in ONE code block and nothing else outside the code block. Include all required imports/headers, helpers, and the complete entry point.
+
+CRITICAL INSTRUCTIONS FOR AUTOMATED GRADING & PLATFORM CONSTRAINTS:
+1. STRICTLY OBEY BLACKLISTED & WHITELISTED RULES: Check the problem text for any "Blacklisted" or "Whitelisted" keywords, functions, data structures, or header files. Never use any blacklisted items (e.g. built-in sorting, specific libraries). Strictly use any required whitelisted items.
+2. EXACT FORMATTING: Output strings, spaces, and line breaks must match the sample outputs 100%. No extra conversational text or debugging prints.
+3. COMPLETE SINGLE FILE: Return exactly one complete, submission-ready, compilable source file in ONE code block and nothing else outside the code block. Include all required imports/headers, helpers, and the complete entry point.
 
 PAGE CONTENT:
 ${pageContent}`;
@@ -564,7 +568,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
   const prompt = buildDirectPrompt(provider, mode, pageContent);
 
   if (provider === 'google') {
-    startGoogleSearch(pageContent, requestId, mode, assignmentTab, questionText);
+    startGoogleSearch(prompt, requestId, mode, assignmentTab, questionText);
   } else if (provider === 'gemini') {
     startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
   } else {
