@@ -1,7 +1,7 @@
 /* -------------------------------------------------------------------------
-   Satori - Zen Meditation White & Blue Theme
-   Palette: Celestial Blue, Royal Sapphire, Frosted Mist & Pure White
-   3D Tactile Buttons & Translucent Glassmorphic Skin
+   Satori - Haute Zen Aesthetic
+   Palette: Champagne Gold, Warm Ivory & Deep Muted Taupe
+   3D Tactile Buttons & Translucent Bespoke Glass Skin
    ------------------------------------------------------------------------- */
 * { box-sizing: border-box; }
 
@@ -10,8 +10,8 @@ body {
   margin: 0;
   padding: 18px;
   font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
-  color: #f1f5f9;
-  background: radial-gradient(circle at 50% 0%, #172554 0%, #0f1c30 55%, #080d18 100%);
+  color: #faf6f0;
+  background: radial-gradient(circle at 50% 0%, #2c2523 0%, #1c1817 55%, #12100f 100%);
   user-select: none;
   overflow-x: hidden;
 }
@@ -23,7 +23,7 @@ header {
   align-items: center;
   margin-bottom: 14px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(186, 230, 253, 0.12);
+  border-bottom: 1px solid rgba(223, 184, 114, 0.15);
 }
 
 .header-brand {
@@ -35,11 +35,11 @@ header {
 .header-brand strong {
   font-size: 16px;
   letter-spacing: 0.6px;
-  background: linear-gradient(135deg, #ffffff 0%, #bae6fd 60%, #38bdf8 100%);
+  background: linear-gradient(135deg, #fffdfa 0%, #f7e7ce 45%, #dfb872 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   font-weight: 700;
-  text-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
+  text-shadow: 0 0 18px rgba(223, 184, 114, 0.3);
 }
 
 .header-logo {
@@ -47,9 +47,9 @@ header {
   height: 34px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1.5px solid #38bdf8;
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.5), 0 2px 6px rgba(0, 0, 0, 0.5);
-  animation: satori-zen-aura 3s infinite ease-in-out, satori-zen-float 4s infinite ease-in-out;
+  border: 1.5px solid #dfb872;
+  box-shadow: 0 0 10px rgba(223, 184, 114, 0.45), 0 2px 6px rgba(0, 0, 0, 0.6);
+  animation: satori-zen-aura 3.2s infinite ease-in-out, satori-zen-float 4s infinite ease-in-out;
   transition: transform 0.25s ease;
 }
 
@@ -58,26 +58,26 @@ header {
 }
 
 .badge {
-  color: #7dd3fc;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.32);
+  color: #e5c287;
+  background: rgba(223, 184, 114, 0.12);
+  border: 1px solid rgba(223, 184, 114, 0.3);
   border-radius: 999px;
   padding: 3px 9px;
   font-size: 10px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
   font-weight: 600;
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+  box-shadow: 0 0 8px rgba(223, 184, 114, 0.15);
 }
 
-/* Zen Glassmorphic Cards */
+/* Muted Taupe & Warm Ivory Glassmorphic Cards */
 .shortcuts-card, .autopilot-card {
-  background: rgba(23, 37, 64, 0.55);
-  border: 1px solid rgba(186, 230, 253, 0.18);
+  background: rgba(44, 38, 36, 0.62);
+  border: 1px solid rgba(223, 184, 114, 0.2);
   border-radius: 11px;
   padding: 10px 14px;
   margin-bottom: 12px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 250, 240, 0.12);
   backdrop-filter: blur(10px);
 }
 
@@ -86,19 +86,19 @@ header {
   justify-content: space-between;
   align-items: center;
   font-size: 11.5px;
-  color: #94a3b8;
+  color: #a89f91;
   margin: 5px 0;
 }
 
 kbd {
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  border: 1px solid rgba(186, 230, 253, 0.25);
-  border-bottom: 2.5px solid #020617;
+  background: linear-gradient(180deg, #332c2a 0%, #201b19 100%);
+  border: 1px solid rgba(223, 184, 114, 0.25);
+  border-bottom: 2.5px solid #0f0d0c;
   border-radius: 5px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
   font: 10px ui-monospace, monospace;
   padding: 3px 7px;
-  color: #e0f2fe;
+  color: #f7e7ce;
   font-weight: 600;
   letter-spacing: 0.3px;
 }
@@ -112,7 +112,7 @@ kbd {
 
 .autopilot-title {
   font-weight: 600;
-  color: #7dd3fc;
+  color: #e5c287;
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -128,22 +128,22 @@ kbd {
 }
 
 .autopilot-badge.off {
-  background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(168, 159, 145, 0.15);
+  color: #a89f91;
+  border: 1px solid rgba(168, 159, 145, 0.25);
 }
 
 .autopilot-badge.on {
-  background: rgba(56, 189, 248, 0.25);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+  background: rgba(223, 184, 114, 0.25);
+  color: #f7e7ce;
+  border: 1px solid rgba(223, 184, 114, 0.5);
+  box-shadow: 0 0 10px rgba(223, 184, 114, 0.35);
 }
 
 .autopilot-desc {
   margin: 6px 0 10px;
   font-size: 11px;
-  color: #94a3b8;
+  color: #a89f91;
   line-height: 1.4;
 }
 
@@ -153,25 +153,25 @@ label {
   margin: 12px 0 6px;
   font-size: 11.5px;
   font-weight: 600;
-  color: #bae6fd;
+  color: #dfd7ce;
   letter-spacing: 0.2px;
 }
 
 select, input, textarea {
   width: 100%;
-  background: #090e1a;
-  border: 1px solid rgba(147, 197, 253, 0.22);
+  background: #171413;
+  border: 1px solid rgba(223, 184, 114, 0.22);
   border-radius: 8px;
-  color: #f8fafc;
+  color: #faf6f0;
   font: inherit;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.55);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 select:focus, input:focus, textarea:focus {
   outline: none;
-  border-color: #38bdf8;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5), 0 0 10px rgba(56, 189, 248, 0.35);
+  border-color: #dfb872;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.55), 0 0 10px rgba(223, 184, 114, 0.35);
 }
 
 select {
@@ -191,34 +191,35 @@ textarea {
 
 #response {
   min-height: 140px;
-  background: #060911;
-  color: #e0f2fe;
-  border-color: rgba(56, 189, 248, 0.25);
+  background: #12100f;
+  color: #f7e7ce;
+  border-color: rgba(223, 184, 114, 0.25);
 }
 
-/* 3D Tactile Buttons & Dynamic Skins */
+/* 3D Tactile Buttons & Bespoke Skins */
 button {
   width: 100%;
   margin-top: 10px;
   padding: 9px 14px;
   cursor: pointer;
-  border: 1px solid rgba(186, 230, 253, 0.2);
-  border-bottom: 3.5px solid #091322;
+  border: 1px solid rgba(223, 184, 114, 0.22);
+  border-bottom: 3.5px solid #141110;
   border-radius: 8px;
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  color: #f8fafc;
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  color: #faf6f0;
+  background: linear-gradient(180deg, #38302d 0%, #26211f 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 250, 240, 0.12);
   transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 button:hover {
-  background: linear-gradient(180deg, #2b394f 0%, #162035 100%);
+  background: linear-gradient(180deg, #443b37 0%, #2f2927 100%);
+  border-color: rgba(223, 184, 114, 0.4);
   transform: translateY(-1.5px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 250, 240, 0.2);
 }
 
 button:active {
@@ -227,41 +228,41 @@ button:active {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-/* Primary Solve Button (Celestial & Royal Sapphire 3D) */
+/* Primary Solve Button (Rich Champagne Gold 3D) */
 button.primary {
-  color: #ffffff;
+  color: #1a1510;
   font-weight: 700;
-  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.6);
-  background: linear-gradient(180deg, #38bdf8 0%, #2563eb 55%, #1d4ed8 100%);
-  border: 1px solid #60a5fa;
-  border-bottom: 4px solid #172554;
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  text-shadow: 0 1px 0 rgba(255, 255, 240, 0.4);
+  background: linear-gradient(180deg, #e8c688 0%, #c99b50 55%, #a87932 100%);
+  border: 1px solid #dfb872;
+  border-bottom: 4px solid #6b4d1b;
+  box-shadow: 0 4px 16px rgba(184, 137, 60, 0.35), inset 0 1px 0 rgba(255, 255, 240, 0.6);
 }
 
 button.primary:hover {
-  background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 50%, #1e40af 100%);
-  box-shadow: 0 6px 22px rgba(56, 189, 248, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  background: linear-gradient(180deg, #f2d49e 0%, #d6a960 50%, #b8863d 100%);
+  box-shadow: 0 6px 22px rgba(223, 184, 114, 0.5), inset 0 1px 0 rgba(255, 255, 240, 0.7);
   transform: translateY(-1.5px);
 }
 
 button.primary:active {
   transform: translateY(2.5px);
   border-bottom-width: 1px;
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 2px 6px rgba(107, 77, 27, 0.4);
 }
 
-/* Autopilot Button (Cyan & Aqua Energy 3D) */
+/* Autopilot Button (Burnished Antique Bronze 3D) */
 .autopilot-btn {
-  background: linear-gradient(180deg, #06b6d4 0%, #0284c7 55%, #0369a1 100%);
-  border: 1px solid #38bdf8;
-  border-bottom: 4px solid #083344;
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  background: linear-gradient(180deg, #8c6d48 0%, #6d5232 55%, #543d22 100%);
+  border: 1px solid #b89366;
+  border-bottom: 4px solid #332412;
+  color: #fffdfa;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 250, 240, 0.25);
 }
 
 .autopilot-btn:hover {
-  background: linear-gradient(180deg, #22d3ee 0%, #0ea5e9 55%, #0284c7 100%);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  background: linear-gradient(180deg, #9e7d54 0%, #7d5f3b 55%, #614629 100%);
+  box-shadow: 0 6px 20px rgba(140, 109, 72, 0.45), inset 0 1px 0 rgba(255, 250, 240, 0.35);
   transform: translateY(-1.5px);
 }
 
@@ -271,10 +272,10 @@ button.primary:active {
 }
 
 .autopilot-btn.running {
-  background: linear-gradient(180deg, #f43f5e 0%, #e11d48 60%, #be123c 100%);
-  border-color: #fb7185;
-  border-bottom: 4px solid #881337;
-  box-shadow: 0 4px 14px rgba(244, 63, 94, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  background: linear-gradient(180deg, #a6443c 0%, #872e27 60%, #681f19 100%);
+  border-color: #c96b63;
+  border-bottom: 4px solid #45100c;
+  box-shadow: 0 4px 14px rgba(166, 68, 60, 0.45), inset 0 1px 0 rgba(255, 250, 240, 0.25);
 }
 
 /* Status Pill Indicators */
@@ -290,56 +291,56 @@ button.primary:active {
 }
 
 .ai-status.idle {
-  color: #94a3b8;
-  background: rgba(148, 163, 184, 0.1);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #a89f91;
+  background: rgba(168, 159, 145, 0.1);
+  border: 1px solid rgba(168, 159, 145, 0.2);
 }
 
 .ai-status.waiting {
-  color: #e0f2fe;
-  background: rgba(56, 189, 248, 0.14);
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  box-shadow: 0 0 14px rgba(56, 189, 248, 0.25);
+  color: #f7e7ce;
+  background: rgba(223, 184, 114, 0.14);
+  border: 1px solid rgba(223, 184, 114, 0.45);
+  box-shadow: 0 0 14px rgba(223, 184, 114, 0.25);
   animation: satori-status-glow 2s infinite ease-in-out;
 }
 
 .ai-status.ready {
-  color: #a7f3d0;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+  color: #d8ebd3;
+  background: rgba(85, 107, 79, 0.22);
+  border: 1px solid rgba(138, 168, 130, 0.45);
+  box-shadow: 0 0 12px rgba(138, 168, 130, 0.25);
 }
 
 .ai-status.error {
-  color: #fca5a5;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f6c0bc;
+  background: rgba(166, 68, 60, 0.2);
+  border: 1px solid rgba(166, 68, 60, 0.4);
 }
 
 .ai-status.cancelled {
-  color: #cbd5e1;
-  background: rgba(100, 116, 139, 0.15);
-  border: 1px solid rgba(100, 116, 139, 0.3);
+  color: #dfd7ce;
+  background: rgba(84, 73, 69, 0.2);
+  border: 1px solid rgba(84, 73, 69, 0.35);
 }
 
 /* Diagnostics Accordion */
 #diagnostics {
   margin-top: 12px;
-  border: 1px solid rgba(186, 230, 253, 0.12);
+  border: 1px solid rgba(223, 184, 114, 0.15);
   border-radius: 8px;
   padding: 8px 12px;
-  background: rgba(9, 14, 26, 0.5);
+  background: rgba(20, 17, 16, 0.55);
 }
 
 #diagnostics summary {
   cursor: pointer;
   font-weight: 600;
-  color: #94a3b8;
+  color: #a89f91;
   font-size: 11px;
 }
 
 #diagnostics summary:hover {
-  color: #f8fafc;
+  color: #faf6f0;
 }
 
 #diagnosticLog {
@@ -347,13 +348,13 @@ button.primary:active {
   overflow: auto;
   white-space: pre-wrap;
   font: 10.5px/1.4 ui-monospace, monospace;
-  color: #64748b;
+  color: #8a8277;
   margin-top: 6px;
 }
 
 hr {
   border: 0;
-  border-top: 1px solid rgba(186, 230, 253, 0.1);
+  border-top: 1px solid rgba(223, 184, 114, 0.12);
   margin: 18px 0;
 }
 
@@ -362,7 +363,7 @@ hr {
   gap: 8px;
   align-items: center;
   font-size: 12px;
-  color: #cbd5e1;
+  color: #dfd7ce;
   margin-top: 6px;
   cursor: pointer;
 }
@@ -370,7 +371,7 @@ hr {
 .check input {
   width: 15px;
   height: 15px;
-  accent-color: #38bdf8;
+  accent-color: #dfb872;
   cursor: pointer;
 }
 
@@ -378,13 +379,13 @@ hr {
   min-height: 18px;
   margin: 10px 0 0;
   font-size: 11.5px;
-  color: #94a3b8;
+  color: #a89f91;
 }
 
 small {
   display: block;
   margin-top: 12px;
-  color: #64748b;
+  color: #8a8277;
   font-size: 10.5px;
   text-align: center;
 }
@@ -392,10 +393,10 @@ small {
 /* Animations */
 @keyframes satori-zen-aura {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 0 0 rgba(223, 184, 114, 0.6), 0 2px 8px rgba(0, 0, 0, 0.6);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(56, 189, 248, 0), 0 4px 16px rgba(56, 189, 248, 0.45);
+    box-shadow: 0 0 0 6px rgba(223, 184, 114, 0), 0 4px 16px rgba(223, 184, 114, 0.45);
   }
 }
 
@@ -410,12 +411,12 @@ small {
 
 @keyframes satori-status-glow {
   0%, 100% {
-    border-color: rgba(56, 189, 248, 0.3);
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);
+    border-color: rgba(223, 184, 114, 0.35);
+    box-shadow: 0 0 10px rgba(223, 184, 114, 0.2);
   }
   50% {
-    border-color: rgba(56, 189, 248, 0.6);
-    box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+    border-color: rgba(223, 184, 114, 0.7);
+    box-shadow: 0 0 18px rgba(223, 184, 114, 0.4);
   }
 }
 
@@ -425,12 +426,12 @@ small {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(9, 14, 26, 0.6);
+  background: rgba(20, 17, 16, 0.6);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.3);
+  background: rgba(223, 184, 114, 0.3);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.5);
+  background: rgba(223, 184, 114, 0.55);
 }

@@ -45,29 +45,29 @@
         bottom: 18px;
         z-index: 2147483647;
         font: 12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        color: #f8fafc;
+        color: #faf6f0;
         user-select: none;
       }
       #satori-status-widget .satori-status-pill {
         display: flex;
         align-items: center;
         gap: 9px;
-        border: 1.5px solid rgba(147, 197, 253, 0.35);
-        border-bottom: 3.5px solid #091322;
+        border: 1.5px solid rgba(223, 184, 114, 0.35);
+        border-bottom: 3.5px solid #141110;
         border-radius: 999px;
-        background: rgba(15, 23, 42, 0.88);
+        background: rgba(28, 24, 23, 0.92);
         backdrop-filter: blur(12px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.2);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,250,240,0.18);
         padding: 6px 14px 6px 8px;
         cursor: grab;
         font: inherit;
-        color: #f8fafc;
+        color: #faf6f0;
         outline: none;
         transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
       }
       #satori-status-widget .satori-status-pill:hover {
-        border-color: rgba(56, 189, 248, 0.6);
-        box-shadow: 0 10px 28px rgba(56, 189, 248, 0.25), inset 0 1px 0 rgba(255,255,255,0.3);
+        border-color: rgba(223, 184, 114, 0.65);
+        box-shadow: 0 10px 28px rgba(223, 184, 114, 0.25), inset 0 1px 0 rgba(255,250,240,0.25);
         transform: translateY(-1px);
       }
       #satori-status-widget .satori-status-pill:active {
@@ -82,46 +82,46 @@
         height: 32px;
         border-radius: 50%;
         object-fit: cover;
-        box-shadow: 0 0 10px rgba(56, 189, 248, 0.6), 0 2px 8px rgba(0,0,0,0.5);
-        border: 1.5px solid #38bdf8;
+        box-shadow: 0 0 10px rgba(223, 184, 114, 0.55), 0 2px 8px rgba(0,0,0,0.6);
+        border: 1.5px solid #dfb872;
         transition: all 0.3s ease;
-        animation: satori-zen-aura 2.5s infinite ease-in-out, satori-zen-float 3.5s infinite ease-in-out;
+        animation: satori-zen-aura 2.6s infinite ease-in-out, satori-zen-float 3.5s infinite ease-in-out;
       }
       #satori-status-widget .satori-status-icon {
         font-size: 11px;
         line-height: 1;
         margin-left: -2px;
-        color: #38bdf8;
+        color: #dfb872;
       }
       #satori-status-widget .satori-status-time {
         font-variant-numeric: tabular-nums;
         font-weight: 600;
         font-size: 11.5px;
-        color: #e0f2fe;
+        color: #f7e7ce;
       }
       #satori-status-widget .satori-status-panel {
         margin-top: 8px;
         min-width: 220px;
         max-width: 300px;
         padding: 12px 14px;
-        border: 1.5px solid rgba(147, 197, 253, 0.25);
+        border: 1.5px solid rgba(223, 184, 114, 0.25);
         border-radius: 12px;
-        background: rgba(15, 23, 42, 0.94);
+        background: rgba(28, 24, 23, 0.95);
         backdrop-filter: blur(14px);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,250,240,0.12);
       }
       #satori-status-widget .satori-status-panel strong {
         display: block;
         font-size: 13px;
         font-weight: 700;
-        background: linear-gradient(135deg, #ffffff 0%, #bae6fd 60%, #38bdf8 100%);
+        background: linear-gradient(135deg, #fffdfa 0%, #f7e7ce 45%, #dfb872 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
       }
       #satori-status-widget .satori-status-panel span {
         display: block;
         margin-top: 5px;
-        color: #94a3b8;
+        color: #a89f91;
         font-size: 11.5px;
         line-height: 1.4;
         word-break: break-word;
@@ -129,10 +129,10 @@
       
       @keyframes satori-zen-aura {
         0%, 100% {
-          box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7), 0 2px 8px rgba(0,0,0,0.5);
+          box-shadow: 0 0 0 0 rgba(223, 184, 114, 0.65), 0 2px 8px rgba(0,0,0,0.6);
         }
         50% {
-          box-shadow: 0 0 0 7px rgba(56, 189, 248, 0), 0 4px 16px rgba(56, 189, 248, 0.55);
+          box-shadow: 0 0 0 7px rgba(223, 184, 114, 0), 0 4px 16px rgba(223, 184, 114, 0.5);
         }
       }
 
@@ -142,47 +142,47 @@
       }
 
       @keyframes satori-waiting-pulse {
-        0% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(56,189,248,0.8)); }
-        50% { transform: scale(1.15) rotate(-5deg); filter: drop-shadow(0 0 12px rgba(56,189,248,1)); }
-        100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(56,189,248,0.8)); }
+        0% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(223,184,114,0.8)); }
+        50% { transform: scale(1.15) rotate(-5deg); filter: drop-shadow(0 0 12px rgba(223,184,114,1)); }
+        100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(223,184,114,0.8)); }
       }
 
       @keyframes satori-victory {
         0%, 100% { transform: translateY(0) scale(1); }
-        50% { transform: translateY(-6px) scale(1.15); filter: drop-shadow(0 0 10px rgba(52,211,153,1)); }
+        50% { transform: translateY(-6px) scale(1.15); filter: drop-shadow(0 0 10px rgba(138,168,130,1)); }
       }
 
       #satori-status-widget.satori-waiting .satori-status-cat {
         animation: satori-waiting-pulse 1.2s infinite ease-in-out !important;
-        border-color: #38bdf8 !important;
+        border-color: #dfb872 !important;
       }
       #satori-status-widget.satori-ready .satori-status-cat {
         animation: satori-victory 0.8s ease-out 3 !important;
-        border-color: #34d399 !important;
+        border-color: #8aa882 !important;
       }
 
       #satori-status-widget.satori-waiting .satori-status-pill {
-        border-color: #38bdf8;
-        background: rgba(14, 116, 144, 0.85);
-        box-shadow: 0 0 20px rgba(56, 189, 248, 0.4), inset 0 1px 0 rgba(255,255,255,0.25);
-        color: #e0f2fe;
+        border-color: #dfb872;
+        background: rgba(69, 53, 33, 0.9);
+        box-shadow: 0 0 20px rgba(223, 184, 114, 0.35), inset 0 1px 0 rgba(255,250,240,0.25);
+        color: #f7e7ce;
       }
       #satori-status-widget.satori-ready .satori-status-pill {
-        border-color: #34d399;
-        background: rgba(6, 78, 59, 0.9);
-        box-shadow: 0 0 20px rgba(52, 211, 153, 0.35), inset 0 1px 0 rgba(255,255,255,0.25);
-        color: #ecfdf5;
+        border-color: #8aa882;
+        background: rgba(44, 56, 41, 0.9);
+        box-shadow: 0 0 20px rgba(138, 168, 130, 0.35), inset 0 1px 0 rgba(255,250,240,0.25);
+        color: #d8ebd3;
       }
       #satori-status-widget.satori-error .satori-status-pill {
-        border-color: #f87171;
-        background: rgba(127, 29, 29, 0.88);
-        box-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
-        color: #fee2e2;
+        border-color: #c96b63;
+        background: rgba(89, 32, 27, 0.9);
+        box-shadow: 0 0 18px rgba(166, 68, 60, 0.35);
+        color: #f6c0bc;
       }
       #satori-status-widget.satori-cancelled .satori-status-pill {
-        border-color: rgba(148, 163, 184, 0.3);
-        background: rgba(30, 41, 59, 0.85);
-        color: #94a3b8;
+        border-color: rgba(168, 159, 145, 0.3);
+        background: rgba(44, 38, 36, 0.88);
+        color: #a89f91;
       }
     `;
 
