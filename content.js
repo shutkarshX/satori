@@ -64,7 +64,7 @@
         transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
       }
       #satori-status-widget .satori-status-pill:active { cursor: grabbing; }
-      #satori-status-widget .satori-status-cat { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 6px rgba(0,0,0,0.25); border: 1.5px solid #e6b432; }
+      #satori-status-widget .satori-status-cat { display: inline-block; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.25); border: 1.5px solid #e6b432; transition: all 0.3s ease; animation: satori-idle-float 3s infinite ease-in-out; }
       #satori-status-widget .satori-status-icon { font-size: 11px; line-height: 1; margin-left: -2px; }
       #satori-status-widget .satori-status-time { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 11px; }
       #satori-status-widget .satori-status-panel {
@@ -81,6 +81,12 @@
       #satori-status-widget .satori-status-panel span { display: block; margin-top: 4px; color: #5f6368; font-size: 11px; word-break: break-word; }
       
       
+      
+      @keyframes satori-idle-float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-3px) scale(1.04); }
+      }
+
       @keyframes satori-pulse {
         0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(230,180,50,0)); }
         50% { transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(230,180,50,0.85)); }
@@ -98,10 +104,10 @@
       }
 
       #satori-status-widget.satori-waiting .satori-status-cat {
-        animation: satori-pulse 1.4s infinite ease-in-out, satori-sword-slash 2s infinite ease-in-out;
+        animation: satori-pulse 1s infinite ease-in-out, satori-sword-slash 1.2s infinite ease-in-out !important;
       }
       #satori-status-widget.satori-ready .satori-status-cat {
-        animation: satori-victory 0.8s ease-out 2;
+        animation: satori-victory 0.7s ease-out 3 !important;
       }
 
       #satori-status-widget.satori-waiting .satori-status-pill { border-color: #e5b84b; background: #fff8df; color: #7a5800; }
