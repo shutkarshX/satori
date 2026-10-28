@@ -43,6 +43,13 @@
       },
       "description": "Solve the current page as coding with Satori"
     },
+    "satori-fill": {
+      "suggested_key": {
+        "default": "Alt+Shift+F",
+        "mac": "Command+Shift+F"
+      },
+      "description": "Solve snippet-based code with Header and Footer snippet awareness"
+    },
     "satori-cancel": {
       "suggested_key": {
         "default": "Alt+Shift+X",

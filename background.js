@@ -34,7 +34,7 @@ const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnost
 // -------------------------------------------------------------
 // Unified Prompt Construction (No Question Synthesis Layer)
 // -------------------------------------------------------------
-function buildDirectPrompt(provider, mode, pageContent) {
+function buildDirectPrompt(provider, mode, pageContent, snippets = null) {
   if (mode === 'mcq') {
     return `Solve the practice multiple-choice question contained in this page text.
 Identify the actual question and its options yourself from the text. Ignore navigation, buttons, timers, and unrelated page elements.
@@ -45,6 +45,21 @@ Example format:
 ANSWER: B - Inserting a new element into the queue
 
 PAGE CONTENT:
+${pageContent}`;
+  }
+
+  if (mode === 'snippet_fill') {
+    const headerSnippet = snippets?.headerCode ? `\nHEADER SNIPPET (ALREADY PROVIDED ON PLATFORM - DO NOT REDECLARE):\n${snippets.headerCode}\n` : '';
+    const footerSnippet = snippets?.footerCode ? `\nFOOTER SNIPPET (ALREADY PROVIDED ON PLATFORM - DO NOT REDECLARE):\n${snippets.footerCode}\n` : '';
+
+    return `Solve the practice coding problem by writing ONLY the missing function(s) or logic needed for "Fill your code here".
+
+IMPORTANT PLATFORM CONSTRAINTS:
+1. The platform already provides the Header Snippet and Footer Snippet below. DO NOT redeclare the structs, headers, or main() if they are already provided.
+2. Output ONLY the code that goes into the "Fill your code here" box.
+3. Strictly follow any Blacklisted and Whitelisted keywords or constraints.
+${headerSnippet}${footerSnippet}
+PAGE CONTENT & PROBLEM STATEMENT:
 ${pageContent}`;
   }
 
@@ -191,7 +206,7 @@ function validateProviderResult(provider, requestId, mode, payload, questionText
 
 function looksLikeCode(str) {
   if (!str) return false;
-  return /(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\(|\bimport\s+java|\bvoid\s+main\b|class\s+\w+)/i.test(str);
+  return /(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\(|\bimport\s+java|\bvoid\s+main\b|class\s+\w+|\bstruct\s+\w+|\bvoid\s+\w+\s*\(|\bint\s+\w+\s*\(|\bNode\s*\*\s*\w+)/i.test(str);
 }
 
 function extractCodeBlock(text) {
@@ -529,7 +544,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
 // -------------------------------------------------------------
 // Unified Request Dispatcher
 // -------------------------------------------------------------
-async function dispatchSatoriRequest({ provider, mode, pageContent, questionText, assignmentTabId, windowId }) {
+async function dispatchSatoriRequest({ provider, mode, pageContent, questionText, snippets = null, assignmentTabId, windowId }) {
   let assignmentTab = null;
   if (assignmentTabId) {
     try { assignmentTab = await chrome.tabs.get(assignmentTabId); } catch (_e) {}
@@ -565,14 +580,18 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
   setStatus(`${PROVIDER_NAMES[provider] || provider} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting');
   addDiagnostic('request', `Started ${provider} ${mode} (request ${requestId})`);
 
-  const prompt = buildDirectPrompt(provider, mode, pageContent);
+  const prompt = buildDirectPrompt(provider, mode, pageContent, snippets);
 
   if (provider === 'google') {
     // For Google AI Mode, keep the actual question text at the start so Google triggers AI Overview,
     // and append strict grading & blacklist/whitelist constraints at the end
-    const googleQuery = mode === 'coding'
-      ? `${pageContent}\n\nStrictly follow all blacklisted and whitelisted constraints, pass all sample test cases, and return complete code.`
-      : pageContent;
+    let googleQuery = pageContent;
+    if (mode === 'snippet_fill') {
+      const headerSnippet = snippets?.headerCode ? `\nHeader Snippet provided: ${snippets.headerCode}` : '';
+      googleQuery = `${pageContent}${headerSnippet}\n\nWrite ONLY the missing function for "Fill your code here". Do not redefine Header/Footer or main.`;
+    } else if (mode === 'coding') {
+      googleQuery = `${pageContent}\n\nStrictly follow all blacklisted and whitelisted constraints, pass all sample test cases, and return complete code.`;
+    }
     startGoogleSearch(googleQuery, requestId, mode, assignmentTab, questionText);
   } else if (provider === 'gemini') {
     startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
@@ -592,9 +611,10 @@ async function executeShortcutCommand(command, senderTab = null) {
     return;
   }
 
-  const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-code' ? 'coding' : null;
+  const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-fill' ? 'snippet_fill' : command === 'satori-code' ? 'coding' : null;
   if (!mode) return;
-  setStatus(`${mode === 'coding' ? 'Coding' : 'MCQ'} shortcut detected. Reading the active assignment tab…`, 'waiting');
+  const modeLabel = mode === 'snippet_fill' ? 'Snippet Fill (Header/Footer aware)' : mode === 'coding' ? 'Coding' : 'MCQ';
+  setStatus(`${modeLabel} shortcut detected. Reading the active assignment tab…`, 'waiting');
 
   let assignmentTab = senderTab;
   if (!assignmentTab?.id) {
@@ -635,6 +655,7 @@ async function executeShortcutCommand(command, senderTab = null) {
     mode,
     pageContent: page.fullText,
     questionText: page.text || page.fullText,
+    snippets: page.snippets || null,
     assignmentTabId: assignmentTab.id,
     windowId: assignmentTab.windowId
   });
