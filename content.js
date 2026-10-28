@@ -231,9 +231,24 @@
       .trim();
   };
 
+  function cleanProblemText(text) {
+    if (!text) return '';
+    // Strip portal header junk (student info, test metadata, timer) preceding the actual problem
+    const match = text.match(/(?:problem\s*statement|question\s*no\s*[:\d]|single\s*file\s*programming)/i);
+    if (match && match.index > 0 && match.index < 1200) {
+      text = text.slice(match.index);
+    }
+    // Strip bottom portal controls (Fill your code here, Compile & Run, Submit Code)
+    const endMatch = text.match(/(?:\n|^)(?:Provide Custom Input|Compile & Run|Submit Code|Fill your code here)/i);
+    if (endMatch && endMatch.index > 100) {
+      text = text.slice(0, endMatch.index);
+    }
+    return text.trim();
+  }
+
   function extractQuestion() {
     const selection = window.getSelection()?.toString().trim();
-    if (selection && selection.length > 20) return selection;
+    if (selection && selection.length > 20) return cleanProblemText(selection);
 
     const candidates = [
       ...document.querySelectorAll(
@@ -263,11 +278,12 @@
       .filter((item) => item.text.length >= 40 && item.text.length < 30000)
       .sort((a, b) => b.score - a.score || b.text.length - a.text.length);
 
-    return ranked[0]?.text || visibleText(document.body).slice(0, 30000);
+    const raw = ranked[0]?.text || visibleText(document.body).slice(0, 30000);
+    return cleanProblemText(raw);
   }
 
   function extractFullPage() {
-    return visibleText(document.body).slice(0, 50000);
+    return cleanProblemText(visibleText(document.body).slice(0, 50000));
   }
 
   function setNativeValue(element, value) {
