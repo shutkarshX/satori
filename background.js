@@ -568,7 +568,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
   const prompt = buildDirectPrompt(provider, mode, pageContent);
 
   if (provider === 'google') {
-    startGoogleSearch(prompt, requestId, mode, assignmentTab, questionText);
+    startGoogleSearch(pageContent, requestId, mode, assignmentTab, questionText);
   } else if (provider === 'gemini') {
     startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
   } else {
