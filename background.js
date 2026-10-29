@@ -411,6 +411,14 @@ async function autoFillAssignment(tabId, result) {
           const usedEditor = (mainResults || []).find(r => r.result?.ok)?.result?.editor || 'editor';
           addDiagnostic(`${result.provider}-autofill`, `Code placed into ${usedEditor} via MAIN world`);
           setStatus(`${PROVIDER_NAMES[result.provider] || result.provider} code placed into ${usedEditor}. Review before submitting.`, 'ready');
+
+          // Notify content script to copy to clipboard & show green pill status
+          chrome.tabs.sendMessage(tabId, {
+            type: 'COPY_AND_NOTIFY',
+            text: result.code,
+            editor: usedEditor
+          }).catch(() => {});
+
           return { ok: true };
         }
       } catch (mainErr) {

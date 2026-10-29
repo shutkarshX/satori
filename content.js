@@ -705,6 +705,19 @@
           url: location.href
         });
       }
+      if (message.type === 'COPY_AND_NOTIFY') {
+        try {
+          if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(message.text || '').catch(() => {});
+          }
+        } catch (_e) {}
+        renderStatus({
+          kind: 'ready',
+          text: `Code placed into ${message.editor || 'editor'} & copied to clipboard!`
+        });
+        sendResponse({ ok: true });
+        return true;
+      }
       if (message.type === 'TYPE_INTO_EDITOR') {
         try {
           if (navigator.clipboard?.writeText) {

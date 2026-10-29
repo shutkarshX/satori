@@ -123,21 +123,30 @@
     // ---------------------------------------------------------
     const codeCandidates = [];
 
-    // Strategy 1: Find Google's "Use code with caution." card & click the Copy button
+    // Strategy 1: Find Google's "Use code with caution." card & click ONLY its specific Copy button
     const allElements = Array.from(document.querySelectorAll('*'));
     const cautionElements = allElements.filter(el => {
       const t = (el.textContent || '').trim();
-      return (t === 'Use code with caution.' || t === 'Use code with caution') ||
-             (t.startsWith('Use code with caution') && t.length < 50);
+      return (t === 'Use code with caution.' || t === 'Use code with caution' || (t.startsWith('Use code with caution') && t.length < 40)) &&
+             el.children.length === 0;
     });
 
     cautionElements.forEach((cautionEl) => {
-      // Find copy button in or near caution element (the bottom bar of the code card)
+      // Find copy button ONLY in the exact footer bar containing this caution text
       const parentBar = cautionEl.parentElement;
-      const copyBtn = parentBar?.querySelector('button, [role="button"]') ||
-                      cautionEl.closest('div')?.querySelector('button, [role="button"]');
-      if (copyBtn) {
-        try { copyBtn.click(); } catch (_e) {}
+      if (parentBar) {
+        // The copy button is specifically inside this bar and has aria-label="Copy code" / "Copy", or is the button in this bar
+        const copyBtn = parentBar.querySelector('button[aria-label*="copy" i], [role="button"][aria-label*="copy" i], button');
+        if (copyBtn && !copyBtn.__satoriClicked) {
+          copyBtn.__satoriClicked = true;
+          try {
+            copyBtn.click();
+            sendLiveTelemetry('GOOGLE_COPY_BUTTON_CLICKED', {
+              tag: copyBtn.tagName,
+              aria: copyBtn.getAttribute('aria-label') || copyBtn.getAttribute('title') || ''
+            });
+          } catch (_e) {}
+        }
       }
 
       // Ancestor code container: walk up to find the container holding both code and caution footer
@@ -158,19 +167,21 @@
       }
     });
 
-    // Strategy 2: Find all Copy buttons (SVG icons, aria-label, etc.)
+    // Strategy 2: If not found, strictly look for buttons with aria-label specifically containing "Copy code"
     if (codeCandidates.length === 0) {
-      const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => {
-        const label = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').toLowerCase();
-        const hasCopyIcon = Boolean(btn.querySelector('svg, path, rect'));
-        return label.includes('copy') || hasCopyIcon || btn.closest('[class*="code" i]');
-      });
-
+      const copyButtons = [...document.querySelectorAll('button[aria-label*="Copy code" i], [role="button"][aria-label*="Copy code" i]')];
       copyButtons.forEach(btn => {
-        try { btn.click(); } catch (_e) {}
-        let card = btn.closest('pre, [class*="code" i], [class*="snippet" i], div');
+        if (!btn.__satoriClicked) {
+          btn.__satoriClicked = true;
+          try {
+            btn.click();
+            sendLiveTelemetry('GOOGLE_COPY_BUTTON_CLICKED_BY_ARIA', { aria: btn.getAttribute('aria-label') || '' });
+          } catch (_e) {}
+        }
+
+        let card = btn.parentElement;
         for (let depth = 0; depth < 6 && card; depth++, card = card.parentElement) {
-          if (card.id === 'rso') break;
+          if (card.id === 'rso' || card.tagName === 'BODY') break;
           const pre = card.querySelector('pre, code');
           const sourceText = pre ? (pre.innerText || pre.textContent || '') : (card.innerText || card.textContent || '');
           const rawCode = clean(sourceText)
@@ -186,7 +197,7 @@
       });
     }
 
-    // Strategy 3: Pre or Code elements directly
+    // Strategy 3: Pre or Code elements directly (read-only, no clicking)
     if (codeCandidates.length === 0) {
       const preElements = [...document.querySelectorAll('pre, [role="region"] pre, .code-block pre')];
       preElements.forEach(pre => {
@@ -203,7 +214,7 @@
 
     // Strategy 4: Markdown fenced code blocks or raw text extraction
     if (codeCandidates.length === 0) {
-      const fenced = [...(document.body.innerText || '').matchAll(/```(?:c|cpp|c\+\+|java|python|javascript)?\s*([\s\S]*?)```/g)]
+      const fenced = [...(document.body.innerText || '').matchAll(/\`\`\`(?:c|cpp|c\+\+|java|python|javascript)?\s*([\s\S]*?)\`\`\`/g)]
         .map(match => clean(match[1]))
         .filter(val => val.length >= 40 && !val.includes('window.sn=') && !val.includes('var(--'));
       codeCandidates.push(...fenced);
