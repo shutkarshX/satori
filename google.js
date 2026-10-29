@@ -13,11 +13,12 @@
 
   function sendLiveTelemetry(event, details = '') {
     try {
-      fetch('http://127.0.0.1:8999/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event, details, context: 'google_tab' })
-      }).catch(() => {});
+      chrome.runtime.sendMessage({
+        type: 'LIVE_TELEMETRY',
+        event: `[google] ${event}`,
+        details,
+        url: location.href
+      });
     } catch (_e) {}
   }
 
@@ -40,7 +41,7 @@
     return false;
   };
 
-    function looksLikeCode(str) {
+  function looksLikeCode(str) {
     if (!str || typeof str !== 'string') return false;
     const s = str.trim();
     if (s.length < 30) return false;
@@ -72,7 +73,7 @@
   }
 
   function readOverview(mode = 'mcq') {
-    // 1. Strict AI Overview selectors ONLY
+    // 1. Strict AI Overview selectors
     const selectors = [
       '[data-attrid="wa"]',
       '[data-attrid="AIOverview"]',
@@ -88,7 +89,6 @@
       if (isExcluded(node)) return;
       let parent = node;
       for (let depth = 0; depth < 8 && parent; depth += 1, parent = parent.parentElement) {
-        // Exclude organic search results, google ads, shopping carousel
         if (parent.id === 'rso') break;
         if (isExcluded(parent)) break;
         const text = clean(parent.innerText || '');
@@ -111,7 +111,6 @@
       }
     });
 
-    // Filter out shopping ads, product results, unavailable banners, and transient loading/thinking placeholders
     const validCandidates = candidates
       .filter((value) => !unavailable.test(value) && !isTransientPlaceholder(value) && !/^(Shopping|Sponsored|Ads|Top ads)/i.test(value) && !value.includes('.o3lpyf') && !value.includes('var(--'))
       .map((val) => val.replace(/^AI\s+Overview\s*/i, '').trim())
@@ -119,61 +118,101 @@
 
     const text = validCandidates.sort((a, b) => b.length - a.length)[0] || '';
 
-    // Extract Code Blocks specifically
-    // In Google AI Mode, code is rendered inside a dedicated dark code card containing "Use code with caution" and a Copy button at the bottom.
+    // ---------------------------------------------------------
+    // Extract Code Blocks specifically from Google Search AI Mode
+    // ---------------------------------------------------------
     const codeCandidates = [];
 
-    // Find the Copy buttons on Google Search
-    const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => {
-      const label = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').toLowerCase();
-      const hasCopyIcon = Boolean(btn.querySelector('svg, path[d*="M16 1H4"], path[d*="M19 3H5"], path[d*="copy" i]'));
-      return label.includes('copy') || hasCopyIcon || btn.closest('[class*="code" i]')?.querySelector('button') === btn;
+    // Strategy 1: Find Google's "Use code with caution." card & click the Copy button
+    const allElements = Array.from(document.querySelectorAll('*'));
+    const cautionElements = allElements.filter(el => {
+      const t = (el.textContent || '').trim();
+      return (t === 'Use code with caution.' || t === 'Use code with caution') ||
+             (t.startsWith('Use code with caution') && t.length < 50);
     });
 
-    copyButtons.forEach(btn => {
-      let card = btn.closest('pre, [class*="code-block" i], [class*="snippet" i], div');
-      for (let depth = 0; depth < 5 && card; depth++) {
-        const pre = card.querySelector('pre, code');
-        if (pre) {
-          const rawCode = clean(pre.innerText || pre.textContent || '')
-            .replace(/^Use code with caution\.\s*/i, '')
+    cautionElements.forEach((cautionEl) => {
+      // Find copy button in or near caution element (the bottom bar of the code card)
+      const parentBar = cautionEl.parentElement;
+      const copyBtn = parentBar?.querySelector('button, [role="button"]') ||
+                      cautionEl.closest('div')?.querySelector('button, [role="button"]');
+      if (copyBtn) {
+        try { copyBtn.click(); } catch (_e) {}
+      }
+
+      // Ancestor code container: walk up to find the container holding both code and caution footer
+      let container = cautionEl.parentElement;
+      for (let depth = 0; depth < 6 && container; depth++, container = container.parentElement) {
+        if (container.id === 'rso' || container.id === 'search' || container.tagName === 'BODY') break;
+        const raw = clean(container.innerText || container.textContent || '');
+        if (raw.length >= 40 && raw.includes('Use code with caution')) {
+          const codePart = raw
+            .replace(/\n?\s*Use code with caution[\s\S]*$/i, '')
             .replace(/Copy code\s*$/i, '')
             .trim();
-          if (rawCode.length >= 50 && !rawCode.includes('window.sn=') && !rawCode.includes('var(--')) {
-            codeCandidates.push(rawCode);
-            return;
+          if (codePart.length >= 30 && looksLikeCode(codePart) && !codePart.includes('window.sn=') && !codePart.includes('var(--')) {
+            codeCandidates.push(codePart);
+            break;
           }
         }
-        card = card.parentElement;
       }
     });
 
-    // Strategy 2: Pre or Code elements directly (the code box itself)
+    // Strategy 2: Find all Copy buttons (SVG icons, aria-label, etc.)
+    if (codeCandidates.length === 0) {
+      const copyButtons = [...document.querySelectorAll('button, [role="button"]')].filter(btn => {
+        const label = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').toLowerCase();
+        const hasCopyIcon = Boolean(btn.querySelector('svg, path, rect'));
+        return label.includes('copy') || hasCopyIcon || btn.closest('[class*="code" i]');
+      });
+
+      copyButtons.forEach(btn => {
+        try { btn.click(); } catch (_e) {}
+        let card = btn.closest('pre, [class*="code" i], [class*="snippet" i], div');
+        for (let depth = 0; depth < 6 && card; depth++, card = card.parentElement) {
+          if (card.id === 'rso') break;
+          const pre = card.querySelector('pre, code');
+          const sourceText = pre ? (pre.innerText || pre.textContent || '') : (card.innerText || card.textContent || '');
+          const rawCode = clean(sourceText)
+            .replace(/^Use code with caution\.\s*/i, '')
+            .replace(/\n?\s*Use code with caution[\s\S]*$/i, '')
+            .replace(/Copy code\s*$/i, '')
+            .trim();
+          if (rawCode.length >= 40 && looksLikeCode(rawCode) && !rawCode.includes('window.sn=') && !rawCode.includes('var(--')) {
+            codeCandidates.push(rawCode);
+            break;
+          }
+        }
+      });
+    }
+
+    // Strategy 3: Pre or Code elements directly
     if (codeCandidates.length === 0) {
       const preElements = [...document.querySelectorAll('pre, [role="region"] pre, .code-block pre')];
       preElements.forEach(pre => {
         const rawCode = clean(pre.innerText || pre.textContent || '')
           .replace(/^Use code with caution\.\s*/i, '')
+          .replace(/\n?\s*Use code with caution[\s\S]*$/i, '')
           .replace(/Copy code\s*$/i, '')
           .trim();
-        if (rawCode.length >= 50 && !rawCode.includes('window.sn=') && !rawCode.includes('var(--')) {
+        if (rawCode.length >= 40 && looksLikeCode(rawCode) && !rawCode.includes('window.sn=') && !rawCode.includes('var(--')) {
           codeCandidates.push(rawCode);
         }
       });
     }
 
-    // Strategy 3: Markdown fenced code blocks (if raw text generated)
+    // Strategy 4: Markdown fenced code blocks or raw text extraction
     if (codeCandidates.length === 0) {
       const fenced = [...(document.body.innerText || '').matchAll(/```(?:c|cpp|c\+\+|java|python|javascript)?\s*([\s\S]*?)```/g)]
         .map(match => clean(match[1]))
-        .filter(val => val.length >= 50 && !val.includes('window.sn=') && !val.includes('var(--'));
+        .filter(val => val.length >= 40 && !val.includes('window.sn=') && !val.includes('var(--'));
       codeCandidates.push(...fenced);
     }
 
-    // Strategy 4: Extract from text if text contains code
+    // Strategy 5: Extract from text if text contains code
     if (codeCandidates.length === 0 && text) {
       const extracted = extractCodeBlock(text);
-      if (extracted && extracted.length >= 40 && looksLikeCode(extracted) && !extracted.includes('window.sn=') && !extracted.includes('var(--')) {
+      if (extracted && extracted.length >= 35 && looksLikeCode(extracted) && !extracted.includes('window.sn=') && !extracted.includes('var(--')) {
         codeCandidates.push(extracted);
       }
     }
@@ -183,14 +222,18 @@
       .sort((a, b) => b.length - a.length)[0] || '';
 
     const isActivelyGenerating = Boolean(
-      document.querySelector('[aria-busy="true"], [data-loading="true"], [role="progressbar"], div[jsname="N760b"] [class*="shimmer" i], div[jsname="N760b"] [class*="loading" i]') ||
-      /^(thinking|loading|generating)/im.test(document.body?.innerText || '')
+      document.querySelector('[aria-busy="true"], [data-loading="true"], [role="progressbar"], div[jsname="N760b"] [class*="shimmer" i], div[jsname="N760b"] [class*="loading" i]')
     );
+
+    // If in coding mode and code is captured, we are DONE (never block on residual loading shimmers)
+    const isLoading = mode === 'coding'
+      ? (!code || isTransientPlaceholder(code))
+      : (isActivelyGenerating || (!text && !code));
 
     return {
       text,
       code,
-      loading: isActivelyGenerating || (!text && !code)
+      loading: isLoading
     };
   }
 
@@ -214,6 +257,8 @@
     if (sig === state.lastSignature || (baseline && selected === baseline)) return;
 
     clearTimeout(state.quietTimer);
+    // Instant dispatch (250ms quiet time) once solid code candidate is detected
+    const delay = state.mode === 'coding' ? 250 : 800;
     state.quietTimer = setTimeout(() => {
       if (!state.requestId) return;
       const current = readOverview(state.mode);
@@ -233,7 +278,7 @@
         code: current.code,
         capturedAt: Date.now()
       });
-    }, 900);
+    }, delay);
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -244,7 +289,8 @@
 
     if (message.type === 'READ_GOOGLE_AI_OVERVIEW') {
       try {
-        sendResponse({ ok: true, ...readOverview(message.mode || 'mcq') });
+        const overview = readOverview(message.mode || 'mcq');
+        sendResponse({ ok: true, ...overview });
       } catch (error) {
         sendResponse({ ok: false, error: error.message });
       }
@@ -257,6 +303,7 @@
       state.baselineText = clean(message.baselineText || '');
       state.baselineCode = clean(message.baselineCode || '');
       state.lastSignature = '';
+      sendLiveTelemetry('START_GOOGLE_WATCH', { requestId: state.requestId, mode: state.mode });
       clearTimeout(state.quietTimer);
       inspect();
       sendResponse({ ok: true });

@@ -284,6 +284,18 @@ function typeIntoMainWorldEditor(codeText) {
     }
   } catch (_e) {}
 
+  // 1b. Global editor instances (common in React / Vue / Examly portals)
+  try {
+    if (typeof window.editor?.setValue === 'function') {
+      window.editor.setValue(codeText);
+      return { ok: true, editor: 'window.editor' };
+    }
+    if (typeof window.codeEditor?.setValue === 'function') {
+      window.codeEditor.setValue(codeText);
+      return { ok: true, editor: 'window.codeEditor' };
+    }
+  } catch (_e) {}
+
   // 2. Ace Editor (Global window.ace or .ace_editor in MAIN world)
   try {
     const aceNodes = [...document.querySelectorAll('.ace_editor')];
@@ -304,7 +316,7 @@ function typeIntoMainWorldEditor(codeText) {
     }
   } catch (_e) {}
 
-  // 3. CodeMirror (v5 cm.CodeMirror, or v6 cm.view)
+  // 3. CodeMirror (v5 cm.CodeMirror, or v6 cm.view / .cm-content)
   try {
     const cmNodes = [...document.querySelectorAll('.CodeMirror')];
     for (const node of cmNodes) {
@@ -313,21 +325,43 @@ function typeIntoMainWorldEditor(codeText) {
         return { ok: true, editor: 'codemirror' };
       }
     }
+    const cm6Nodes = [...document.querySelectorAll('.cm-content[contenteditable="true"]')];
+    for (const node of cm6Nodes) {
+      node.focus();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, codeText);
+      return { ok: true, editor: 'codemirror6' };
+    }
   } catch (_e) {}
 
-  // 4. Any textarea or contenteditable element in the editor container
+  // 4. Monaco Editor DOM fallback (focus Monaco hidden textarea & paste / input)
+  try {
+    const monacoTextarea = document.querySelector('.monaco-editor textarea');
+    if (monacoTextarea) {
+      monacoTextarea.focus();
+      try {
+        const dt = new DataTransfer();
+        dt.setData('text/plain', codeText);
+        monacoTextarea.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+      } catch (_e) {}
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, codeText);
+      return { ok: true, editor: 'monaco-textarea' };
+    }
+  } catch (_e) {}
+
+  // 5. Any textarea or contenteditable element in the editor container
   try {
     const candidates = [
       document.activeElement,
-      document.querySelector('.monaco-editor textarea'),
       document.querySelector('.ace_text-input'),
-      document.querySelector('.CodeMirror textarea'),
       document.querySelector('[class*="editor" i] textarea, [class*="code" i] textarea'),
-      document.querySelector('textarea'),
-      document.querySelector('[contenteditable="true"]')
+      ...document.querySelectorAll('textarea'),
+      ...document.querySelectorAll('[contenteditable="true"]')
     ].filter(Boolean);
 
     for (const el of candidates) {
+      if (el.id === 'satori-quick-search' || el.closest?.('#satori-status-widget')) continue;
       if (el.isContentEditable || el.matches?.('[contenteditable="true"]')) {
         el.focus();
         document.execCommand('selectAll', false, null);
@@ -525,7 +559,7 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
           const effectiveCode = code || (looksLikeCode(text) ? extractCodeBlock(text) : '');
 
           const isReady = mode === 'coding'
-            ? Boolean(effectiveCode && effectiveCode.length >= 50 && looksLikeCode(effectiveCode) && !effectiveCode.includes('var(--') && !effectiveCode.includes('.o3lpyf') && !effectiveCode.includes('window.sn='))
+            ? Boolean(effectiveCode && effectiveCode.length >= 30 && looksLikeCode(effectiveCode) && !effectiveCode.includes('var(--') && !effectiveCode.includes('.o3lpyf') && !effectiveCode.includes('window.sn='))
             : Boolean(text && text.length >= 15 && !isTransientPlaceholder(text) && !text.includes('var(--') && !text.includes('.o3lpyf') && !text.includes('window.sn='));
 
           if (isReady) {

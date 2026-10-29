@@ -706,7 +706,13 @@
         });
       }
       if (message.type === 'TYPE_INTO_EDITOR') {
-        sendResponse({ ok: true, typed: typeIntoEditor(message.text || '', Boolean(message.append)) });
+        try {
+          if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(message.text || '').catch(() => {});
+          }
+        } catch (_clipErr) {}
+        const typed = typeIntoEditor(message.text || '', Boolean(message.append));
+        sendResponse({ ok: true, typed });
       }
       if (message.type === 'SELECT_MCQ_OPTION') {
         sendResponse({ ok: true, selected: selectMcqOption(message.answer || message.text || '') });
