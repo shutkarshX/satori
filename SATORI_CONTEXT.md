@@ -897,3 +897,35 @@ This update records the conversation and clarified requirements only. It does no
 
 **User**
 > do
+
+---
+
+## 16. Portal Script Reverse-Engineering & Native Main-World Advance Fix — 2026-10-30
+
+### 16.1 Problem Diagnosis & Root Cause
+1. **User Observation:** During Autopilot execution on FutureSkills Prime, the on-screen widget changed states ("Advancing forward..."), but `#next_container` was not physically advancing to the next node.
+2. **Source Analysis of FutureSkills Prime:**
+   - Using session cookies and URL parameters from user's DevTools Network curl, retrieved the active player layout (`content_home_new`) and dynamic node payload (`content_player_stagger_new`).
+   - The platform footer renders Next Node as:
+     ```html
+     <div class="next_container next_container1" id="next_container" onclick="check_popup();">
+     ```
+   - In the page scripts, `check_popup()` invokes `next_button()`, which sends an AJAX request to `/LX/content_players/content_player_show_new` to transition to the next lesson node.
+   - Global portal function `nextNodeNavigation()` also exists and executes `$('.next_container:visible').click()`.
+   - **Root Cause:** Chrome Extension content scripts run in an **isolated world**. Synthetic `MouseEvent` dispatches and `element.click()` on non-form elements (`<div>`) across world boundaries do not trigger string inline attributes (`onclick="check_popup();"`) or jQuery delegation attached in the page's main JavaScript context.
+
+### 16.2 Resolution & Architecture
+1. **Direct Main-World Bridge (`executeInMainWorld`):**
+   - Injected a lightweight main-world script bridge in `autopilot.js` to invoke the portal's native handlers directly in the page window context:
+     - `check_popup()`
+     - `nextNodeNavigation()`
+     - `$('.next_container:visible').click()`
+   - Added main-world TOC navigation triggering `content_url()` for module-boundary transitions.
+   - Added main-world `mark_unmark_content('No')` trigger to guarantee server-side registration of "Mark as Read".
+2. **Removed Unsolicited Time API Modifications:**
+   - Kept `autopilot.js` clean of artificial 240-second sleep loops or unrequested time-spent calls.
+   - Cleaned UI back to the reliable Start/Stop controls.
+3. **Full Transcript Persistence:**
+   - Created and synced `TRANSCRIPT.md` capturing all 13 conversation turns verbatim.
+
+

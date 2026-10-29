@@ -1,6 +1,6 @@
 # Satori - Full Conversation Transcript
 
-> **Session Date:** 2026-10-29  
+> **Session Date:** 2026-10-29 / 2026-10-30  
 > **Conversation ID:** `8bca0abf-3015-497c-9044-a404c541a0b5`  
 > **Integration Branch:** `g`
 
@@ -9,6 +9,10 @@
 ## Turn 1 — User
 
 read the md file
+
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.8 Flash (Medium). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
 
 ### Turn 1 — Assistant
 
@@ -418,3 +422,35 @@ uhhhhh why u doing all that
 also i want u to  make md fil ein project which will have all the trnascriot of our convo
 
 *(Attached image: `media_1793293447614_b0125c03.png`)*
+
+### Turn 12 — Assistant
+
+Done! I created [**`TRANSCRIPT.md`**](file:///d:/ME/Project/satori/satori/TRANSCRIPT.md) directly in your project root on branch `g`. It contains the complete, verbatim transcript of our entire conversation from Turn 1 all the way to now.
+
+All the extra time API code and buttons have also been removed, leaving the codebase clean.
+
+Let me know what you want to focus on next.
+
+---
+
+## Turn 13 — User
+
+curl --url 'https://www.futureskillsprime.in/LX/assets/content_js/pvc2_bootstrap-1f9a79782a62e3450d1aad00af22c959.js' \
+  -H 'Accept: text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01' \
+  -H 'Accept-Language: en-IN,en;q=0.9,hi;q=0.8' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b 'JSESSIONID=PCoaxSrolUQZVWk8-5mgCHbUn3FTj8fqMHn9NltP.g148041w; i_browser=550504385; ifc@#@32914_306=true; iac@#@32914_306=false; imac@#@32914_306=false; iocc@#@32914_306=true; tour_guide=true; i_token_ws=-8948992075127723233; tcsion-_zldp=DLMn2cp2FZ1rZKyd%2BWQeOQJ13f5LO9JRWvomv3VtTfbqWPirUmZuGfE9qewHWL929u88JCNdiEw%3D; tcsion-_zldt=83b9bf1c-b521-4c49-a3b7-aeb94d1e87b7-1; i_login=epr9pJh6g6XgNySlUsMppZ8sG8MvE3JWUbqgE4V4tPY; i_uid=mjvbxLf2feYYyv_xYQXdhtkhTfp8ARdOqE90Kf1bCaYdtC3q4A1ejssbSqsr_tXCNPwISr9mYIy_qjRRRNYMQA; i_users~fsp=5R1wmP3kfNPDNE6V_FUg5C43_8jtlZj-CxfuNTO8gpRfP4O1z7H8dy4CJUQk4V6cHggpZf3ohsz7XbYeCDwZ7Gq2Q1qQ7SiMJM_S-G-dLfE; checkLoginZoho=1; auth_num=9169804; from_ievolve=iEvolve; locale=32935_en; language=en; langid=1; _pvc_session=5c92466d8f56140f091777a0517ed35f; share_return=%2FLX%2Fcontent_players%2Fcontent_home_new%3FLaunchFrom%3DiHUB%26TargetOrgid%3D32935%26User-Agent%3DComputer%26Userid%3D33593533%26action%3D%2Fcontent%26app_id%3D9519%26c_id%3Dpodcast-essentials-2317392-32935%26c_id%3Dpodcast-essentials-2317392-32935%26comm_target_orgId%3D32935%26community_id%3D231739%26content_player%3Dtrue%26del_type%3DCourses%2FBatches%26eForm%3DY%26lan%3Den%26lan_id%3D1%26logout%3Dhttp%3A%2F%2Fwww.futureskillsprime.in%26ls_id%3D259822307%26newWindow%3DY%26org_id%3D32914%26returnUrl%3Dhttps%3A%2F%2Fwww.futureskillsprime.in%2F%26serviceid%3D13%26sub_eng_key%3DLX9077217696376870004553H59ZX6333957%26type%3DiEvolve%26userAgent%3DMozilla%2F5.0%2B%28Windows%2BNT%2B10.0%3B%2BWin64%3B%2Bx64%29%2BAppleWebKit%2F537.36%2B%28KHTML%2C%2Blike%2BGecko%29%2BChrome%2F156.0.0.0%2BSafari%2F537.36; passed_params=LaunchFrom%3DiHUB%26TargetOrgid%3D32935%26Us
+<truncated 455 bytes>
+e.in%2F%26serviceid%3D13%26sub_eng_key%3DLX9077217696376870004553H59ZX6333957%26type%3DiEvolve%26userAgent%3DMozilla%2F5.0%2B%28Windows%2BNT%2B10.0%3B%2BWin64%3B%2Bx64%29%2BAppleWebKit%2F537.36%2B%28KHTML%2C%2Blike%2BGecko%29%2BChrome%2F156.0.0.0%2BSafari%2F537.36; org_component%3A32935%3A=tblsQzaoH6Wkubu9kkJidYH%2BnqaaRwgZ5LABk%2FG0bxrJX21Vn2b%2F6rAmMI%2BX%0AnXQcXiXdD9EMlaf%2FOuiyjFHk%2B8mlDsrY2NMOQorQfXwy4kAQar%2BV2MGF3NAC%0ABp3%2F5ygatKz85PSG0WS4CWF1xEZaaAd0sY054F%2FoV8mgqO9XW8xi34IM3KIh%0AoMHw%2BwwsdkhW7eqgDkpy5cuMrmL0BBp2FQ%3D%3D; i_token=6251927931502994383; pvc-auth=CjOTHT0lpJaTw1YJijV9Y8CuHGIcge0kPOoylP7i8YsO3d22wDlQatZifve9W39NPilB5QbzA2vX8V%2FdQOHgBL7dvOw2ouQDPDTDhLuQKdEzqayM7p1bQaqwJLE0hDpAQmifB3DCO0OF18a%2Bo19lEw%3D%3D; last_login=20261029223349' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: https://www.futureskillsprime.in/LX/content_players/content_home_new?LaunchFrom=iHUB&TargetOrgid=32935&User-Agent=Computer&Userid=33593533&action=/content&app_id=9519&c_id=podcast-essentials-2317392-32935&c_id=podcast-essentials-2317392-32935&comm_target_orgId=32935&community_id=231739&content_player=true&del_type=Courses/Batches&eForm=Y&lan=en&lan_id=1&logout=http://www.futureskillsprime.in&ls_id=259822307&newWindow=Y&org_id=32914&returnUrl=https://www.futureskillsprime.in/&serviceid=13&sub_eng_key=LX9077217696376870004553H59ZX6333957&type=iEvolve&userAgent=Mozilla/5.0+(Windows+NT+10.0;+Win64;+x64)+AppleWebKit/537.36+(KHTML,+like+Gecko)+Chrome/156.0.0.0+Safari/537.36' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36' \
+  -H 'X-Requested-With: XMLHttpRequest' \
+  -H 'sec-ch-ua: "Not:A-Brand";v="8", "Chromium";v="156", "Google Chrome";v="156"' \
+  -H 'sec-ch-ua-mobile: ?1' \
+  -H 'sec-ch-ua-platform: "Android"'
+
