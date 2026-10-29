@@ -6,15 +6,25 @@
   document.querySelectorAll('#satori-status-widget').forEach(w => w.remove());
   window.__satoriContentLoaded = Date.now();
 
+  function isExtensionValid() {
+    try {
+      return Boolean(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
+    } catch (_e) {
+      return false;
+    }
+  }
+
   let lastEditable = null;
   function sendLiveTelemetry(event, details = '') {
+    if (!isExtensionValid()) return;
     try {
-      chrome.runtime.sendMessage({
+      const p = chrome.runtime.sendMessage({
         type: 'LIVE_TELEMETRY',
         event,
         details,
         url: location.href
       });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     } catch (_e) {}
   }
 
@@ -239,15 +249,26 @@
   ensureStatusWidget();
   renderStatus({ kind: 'idle', text: 'Satori ready', at: Date.now() });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.satoriStatus) {
-      renderStatus(changes.satoriStatus.newValue);
-    }
-  });
+  if (isExtensionValid() && chrome.storage?.onChanged) {
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (!isExtensionValid()) return;
+        if (area === 'local' && changes.satoriStatus) {
+          renderStatus(changes.satoriStatus.newValue);
+        }
+      });
+    } catch (_e) {}
+  }
 
-  chrome.storage.local.get('satoriStatus', (result) => {
-    if (result.satoriStatus) renderStatus(result.satoriStatus);
-  });
+  if (isExtensionValid() && chrome.storage?.local) {
+    try {
+      const p = chrome.storage.local.get('satoriStatus', (result) => {
+        if (!isExtensionValid() || chrome.runtime?.lastError) return;
+        if (result?.satoriStatus) renderStatus(result.satoriStatus);
+      });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_e) {}
+  }
 
   // -------------------------------------------------------------
   // Page Text Reading & Editor Interactions
@@ -663,12 +684,16 @@
       optionsCount: structuredOpts.length
     });
 
-    chrome.runtime.sendMessage({
-      type: 'TRIGGER_SHORTCUT_DIRECT',
-      command: cmd,
-      pageText,
-      options: structuredOpts.map(o => ({ letter: o.letter, text: o.text }))
-    });
+    if (!isExtensionValid()) return;
+    try {
+      const p = chrome.runtime.sendMessage({
+        type: 'TRIGGER_SHORTCUT_DIRECT',
+        command: cmd,
+        pageText,
+        options: structuredOpts.map(o => ({ letter: o.letter, text: o.text }))
+      });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_e) {}
   }
 
   // -------------------------------------------------------------

@@ -12,14 +12,24 @@
     startTime: 0
   };
 
-  function sendLiveTelemetry(event, details = '') {
+  function isExtensionValid() {
     try {
-      chrome.runtime.sendMessage({
+      return Boolean(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  function sendLiveTelemetry(event, details = '') {
+    if (!isExtensionValid()) return;
+    try {
+      const p = chrome.runtime.sendMessage({
         type: 'LIVE_TELEMETRY',
         event: `[google] ${event}`,
         details,
         url: location.href
       });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     } catch (_e) {}
   }
 
@@ -303,8 +313,10 @@
 
   const report = (type, detail) => {
     sendLiveTelemetry(type, detail);
+    if (!isExtensionValid()) return;
     try {
-      chrome.runtime.sendMessage({ type, requestId: state.requestId, detail });
+      const p = chrome.runtime.sendMessage({ type, requestId: state.requestId, detail });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     } catch (_error) {}
   };
 
