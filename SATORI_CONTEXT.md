@@ -648,3 +648,36 @@ Before porting anything into `g`, make a source-to-source feature plan. Decide w
 - Plan calls for a single explicit state machine, idempotent Start, cancellation-aware Stop, bounded waits/retries, conservative classification, verified node/navigation changes, no automatic quiz answering, no forced video seeking/muting, and no fabricated time-spent backend requests.
 - This step created documentation only. No extension source code was changed or runtime-tested.
 - Next step: implement the plan in small changes on `g`, starting with the dedicated autopilot controller and narrowly scoped manifest/popup wiring; preserve provider, editor, and unrelated media behavior.
+
+
+## 13. Course Autopilot implementation added — 2026-10-29
+
+Implemented a first conservative UI helper on branch `g`; this is source work, not a claim of browser runtime validation.
+
+### Files changed
+- `autopilot.js` — dedicated top-frame controller scoped to FutureSkills Prime hosts.
+- `manifest.json` — version bumped to `0.4.0`; registers `autopilot.js` only for FutureSkills Prime and adds the corresponding host permissions.
+- `popup.html` — adds Course Autopilot Start/Stop controls and status area above the existing AI workflow.
+- `popup.css` — styles the new panel.
+- `popup.js` — sends Start/Stop messages to the active course tab and displays stored status. Existing provider/editor handlers were left in place.
+
+### Current behavior
+- Start is idempotent in the top-frame controller; Stop sets a cancellation flag.
+- Quiz/radio/checkbox pages pause and ask the user to complete the assessment manually.
+- Video elements are not muted or seeked. The helper waits for natural `ended` with a 30-minute cap.
+- Reading pages require visible completion evidence; if an explicit “Mark as Read” control is present, the helper clicks it once and checks for a status change.
+- Navigation clicks one enabled Next target once and checks that the page/node signature changes.
+- Missing/ambiguous completion signals, missing Next controls, or failed navigation stop the helper rather than looping blindly.
+- No `api_completer.js` or fabricated time-spent request was added to the manifest or Start path.
+
+### Commits
+- `010dc9a` — add controller.
+- `1a012e6` — register controller and update manifest.
+- `3d1f6bd` — add popup controls.
+- `e5ac6c4` — style popup controls.
+- `d8ef5fd` — wire Start/Stop.
+
+### Validation status and limitations
+- These edits were made through GitHub on branch `g`; the user's local clone will need to pull them.
+- No live Chrome/FutureSkills Prime runtime test was performed here. Selector assumptions and the platform's actual completion markup still need testing in a real course.
+- This first version intentionally pauses when evidence is not strong enough; it is a conservative navigation helper, not a guarantee of automatic course completion.
