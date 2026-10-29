@@ -113,7 +113,6 @@ function buildGoogleQuery() {
   const question = $('question').value.trim();
   if (!question) throw new Error('Read or enter a question first.');
   if ($('mode').value === 'mcq') {
-    // For MCQ, clean question + options is vastly superior to full dashboard/sidebar page text
     return question;
   }
   return fullPageContext || question;
@@ -195,54 +194,101 @@ $('type').addEventListener('click', async () => {
   } catch (e) { status(e.message, true); }
 });
 
+// -------------------------------------------------------------------------
+// FutureSkills Prime Course Autopilot Controls
+// -------------------------------------------------------------------------
+function updateAutopilotUI(isRunning, statusText) {
+  const badge = $('autopilotBadge');
+  const btn = $('toggleAutopilot');
+  const statusEl = $('autopilotStatusText');
+  if (badge) {
+    badge.textContent = isRunning ? 'ON' : 'OFF';
+    badge.className = `autopilot-badge ${isRunning ? 'on' : 'off'}`;
+  }
+  if (btn) {
+    btn.textContent = isRunning ? 'Stop Autopilot' : 'Start Autopilot';
+    btn.className = `autopilot-btn ${isRunning ? 'running' : ''}`;
+  }
+  if (statusEl && statusText) {
+    statusEl.textContent = statusText;
+  }
+}
 
-// Course Autopilot controls (kept separate from provider/editor flows).
-function renderAutopilotStatus(value) {
-  if (!value) return;
-  $('autopilotStatus').textContent = value.text || 'Status unavailable.';
-  $('startAutopilot').disabled = !!value.running;
-  $('stopAutopilot').disabled = !value.running;
-}
-chrome.storage.local.get('satoriAutopilotStatus', (result) => {
-  if (result.satoriAutopilotStatus) renderAutopilotStatus(result.satoriAutopilotStatus);
+chrome.storage.local.get(['satoriAutopilotRunning', 'satoriAutopilotStatus'], (res) => {
+  const isRunning = Boolean(res.satoriAutopilotRunning);
+  const text = res.satoriAutopilotStatus?.text || (isRunning ? 'Autopilot active and running.' : 'Ready. Open a course tab to run.');
+  updateAutopilotUI(isRunning, text);
 });
+
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.satoriAutopilotStatus) {
-    renderAutopilotStatus(changes.satoriAutopilotStatus.newValue);
+  if (area === 'local') {
+    if (changes.satoriAutopilotRunning || changes.satoriAutopilotStatus) {
+      chrome.storage.local.get(['satoriAutopilotRunning', 'satoriAutopilotStatus'], (res) => {
+        updateAutopilotUI(Boolean(res.satoriAutopilotRunning), res.satoriAutopilotStatus?.text);
+      });
+    }
   }
 });
-async function sendAutopilotCommand(type) {
-  const tab = await activeTab();
-  if (!/^https?:$/.test(new URL(tab.url || '').protocol) ||
-      !/^(?:www\.)?futureskillsprime\.in$/.test(new URL(tab.url || '').hostname) &&
-      !new URL(tab.url || '').hostname.endsWith('.futureskillsprime.in')) {
-    throw new Error('Open a FutureSkills Prime course page first.');
-  }
+
+async function sendAutopilotMessage(tabId, message) {
   try {
-    return await chrome.tabs.sendMessage(tab.id, { type });
-  } catch (_) {
-    throw new Error('Autopilot script not found. Reload the extension and refresh the course page.');
+    return await chrome.tabs.sendMessage(tabId, message);
+  } catch (_firstErr) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        files: ['autopilot.js']
+      });
+      return await chrome.tabs.sendMessage(tabId, message);
+    } catch (e) {
+      throw new Error('Could not communicate with course page. Refresh the page and try again.');
+    }
   }
 }
-$('startAutopilot').addEventListener('click', async () => {
-  $('autopilotStatus').textContent = 'Starting…';
+
+$('toggleAutopilot').addEventListener('click', async () => {
   try {
-    const result = await sendAutopilotCommand('START_AUTOPILOT');
-    if (!result?.ok) throw new Error(result?.text || 'Could not start autopilot.');
-    $('autopilotStatus').textContent = result.text || 'Autopilot started.';
-    $('startAutopilot').disabled = true;
-    $('stopAutopilot').disabled = false;
-  } catch (error) {
-    $('autopilotStatus').textContent = error.message;
+    const tab = await activeTab();
+    const url = tab.url || '';
+    if (!url.includes('futureskillsprime.in')) {
+      $('autopilotStatusText').textContent = 'Open a FutureSkills Prime course tab first.';
+      return;
+    }
+
+    const stored = await chrome.storage.local.get(['satoriAutopilotRunning']);
+    const isRunning = Boolean(stored.satoriAutopilotRunning);
+    const nextRunning = !isRunning;
+
+    await chrome.storage.local.set({ satoriAutopilotRunning: nextRunning });
+
+    const response = await sendAutopilotMessage(tab.id, {
+      type: nextRunning ? 'START_AUTOPILOT' : 'STOP_AUTOPILOT'
+    });
+
+    const statusText = response?.text || (nextRunning ? 'Autopilot started!' : 'Autopilot stopped.');
+    updateAutopilotUI(nextRunning, statusText);
+  } catch (err) {
+    $('autopilotStatusText').textContent = err.message;
   }
 });
-$('stopAutopilot').addEventListener('click', async () => {
+
+$('fastCompleteBtn').addEventListener('click', async () => {
   try {
-    const result = await sendAutopilotCommand('STOP_AUTOPILOT');
-    $('autopilotStatus').textContent = result?.text || 'Stop requested.';
-    $('startAutopilot').disabled = false;
-    $('stopAutopilot').disabled = true;
-  } catch (error) {
-    $('autopilotStatus').textContent = error.message;
+    const tab = await activeTab();
+    const url = tab.url || '';
+    if (!url.includes('futureskillsprime.in')) {
+      $('autopilotStatusText').textContent = 'Open a FutureSkills Prime course tab first.';
+      return;
+    }
+
+    $('autopilotStatusText').textContent = '⚡ Sending 100% time credit to all course modules...';
+    const response = await sendAutopilotMessage(tab.id, { type: 'COMPLETE_ALL_API' });
+    if (response?.ok) {
+      $('autopilotStatusText').textContent = `✅ Successfully completed ${response.completed}/${response.total} modules!`;
+    } else {
+      $('autopilotStatusText').textContent = response?.error || 'Could not complete modules via API.';
+    }
+  } catch (err) {
+    $('autopilotStatusText').textContent = err.message;
   }
 });

@@ -1,39 +1,86 @@
 {
   "manifest_version": 3,
   "name": "Satori",
-  "version": "0.4.0",
-  "description": "A practice-study assistant for MCQs and coding questions using Google Search AI results.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
-  "host_permissions": ["https://www.google.com/*", "https://google.com/*", "https://www.google.co.in/*", "https://google.co.in/*", "https://gemini.google.com/*", "https://chatgpt.com/*", "https://chat.openai.com/*", "https://futureskillsprime.in/*", "https://*.futureskillsprime.in/*"],
-  "background": { "service_worker": "background.js" },
+  "version": "1.0.0",
+  "description": "A practice-study assistant for MCQs, coding questions, and course automation.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://www.google.com/*",
+    "https://google.com/*",
+    "https://www.google.co.in/*",
+    "https://google.co.in/*",
+    "https://gemini.google.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://futureskillsprime.in/*",
+    "https://*.futureskillsprime.in/*",
+    "https://www.futureskillsprime.in/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Satori",
     "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://futureskillsprime.in/*",
+        "https://*.futureskillsprime.in/*",
+        "https://www.futureskillsprime.in/*"
+      ],
+      "js": [
+        "autopilot.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://www.google.com/*",
+        "https://google.com/*",
+        "https://www.google.co.in/*",
+        "https://google.co.in/*"
+      ],
+      "js": [
+        "google.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://futureskillsprime.in/*", "https://*.futureskillsprime.in/*"],
-      "js": ["autopilot.js"],
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "gemini.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.google.com/*", "https://google.com/*", "https://www.google.co.in/*", "https://google.co.in/*"],
-      "js": ["google.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://gemini.google.com/*"],
-      "js": ["gemini.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["chatgpt.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "chatgpt.js"
+      ],
       "run_at": "document_idle"
     }
   ]
