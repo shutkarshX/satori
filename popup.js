@@ -271,24 +271,3 @@ $('toggleAutopilot').addEventListener('click', async () => {
     $('autopilotStatusText').textContent = err.message;
   }
 });
-
-$('fastCompleteBtn').addEventListener('click', async () => {
-  try {
-    const tab = await activeTab();
-    const url = tab.url || '';
-    if (!url.includes('futureskillsprime.in')) {
-      $('autopilotStatusText').textContent = 'Open a FutureSkills Prime course tab first.';
-      return;
-    }
-
-    $('autopilotStatusText').textContent = '⚡ Sending 100% time credit to all course modules...';
-    const response = await sendAutopilotMessage(tab.id, { type: 'COMPLETE_ALL_API' });
-    if (response?.ok) {
-      $('autopilotStatusText').textContent = `✅ Successfully completed ${response.completed}/${response.total} modules!`;
-    } else {
-      $('autopilotStatusText').textContent = response?.error || 'Could not complete modules via API.';
-    }
-  } catch (err) {
-    $('autopilotStatusText').textContent = err.message;
-  }
-});
