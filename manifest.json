@@ -20,7 +20,8 @@
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "*://*.futureskillsprime.in/*",
-    "https://www.futureskillsprime.in/*"
+    "https://www.futureskillsprime.in/*",
+    "http://127.0.0.1:8999/*"
   ],
   "background": {
     "service_worker": "background.js"

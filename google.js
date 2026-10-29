@@ -11,6 +11,16 @@
     lastSignature: ''
   };
 
+  function sendLiveTelemetry(event, details = '') {
+    try {
+      fetch('http://127.0.0.1:8999/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event, details, context: 'google_tab' })
+      }).catch(() => {});
+    } catch (_e) {}
+  }
+
   const clean = (value) => String(value || '')
     .replace(/\u00a0/g, ' ')
     .replace(/\r\n?/g, '\n')
@@ -185,6 +195,7 @@
   }
 
   const report = (type, detail) => {
+    sendLiveTelemetry(type, detail);
     try {
       chrome.runtime.sendMessage({ type, requestId: state.requestId, detail });
     } catch (_error) {}

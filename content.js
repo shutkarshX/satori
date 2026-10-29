@@ -3,6 +3,16 @@
   window.__satoriContentLoaded = true;
 
   let lastEditable = null;
+  function sendLiveTelemetry(event, details = '') {
+    try {
+      fetch('http://127.0.0.1:8999/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event, details, context: 'content', url: location.href })
+      }).catch(() => {});
+    } catch (_e) {}
+  }
+
 
   // -------------------------------------------------------------
   // Floating Satori Status Widget (Clean DOM, Draggable, Lifecycle)
@@ -28,10 +38,12 @@
     const root = document.createElement('div');
     root.id = 'satori-status-widget';
     root.innerHTML = `
-      <button type="button" class="satori-status-pill" aria-label="Satori status">
+      <div class="satori-status-pill" aria-label="Satori status">
         <span class="satori-status-icon">◉</span>
         <span class="satori-status-time">—</span>
-      </button>
+        <button type="button" class="satori-quick-btn" id="satori-quick-code" title="Solve Code (Alt+Shift+C)">⚡ Code</button>
+        <button type="button" class="satori-quick-btn" id="satori-quick-mcq" title="Solve MCQ (Alt+Shift+M)">✓ MCQ</button>
+      </div>
       <div class="satori-status-panel" hidden>
         <strong>Satori</strong>
         <span class="satori-status-detail">Ready</span>
@@ -66,6 +78,18 @@
       #satori-status-widget .satori-status-pill:active { cursor: grabbing; }
       #satori-status-widget .satori-status-icon { font-size: 13px; line-height: 1; }
       #satori-status-widget .satori-status-time { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 11px; }
+      #satori-status-widget .satori-quick-btn {
+        border: none;
+        background: #f1f3f4;
+        color: #1a73e8;
+        font-weight: 600;
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      #satori-status-widget .satori-quick-btn:hover { background: #1a73e8; color: #fff; }
       #satori-status-widget .satori-status-panel {
         margin-top: 7px;
         min-width: 200px;
@@ -118,12 +142,31 @@
 
     pill.addEventListener('pointerup', () => { drag = null; });
 
-    pill.addEventListener('click', () => {
+    pill.addEventListener('click', (e) => {
+      if (e.target?.closest?.('.satori-quick-btn')) return;
       if (moved) { moved = false; return; }
       statusWidget.expanded = !statusWidget.expanded;
       const panel = root.querySelector('.satori-status-panel');
       if (panel) panel.hidden = !statusWidget.expanded;
     });
+
+    const codeBtn = root.querySelector('#satori-quick-code');
+    if (codeBtn) {
+      codeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendLiveTelemetry('QUICK_BUTTON_CLICKED', 'satori-code');
+        triggerShortcutDirect('satori-code');
+      });
+    }
+
+    const mcqBtn = root.querySelector('#satori-quick-mcq');
+    if (mcqBtn) {
+      mcqBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendLiveTelemetry('QUICK_BUTTON_CLICKED', 'satori-mcq');
+        triggerShortcutDirect('satori-mcq');
+      });
+    }
   }
 
   function renderStatus(value) {
@@ -233,8 +276,8 @@
 
   function cleanProblemText(text) {
     if (!text) return '';
-    // Start strictly from Question No / Problem Statement, stripping preceding portal/student header
-    const match = text.match(/(?:question\s*no\s*[:\d]|problem\s*statement|single\s*file\s*programming|multi(?:ple)?\s*choice)/i);
+    // Start strictly from Question No / Problem Statement / Problem Description / Task / Coding, stripping preceding portal/student header
+    const match = text.match(/(?:question\s*(?:no\.?|number)?\s*[:\d]|problem\s*(?:statement|description)?|task\s*(?:description)?|single\s*file\s*programming|multi(?:ple)?\s*choice|coding\s*question|practice\s*question|q\s*[:\.\d])/i);
     if (match && match.index > 0 && match.index < 4000) {
       text = text.slice(match.index);
     }
@@ -577,6 +620,40 @@
     } catch (_e) {}
   }, true);
 
+  async function triggerShortcutDirect(cmd) {
+    sendLiveTelemetry('SHORTCUT_START', { cmd, url: location.href });
+
+    let copiedText = '';
+    try {
+      const sel = window.getSelection()?.toString().trim();
+      if (sel && sel.length > 15) copiedText = sel;
+    } catch (_e) {}
+
+    if (!copiedText && window.__satoriLastCopiedText && window.__satoriLastCopiedText.length > 15) {
+      copiedText = window.__satoriLastCopiedText;
+    }
+
+    if (!copiedText) {
+      try {
+        const clip = await navigator.clipboard.readText();
+        if (clip && clip.trim().length > 15) copiedText = clip.trim();
+      } catch (_e) {}
+    }
+
+    sendLiveTelemetry('SHORTCUT_PAYLOAD', {
+      cmd,
+      hasCopied: Boolean(copiedText),
+      copiedLen: copiedText.length,
+      preview: copiedText.slice(0, 150)
+    });
+
+    chrome.runtime.sendMessage({
+      type: 'TRIGGER_SHORTCUT_DIRECT',
+      command: cmd,
+      copiedText: copiedText ? cleanProblemText(copiedText) : ''
+    });
+  }
+
   // -------------------------------------------------------------
   // Content Script Direct Keyboard Shortcut Listener
   // Catches Alt+Shift+M (MCQ), Alt+Shift+C/S (Code), Alt+Shift+X (Cancel)
@@ -595,30 +672,7 @@
         e.preventDefault();
         e.stopPropagation();
         console.log('[Satori Content] In-page shortcut detected:', cmd);
-
-        // Prioritize immediately: current selection, last copied text, or clipboard text
-        let copiedText = '';
-        try {
-          const sel = window.getSelection()?.toString().trim();
-          if (sel && sel.length > 15) copiedText = sel;
-        } catch (_e) {}
-
-        if (!copiedText && window.__satoriLastCopiedText && window.__satoriLastCopiedText.length > 15) {
-          copiedText = window.__satoriLastCopiedText;
-        }
-
-        if (!copiedText) {
-          try {
-            const clip = await navigator.clipboard.readText();
-            if (clip && clip.trim().length > 15) copiedText = clip.trim();
-          } catch (_e) {}
-        }
-
-        chrome.runtime.sendMessage({
-          type: 'TRIGGER_SHORTCUT_DIRECT',
-          command: cmd,
-          copiedText: copiedText ? cleanProblemText(copiedText) : ''
-        });
+        triggerShortcutDirect(cmd);
       }
     }
   }, true);

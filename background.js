@@ -35,11 +35,24 @@ const setStatus = (text, kind = 'waiting', extra = {}) => {
   });
 };
 
-const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnostics', (result) => {
-  const entries = Array.isArray(result.satoriDiagnostics) ? result.satoriDiagnostics : [];
-  entries.push({ time: new Date().toLocaleTimeString(), step, detail });
-  chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
-});
+function sendLiveTelemetry(event, details = '') {
+  try {
+    fetch('http://127.0.0.1:8999/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event, details, context: 'background' })
+    }).catch(() => {});
+  } catch (_e) {}
+}
+
+const addDiagnostic = (step, detail) => {
+  sendLiveTelemetry(step, detail);
+  chrome.storage.local.get('satoriDiagnostics', ({ satoriDiagnostics = [] }) => {
+    const entries = Array.isArray(satoriDiagnostics) ? satoriDiagnostics : [];
+    entries.push({ time: new Date().toLocaleTimeString(), step, detail });
+    chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
+  });
+};
 
 // -------------------------------------------------------------
 // Unified Prompt Construction (No Question Synthesis Layer)
