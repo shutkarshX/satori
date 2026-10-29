@@ -5,11 +5,12 @@
   let lastEditable = null;
   function sendLiveTelemetry(event, details = '') {
     try {
-      fetch('http://127.0.0.1:8999/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event, details, context: 'content', url: location.href })
-      }).catch(() => {});
+      chrome.runtime.sendMessage({
+        type: 'LIVE_TELEMETRY',
+        event,
+        details,
+        url: location.href
+      });
     } catch (_e) {}
   }
 
@@ -622,6 +623,13 @@
 
   async function triggerShortcutDirect(cmd) {
     sendLiveTelemetry('SHORTCUT_START', { cmd, url: location.href });
+    // Immediate visual feedback on widget
+    renderStatus({
+      kind: 'waiting',
+      text: (cmd === 'satori-code' ? 'Solving Code' : 'Solving MCQ') + ' with Google AI…',
+      estimateSec: 10,
+      startedAt: Date.now()
+    });
 
     let copiedText = '';
     try {

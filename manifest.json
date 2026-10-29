@@ -12,16 +12,7 @@
     "clipboardRead"
   ],
   "host_permissions": [
-    "https://www.google.com/*",
-    "https://google.com/*",
-    "https://www.google.co.in/*",
-    "https://google.co.in/*",
-    "https://gemini.google.com/*",
-    "https://chatgpt.com/*",
-    "https://chat.openai.com/*",
-    "*://*.futureskillsprime.in/*",
-    "https://www.futureskillsprime.in/*",
-    "http://127.0.0.1:8999/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"

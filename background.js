@@ -763,8 +763,8 @@ async function executeShortcutCommand(command, senderTab = null, directCopiedTex
 
   let assignmentTab = senderTab;
   if (!assignmentTab?.id) {
-    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    assignmentTab = tabs.find((t) => t.id && !/^(chrome|edge|chrome-extension|about):/i.test(t.url || '') && !/google\.|gemini\.|chatgpt\./i.test(t.url || ''));
+    const activeTabs = await chrome.tabs.query({ active: true });
+    assignmentTab = activeTabs.find((t) => t.id && !/^(chrome|edge|chrome-extension|about):/i.test(t.url || '') && !/google\.|gemini\.|chatgpt\./i.test(t.url || '')) || activeTabs[0];
   }
 
   if (!assignmentTab?.id) {
@@ -860,6 +860,11 @@ chrome.commands.onCommand.addListener(async (command) => {
 // Message Gateway (Provider Responses & Popup Triggers)
 // -------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'LIVE_TELEMETRY') {
+    sendLiveTelemetry(message.event, message.details);
+    return false;
+  }
+
   if (message.type === 'TRIGGER_SHORTCUT_DIRECT') {
     executeShortcutCommand(message.command, _sender?.tab, message.copiedText || '');
     sendResponse({ ok: true });
