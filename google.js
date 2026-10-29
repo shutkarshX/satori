@@ -58,33 +58,33 @@
   function tryTriggerAIMode() {
     if (state.aiModeTriggered) return false;
 
-    // 1. Check for tab/link pointing to udm=50 (Google AI Mode)
+    // 1. Check for the specific "AI Mode" tab/link (udm=50) on Google
     const aiModeLink = document.querySelector('a[href*="udm=50"]');
     if (aiModeLink) {
       state.aiModeTriggered = true;
-      sendLiveTelemetry('SWITCHING_TO_AI_MODE_VIA_LINK', { href: aiModeLink.href });
+      sendLiveTelemetry('CLICKED_AI_MODE_TAB', { href: aiModeLink.href });
       aiModeLink.click();
       return true;
     }
 
-    // 2. Check for button / link / tab with text "AI Mode", "AI Overview", or "Generate"
+    // 2. Check for button / tab specifically named "AI Mode"
     const candidates = [...document.querySelectorAll('a, button, [role="tab"], div[role="button"]')];
-    const target = candidates.find(el => {
+    const aiModeBtn = candidates.find(el => {
       const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-      return t === 'ai mode' || t === 'ai overview' || t === 'generate' || t.startsWith('get an ai overview');
+      return t === 'ai mode' || t.startsWith('ai mode');
     });
 
-    if (target) {
+    if (aiModeBtn) {
       state.aiModeTriggered = true;
-      sendLiveTelemetry('SWITCHING_TO_AI_MODE_VIA_BUTTON', { text: (target.innerText || '').slice(0, 30) });
-      target.click();
+      sendLiveTelemetry('CLICKED_AI_MODE_BUTTON', { text: (aiModeBtn.innerText || '').slice(0, 30) });
+      aiModeBtn.click();
       return true;
     }
 
-    // 3. Fallback: Append udm=50 to current URL to force Google AI Mode
+    // 3. Fallback: Force Google directly into AI Mode via URL
     if (!window.location.search.includes('udm=50')) {
       state.aiModeTriggered = true;
-      sendLiveTelemetry('SWITCHING_TO_AI_MODE_VIA_URL_REDIRECT');
+      sendLiveTelemetry('REDIRECTED_TO_AI_MODE_URL');
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set('udm', '50');
       window.location.href = newUrl.toString();
@@ -92,22 +92,6 @@
     }
 
     return false;
-  }
-
-  function checkImmediateGenerateButton() {
-    const genButtons = [...document.querySelectorAll('button, [role="button"]')].filter(b => {
-      const t = (b.innerText || b.getAttribute('aria-label') || '').trim().toLowerCase();
-      return t === 'generate' || t.startsWith('get an ai overview');
-    });
-    for (const btn of genButtons) {
-      if (!btn.__satoriGenClicked) {
-        btn.__satoriGenClicked = true;
-        try {
-          btn.click();
-          sendLiveTelemetry('GOOGLE_GENERATE_BUTTON_CLICKED');
-        } catch (_e) {}
-      }
-    }
   }
 
   function looksLikeCode(str) {
@@ -335,8 +319,7 @@
       return tryTriggerAIMode();
     }
 
-    // Condition B: Google shows a "Generate" / "Get an AI overview" button
-    checkImmediateGenerateButton();
+    // Only trigger AI Mode on special occasions (when AI Overview is not available or missing code)
 
     // Condition C: For coding mode, if results loaded (#rso present, no loading spinners) but no code card exists
     if (state.mode === 'coding' && !reading?.code) {
