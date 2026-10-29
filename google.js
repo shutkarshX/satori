@@ -30,7 +30,7 @@
     .trim();
 
   const signature = (text) => `${text.length}:${text.slice(0, 100)}:${text.slice(-160)}`;
-  const unavailable = /AI\s*Overview\s*is\s*not\s*available|Can'?t\s*generate\s*an\s*AI\s*overview|No\s*AI\s*Overview\s*available/i;
+  const unavailable = /AI\s*Overview\s*(?:is\s*not|isn'?t)\s*available|Can'?t\s*generate\s*(?:an\s*)?AI\s*overview|No\s*AI\s*Overview\s*available/i;
 
   const isTransientPlaceholder = (val) => {
     const s = String(val || '').replace(/^AI\s*Overview\s*/i, '').trim();
@@ -324,18 +324,39 @@
     } catch (_error) {}
   };
 
-  const inspect = () => {
-    if (!state.requestId) return;
+  function checkAndTriggerAIModeIfAppropriate(reading) {
+    if (state.aiModeTriggered) return false;
+
+    const pageText = document.body ? (document.body.innerText || '') : '';
+
+    // Condition A: Google explicitly displays "An AI Overview is not available"
+    if (unavailable.test(pageText)) {
+      sendLiveTelemetry('AI_MODE_TRIGGERED_BY_UNAVAILABLE_BANNER', { preview: pageText.slice(0, 100) });
+      return tryTriggerAIMode();
+    }
+
+    // Condition B: Google shows a "Generate" / "Get an AI overview" button
     checkImmediateGenerateButton();
 
-    const elapsed = Date.now() - (state.startTime || Date.now());
-    if (state.mode === 'coding' && elapsed > 2800 && !state.aiModeTriggered) {
-      const tempReading = readOverview(state.mode);
-      if (!tempReading.code) {
-        tryTriggerAIMode();
+    // Condition C: For coding mode, if results loaded (#rso present, no loading spinners) but no code card exists
+    if (state.mode === 'coding' && !reading?.code) {
+      const hasFinishedSearch = Boolean(document.querySelector('#rso, #center_col, #search'));
+      const hasSpinners = Boolean(document.querySelector('[aria-busy="true"], [role="progressbar"], div[jsname="N760b"] [class*="loading" i]'));
+      const elapsed = Date.now() - (state.startTime || Date.now());
+
+      if ((hasFinishedSearch && !hasSpinners && !reading?.loading) || elapsed > 3000) {
+        sendLiveTelemetry('AI_MODE_TRIGGERED_NO_CODE_IN_OVERVIEW');
+        return tryTriggerAIMode();
       }
     }
+
+    return false;
+  }
+
+  const inspect = () => {
+    if (!state.requestId) return;
     const reading = readOverview(state.mode);
+    checkAndTriggerAIModeIfAppropriate(reading);
     if (reading.loading) return; // Still actively generating
 
     const selected = state.mode === 'coding' ? reading.code : reading.text;
