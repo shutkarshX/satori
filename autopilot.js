@@ -7,7 +7,7 @@
 //                   OR Reading (deep-scroll + Mark as Read toggle)
 //                   OR Quizzes (smart option selection + auto-submit)
 // 4. UNLOCK/SYNC -> If Next is locked on timer, sync time-spent to unlock
-// 5. ADVANCE     -> Next button OR Fixed Accordion TOC Module Jump
+// 5. ADVANCE     -> Deep-click Next button (Main World + DOM + jQuery) OR TOC Jump
 // -------------------------------------------------------------------------
 
 (() => {
@@ -30,7 +30,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Floating On-Screen Status Widget (Positioned at Top-Right so it NEVER covers Next button)
+  // Floating On-Screen Status Widget (Top-Right, Never Obstructs Controls)
   // -------------------------------------------------------------------------
   const widget = {
     root: null,
@@ -133,18 +133,128 @@
   }
 
   // -------------------------------------------------------------------------
-  // Synthetic Click Dispatcher
+  // Synthetic Mouse & Click Dispatcher (Content Script Level)
   // -------------------------------------------------------------------------
   function triggerClick(el) {
     if (!el) return false;
-    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(name => {
-      try {
-        el.dispatchEvent(new MouseEvent(name, { bubbles: true, cancelable: true, view: window }));
-      } catch (_e) {}
-    });
-    if (typeof el.click === 'function') {
-      try { el.click(); } catch (_e) {}
-    }
+    try {
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const opts = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        detail: 1,
+        screenX: x,
+        screenY: y,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 1
+      };
+
+      ['pointerover', 'mouseover', 'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(type => {
+        try {
+          el.dispatchEvent(new MouseEvent(type, opts));
+        } catch (_e) {}
+      });
+
+      if (typeof el.click === 'function') {
+        el.click();
+      }
+    } catch (_err) {}
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Deep Click Execution (Bypasses Content Script Isolation & Triggers Main World)
+  // -------------------------------------------------------------------------
+  function executeDeepClick(element) {
+    if (!element) return false;
+
+    // 1. Mark target element
+    const marker = 'satori_target_' + Math.floor(Math.random() * 1000000);
+    element.setAttribute('data-satori-target', marker);
+
+    // 2. Dispatch synthetic DOM events in content script
+    triggerClick(element);
+    if (element.parentElement) triggerClick(element.parentElement);
+    element.querySelectorAll('a, button, span').forEach(child => triggerClick(child));
+
+    // 3. Inject execution into the webpage's MAIN context
+    // This executes inline onclick, javascript: hrefs, and jQuery events that Chrome blocks from isolated worlds
+    const code = `
+      (() => {
+        try {
+          const el = document.querySelector('[data-satori-target="${marker}"]');
+          if (el) {
+            el.removeAttribute('data-satori-target');
+
+            const targets = [el, ...el.querySelectorAll('a, button, span, div')];
+            for (const t of targets) {
+              // Execute javascript: URL href
+              if (t.href && t.href.toLowerCase().startsWith('javascript:')) {
+                try {
+                  const rawCode = decodeURIComponent(t.href.replace(/^javascript:/i, ''));
+                  new Function(rawCode).call(t);
+                } catch (_e) {}
+              }
+              // Execute onclick attribute
+              if (t.hasAttribute && t.hasAttribute('onclick')) {
+                try {
+                  new Function(t.getAttribute('onclick')).call(t);
+                } catch (_e) {}
+              }
+              // Execute onclick function property
+              if (typeof t.onclick === 'function') {
+                try { t.onclick(); } catch (_e) {}
+              }
+            }
+
+            // Trigger jQuery events if page uses jQuery
+            const jq = window.jQuery || window.$;
+            if (jq) {
+              try {
+                jq(el).trigger('click');
+                jq(el).find('a, button, span').trigger('click');
+                const parentContainer = jq(el).closest('#next_container, #next_container1, .next_container, .next_container1, a, button');
+                if (parentContainer.length) {
+                  parentContainer.trigger('click');
+                  parentContainer.find('a').trigger('click');
+                }
+              } catch (_jqErr) {}
+            }
+
+            // Native click
+            const clickableChild = el.querySelector('a, button') || el;
+            try {
+              clickableChild.focus();
+              clickableChild.click();
+            } catch (_cErr) {}
+          }
+
+          // Fallback: LMS player global next functions
+          if (typeof next_node === 'function') { next_node(); }
+          else if (typeof next_content === 'function') { next_content(); }
+          else if (typeof getNextNode === 'function') { getNextNode(); }
+          else if (typeof goToNextNode === 'function') { goToNextNode(); }
+          else if (typeof loadNextContent === 'function') { loadNextContent(); }
+          else if (typeof onNextClick === 'function') { onNextClick(); }
+          else if (window.player && typeof window.player.next === 'function') { window.player.next(); }
+        } catch (err) {
+          console.warn('[Satori Main World Next Error]', err);
+        }
+      })();
+    `;
+
+    try {
+      const script = document.createElement('script');
+      script.textContent = code;
+      (document.head || document.documentElement).appendChild(script);
+      script.remove();
+    } catch (_err) {}
+
     return true;
   }
 
@@ -260,7 +370,7 @@
       const text = (btn.innerText || btn.textContent || '').trim();
       if (/^(Complete\s*(Now|Later)|Skip(\s*Intro)?|Later|Remind\s*me\s*later|Resume(\s*course)?|Got\s*it|Close)$/i.test(text)) {
         fspLog('MODAL', `Dismissing "${text}" dialog...`);
-        triggerClick(btn);
+        executeDeepClick(btn);
         await sleep(350);
       }
     }
@@ -345,7 +455,6 @@
     updateWidgetStatus('Verifying reading slide completion...', true);
     fspLog('READING', 'Processing reading slide...');
 
-    // 1. Scroll window and containers
     try {
       window.scrollBy({ top: document.body.scrollHeight / 2, behavior: 'smooth' });
       await sleep(250);
@@ -361,10 +470,8 @@
     });
     await sleep(350);
 
-    // 2. Search for Mark as Read toggle or completion pill
     const allElements = [...document.querySelectorAll('body *:not(#satori-autopilot-floating-widget):not(#satori-autopilot-floating-widget *)')];
 
-    // Check if already "Yes" (Green)
     const isAlreadyYes = allElements.some(el => 
       el.children.length === 0 && (el.innerText?.trim() === 'Yes' || /Marked as Read\s*:?\s*Yes/i.test(el.innerText || ''))
     );
@@ -373,7 +480,6 @@
       return true;
     }
 
-    // Look for orange "No" toggle or "Mark as Read" buttons
     const noPill = allElements.find(el => 
       el.children.length === 0 && (el.innerText?.trim() === 'No' || /Mark as Read\s*:?\s*No/i.test(el.innerText || ''))
     );
@@ -387,8 +493,8 @@
     if (targetControl) {
       fspLog('READING', 'Clicking Mark as Read control...');
       const toggleWrapper = targetControl.closest('span, div, label, a, button, .toggle, .switch') || targetControl;
-      triggerClick(toggleWrapper);
-      triggerClick(targetControl);
+      executeDeepClick(toggleWrapper);
+      executeDeepClick(targetControl);
 
       for (let i = 0; i < 4; i++) {
         await sleep(400);
@@ -427,7 +533,7 @@
           fspLog('QUIZ', `Selecting option for question group...`);
           const target = groupChoices[0];
           target.checked = true;
-          triggerClick(target);
+          executeDeepClick(target);
           target.dispatchEvent(new Event('change', { bubbles: true }));
           await sleep(200);
         }
@@ -439,7 +545,7 @@
 
       if (submitBtn) {
         fspLog('QUIZ', 'Clicking quiz submit button...');
-        triggerClick(submitBtn);
+        executeDeepClick(submitBtn);
         await sleep(600);
       }
 
@@ -447,7 +553,7 @@
         /^(continue|next question|next)$/i.test((b.innerText || b.textContent || '').trim())
       );
       if (continueBtn) {
-        triggerClick(continueBtn);
+        executeDeepClick(continueBtn);
         await sleep(400);
       }
     }
@@ -459,8 +565,7 @@
   async function phaseAdvanceNext() {
     fspLog('NEXT_NODE', 'Attempting forward slide navigation...');
 
-    // Strategy 1: Find any explicit Next Node button / link across the page
-    // Covers #next_container, .next_container, and any button/link with text "Next Node"
+    // Strategy 1: Find Next Node button elements
     const nextCandidates = [
       ...document.querySelectorAll('#next_container, #next_container1, .next_container, .next_container1, [id*="next_node" i], [class*="next_node" i]'),
       ...document.querySelectorAll('a, button, [role="button"], span.btn, div.btn')
@@ -493,22 +598,30 @@
           }
         }
 
-        // Find the most specific clickable target (<a>, <button>, or element itself)
+        // Target the element and any inner clickable tag
         const clickable = el.matches('a, button, [role="button"]') ? el :
-                          (el.querySelector('a, button, [role="button"], span') || el);
+                          (el.querySelector('a, button, [role="button"]') || el);
 
         if (!clickable.classList.contains('btn_disable') && !clickable.disabled) {
-          fspLog('NEXT_NODE', 'Found active Next Node button. Clicking:', clickable);
-          updateWidgetStatus('⚡ Clicking Next Node button...', true);
-          triggerClick(clickable);
-          if (clickable !== el) triggerClick(el);
+          fspLog('NEXT_NODE', 'Triggering Deep Click on Next Node:', clickable);
+          updateWidgetStatus('⚡ Advancing to next node...', true);
+
+          // Deep click targets both content script and page's main JS context
+          executeDeepClick(clickable);
+          if (clickable !== el) executeDeepClick(el);
+
+          // Also trigger parent container directly if present
+          const container = el.closest('#next_container, #next_container1, .next_container, .next_container1');
+          if (container && container !== el && container !== clickable) {
+            executeDeepClick(container);
+          }
+
           return true;
         }
       }
     }
 
     // Strategy 2: Table of Contents (TOC) Forward Jump
-    // Automatically finds the active item in the sidebar TOC and jumps to the next item!
     const tocItems = [...document.querySelectorAll(
       '.toc_list li, .tree_node, .content-list-item, [id*="page_unit_toc_"], [class*="toc" i] li, [id*="toc" i] li'
     )].filter(el => {
@@ -536,12 +649,12 @@
           const nextItem = tocItems[j];
           if (nextItem.id && nextItem.id === lastNavigatedId) continue;
 
-          // If parent accordion/module is collapsed, expand it!
+          // If parent accordion/module is collapsed, expand it
           const parentAccordion = nextItem.closest('.panel-collapse, .collapse, [class*="accordion"]');
           if (parentAccordion && (parentAccordion.classList.contains('collapse') && !parentAccordion.classList.contains('in') && !parentAccordion.classList.contains('show'))) {
             const toggle = parentAccordion.parentElement?.querySelector('[data-toggle="collapse"], .accordion-toggle, .module-title');
             if (toggle) {
-              triggerClick(toggle);
+              executeDeepClick(toggle);
               await sleep(300);
             }
           }
@@ -551,8 +664,8 @@
           const label = (clickable.innerText || nextItem.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 28);
           fspLog('NEXT_NODE', `TOC Jump to item (${j + 1}/${tocItems.length}): ${label}`);
           updateWidgetStatus(`⚡ Jumping to: ${label}...`, true);
-          triggerClick(clickable);
-          triggerClick(nextItem);
+          executeDeepClick(clickable);
+          executeDeepClick(nextItem);
           return true;
         }
       }
