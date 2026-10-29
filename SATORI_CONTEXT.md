@@ -1,0 +1,214 @@
+# Satori Project Context & Working Log
+
+> **Purpose:** This file is the persistent handoff/context document for ongoing Satori work. Read it at the start of a future session before inspecting or editing code. Append decisions, findings, tests, and commit references as work progresses.
+>
+> **Important limitation:** This is a structured record of the project discussions and decisions captured so far, not a literal verbatim export of every ChatGPT message. Keep it updated after each meaningful work session so future work can resume without relying on chat history.
+
+Last updated: 2026-10-29  
+Repository: `shutkarshX/satori`  
+Integration branch selected by user: `g`
+
+---
+
+## 1. Current objective
+
+We want to bring the strongest parts of the existing Satori branches together into a best version, without blindly overwriting working behavior or reintroducing regressions.
+
+**Immediate priority: course-completion automation.**
+
+The user clarified that by “automation” they mean the course-completion workflow (the course/lesson progression automation), **not merely** the question → AI provider → answer capture → assignment editor workflow.
+
+The user’s current assessment is that the course-completion functionality in **`say_hello` worked at a mid-level**. Treat that as the user's recollection/assessment, not yet as a verified code or runtime conclusion. The first technical task is to inspect that branch’s course-completion-related code and determine exactly what it does, what works, where it stops, and what its dependencies are.
+
+### Intended approach
+
+1. Preserve the existing state of `g`.
+2. Inspect the course-completion implementation in `say_hello` first.
+3. Trace the actual control flow and all related scripts/listeners/manifest permissions.
+4. Compare with the corresponding code in the other branches only where useful.
+5. Port features selectively into `g`; do not replace whole files or merge whole branches blindly.
+6. Check syntax, internal message names, selectors, permissions, state transitions, retries/timeouts, and interactions with existing provider/video/audio behavior.
+7. Document every change, why it is needed, what files changed, and what was actually tested.
+8. Do not claim live Chrome testing unless it was performed.
+
+No course-completion feature has been merged or modified as part of the discussions recorded here.
+
+---
+
+## 2. Branches in the repository
+
+Branches seen in GitHub branch search:
+
+- `main`
+- `anti-satori`
+- `gpt-satori`
+- `say_hello`
+- `g`
+
+The user chose the existing `g` branch as the integration branch. It already existed when checked; it was **not created in this session**. The user explicitly approved using it.
+
+### High-level branch comparison discussed so far
+
+| Branch | Known focus / visible capabilities | Cautions noted |
+|---|---|---|
+| `main` | Older extension foundation: question extraction, Google search, Gemini/ChatGPT provider prompts, response capture, assignment answer/code typing, MCQ option selection. | Older provider/request flow; some message paths appear mismatched; less centralized lifecycle management. No dedicated `autopilot.js` or `api_completer.js` was seen in its 11-file tree. |
+| `anti-satori` | Unified provider request lifecycle; Google AI Overview watcher with explicit polling fallback; Gemini/ChatGPT request handling; response validation and auto-fill. | MCQ selection may be aggressive; timeout messaging/configuration and provider-tab tracking looked inconsistent. No `autopilot.js` or `api_completer.js` in its 11-file tree. |
+| `gpt-satori` | Unified lifecycle, keyboard shortcuts, request cancellation/alarms, response validation, status widget, Google/Gemini/ChatGPT support. ChatGPT uses a separate background-window strategy. | Google watcher initialization likely has a new-tab ID issue; separate-window behavior should be checked carefully. No `autopilot.js` or `api_completer.js` in its 11-file tree. |
+| `say_hello` | Broadest visible feature set from the reviewed trees: provider automation, Google watcher plus polling fallback, richer question extraction, editor support including Monaco/Ace/CodeMirror, keyboard shortcuts, and the additional `autopilot.js` and `api_completer.js` scripts. | Course-completion implementation needs focused inspection. MCQ clicking can dispatch multiple events; timeout configuration looked inconsistent. Presence of helper scripts alone does not prove all features work. |
+| `g` | Chosen integration branch. Its existing contents must be preserved and inspected before changes. | Do not assume it is empty, identical to a particular branch, or safe to overwrite. Its exact starting state must be checked before porting features. |
+
+**Important:** The table is a summary of source review and discussion, not a live Chrome compatibility report. Feature presence does not equal proven runtime reliability.
+
+---
+
+## 3. Course-completion automation: next investigation
+
+The phrase “course completion thing” refers to the automation that progresses through course content/activities, rather than just helping with a single assignment question.
+
+The first target for inspection is:
+
+- Branch: `say_hello`
+- Files known to be unique to that branch's tree: `autopilot.js`, `api_completer.js`
+- Also inspect the branch's `manifest.json`, `background.js`, `content.js`, and any scripts they load or message. Do not inspect the two helper files in isolation.
+
+### Required trace for each course-completion path
+
+Record the concrete sequence:
+
+1. **Entry/trigger:** What event starts the automation (button, keyboard shortcut, message, page load, timer, etc.)?
+2. **Eligibility checks:** Which hostnames, page types, DOM elements, user states, or settings must be present?
+3. **State:** What variables/storage values track progress, current activity, or completion?
+4. **Actions:** Which buttons/links/players/forms are interacted with, and how?
+5. **Navigation:** Does it move between lessons, activities, pages, or tabs? How is the next destination found?
+6. **Waiting:** What observers, intervals, delays, or readiness checks are used?
+7. **Branching:** Which if/else conditions determine what happens next?
+8. **Retries/timeouts:** How many retries, at what interval, and what happens on failure?
+9. **Completion detection:** What exact signal indicates a lesson/course/activity is complete?
+10. **Stopping conditions:** What stops the loop, and what happens if the expected element is absent?
+11. **Failure cases:** Login/session expiry, unsupported course pages, video/player not ready, network delay, modal overlays, missing buttons, duplicate listeners, and navigation races.
+12. **Dependencies:** Which scripts, permissions, selectors, APIs, message types, and global objects does it rely on?
+13. **Side effects/regression risk:** Any interactions with video playback/audio, tab focus, other automation, provider requests, or existing event listeners.
+
+For every conclusion, separate:
+- **Confirmed from source**
+- **Likely issue inferred from source**
+- **Verified at runtime** (only when actually tested)
+
+Do not call the course automation “working” just because a script exists. Establish the actual code path and evidence.
+
+---
+
+## 4. General extension workflow (provider/assignment automation)
+
+This is a separate feature from course completion.
+
+The provider workflow in the branches generally involves some combination of:
+
+1. Extract question text from the current assignment page (or selected text).
+2. Determine MCQ versus coding mode.
+3. Construct a prompt/query for Google, Gemini, or ChatGPT.
+4. Open or reuse a provider tab and send the request.
+5. Observe/poll for the new response.
+6. Capture text or code.
+7. Validate/format the result.
+8. Store/display the result and status.
+9. Select an MCQ option or type code into the assignment editor.
+
+The README on `g` says the extension reads selectable question text, opens a Google Search query without an API, attempts to capture Google AI Overview, and can type reviewed text into the assignment editor when paste is blocked. It states that it does **not** submit answers. It also lists caveats about AI Overview availability, long coding assignments, page layout, unsupported rich editors/iframes, image OCR, Google login, and CAPTCHA.
+
+Do not confuse this provider workflow with course-completion automation.
+
+---
+
+## 5. Previously noted implementation details and potential risks
+
+These are leads from earlier source review. Re-open the actual current file and verify before editing or making line-specific claims.
+
+### `main`
+- MV3 extension; manifest version noted as `0.3.0`.
+- Files reviewed: `background.js`, `chatgpt.js`, `content.js`, `gemini.js`, `google.js`, popup files, `manifest.json`, `README.md`, `.gitignore`.
+- Main popup offers MCQ/Coding, provider choice, question extraction, provider search/request, diagnostics, latest response, reviewed answer/code and a manual type-into-editor action.
+- `google.js` in this branch was a minimal PING listener; Google AI Overview extraction was handled by code injected from the background.
+- Potential issues previously noted: a ChatGPT submit message path in background did not appear to have a matching handler in `chatgpt.js`; `content.js` could be injected repeatedly without a singleton guard; MCQ matching can be broad.
+- These are potential issues to re-check, not instructions to immediately fix them.
+
+### `gpt-satori`
+- Manifest version noted as `1.0.0`; keyboard shortcuts: Alt+Shift+M (MCQ), Alt+Shift+C (coding), Alt+Shift+X (cancel).
+- Centralized request IDs, request metadata, validation, cancellation, alarms and status handling.
+- ChatGPT background-window approach is intended to mitigate inactive-tab freezing.
+- Potential Google watcher bug previously identified: when a new Google tab is created, the code may compare its updated tab ID to a `targetTabId` that remains null. Confirm the current exact code before relying on this.
+- A tab-removed cancellation path checked `providerTabId`, but the active request metadata may not include that field.
+- ChatGPT content script sets a singleton property but may not early-return if already loaded.
+- MCQ option selection is more conservative than the `say_hello` variant in some cases.
+- The user has worked on this branch before and was especially concerned about avoiding regressions.
+
+### `anti-satori`
+- Unified provider lifecycle and Google polling fallback.
+- Same-window reusable provider tabs.
+- Earlier source review noticed a five-minute alarm but status text saying two minutes, and a tab-removed handler relying on `providerTabId` that might not be set.
+- MCQ click simulation may fire multiple events.
+- Re-check source before treating any of these as confirmed current defects.
+
+### `say_hello`
+- Includes `autopilot.js` and `api_completer.js`, which are the first files to inspect for the course-completion feature.
+- Background uses Google AI Overview watcher plus explicit polling fallback (as previously reviewed).
+- Gemini send attempts and ChatGPT response polling are implemented.
+- Content script includes cleaner extraction of problem text and direct editor APIs for Monaco/Ace/CodeMirror.
+- MCQ selection logic is aggressive: it may choose by answer-letter index and dispatch several pointer/mouse/click events. This is a regression risk if ported wholesale.
+- Direct page shortcut handling exists.
+- Do not assume all `say_hello` behavior is better; extract specific working features and port selectively.
+
+---
+
+## 6. User preferences and collaboration rules
+
+These rules are important for all future Satori work:
+
+- **Inspect the actual code.** Do not guess based on branch names or file names.
+- **Do not edit until the user has asked for the change.** The user has now authorized setting up `g` as the integration branch and is planning to work on course-completion automation first; this is not blanket permission to overwrite or merge all files blindly.
+- Make small, targeted edits; preserve unrelated working behavior.
+- The user previously reported a bad commit that caused the extension to stop repeatedly and broke video/audio behavior. Treat playback, audio, tab focus, timers, event listeners, and navigation as sensitive regression areas.
+- Do not remove or rewrite working features just to simplify code.
+- Explain the exact reason for each proposed change and which files it affects.
+- Keep branch boundaries clear. Do not tell the user to switch away from `g` without a clear reason and explicit discussion.
+- Do not say a commit or file edit succeeded unless the GitHub tool confirms it.
+- Do not claim live Chrome/browser testing unless actually performed.
+- After any meaningful edit, report:
+  - files changed
+  - behavior changed
+  - why
+  - checks performed
+  - checks not performed
+  - commit SHA/reference
+  - next action
+- If code is changed on `g`, do not give the user the branch-specific pull command for `gpt-satori`. That command is only relevant if the edit was on `gpt-satori`.
+- User prefers direct, concise, informal communication and dislikes speculative fixes or repetitive manual testing.
+
+---
+
+## 7. GitHub and local workflow context
+
+- Repository: `https://github.com/shutkarshX/satori`
+- Local Windows path mentioned previously: `D:\ME\Project\ansu\satori`
+- Existing branches observed: `main`, `anti-satori`, `gpt-satori`, `say_hello`, `g`.
+- User selected existing branch `g` for integration.
+- The README on `g` was fetched during this session. Its blob SHA at that time was `6ce635c077583928d77ec33d0455ff0e60277db2`.
+- No files were changed or merged during the branch comparison conversation.
+- Before the first code change on `g`, inspect the current `g` branch state and target files; do not assume the above SHA or file contents remain unchanged.
+
+---
+
+## 8. Running work log
+
+### 2026-10-29 — Branch comparison and integration planning
+- User asked which branch can do what.
+- Clarified that `main` does have provider/assignment automation; the earlier summary had incorrectly made this sound absent.
+- User clarified “automation” meant course-completion automation.
+- Identified `say_hello` as the branch with the extra `autopilot.js` and `api_completer.js` files; user recalls its course-completion behavior worked at a mid level.
+- User asked to combine the best features from branches.
+- User selected the already-existing `g` branch as the integration branch.
+- No code was merged, modified, or committed during those exchanges.
+- Next: inspect `say_hello/autopilot.js`, `say_hello/api_completer.js`, and their manifest/background/content integrations; produce a source-grounded flow map before changing anything.
+
+### Append future entries here
+For each session, add the date, user goal, source files inspected, exact findings, decisions, edits, checks, known risks, commit SHA, and next step. Keep this document useful as a handoff, not just a list of vague summaries.
