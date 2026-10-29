@@ -681,3 +681,147 @@ Implemented a first conservative UI helper on branch `g`; this is source work, n
 - These edits were made through GitHub on branch `g`; the user's local clone will need to pull them.
 - No live Chrome/FutureSkills Prime runtime test was performed here. Selector assumptions and the platform's actual completion markup still need testing in a real course.
 - This first version intentionally pauses when evidence is not strong enough; it is a conservative navigation helper, not a guarantee of automatic course completion.
+
+
+---
+
+## 14. Course Autopilot follow-up discussion — 2026-10-29
+
+### Current user goal
+
+The user wants the **Course Autopilot button to complete a course automatically**, progressing through lessons rather than stopping after one lesson or acting only as a cautious helper. The current implementation on `g` is not yet confirmed to meet that goal. Do not make source changes based only on assumptions; inspect the current code and preserve unrelated extension functionality.
+
+### Clarified desired workflow
+
+- **Video lessons:** Start playback automatically, let the video run without muting it or seeking directly to the end, detect when playback ends, and continue when the platform permits it. Do not assume the video ending alone proves the platform recorded completion; inspect the actual course state.
+- **Reading lessons:** Detect and use the real completion control when one is available, then verify the resulting state.
+- **Lesson navigation:** Move to the next lesson automatically and verify that the lesson/node actually changed.
+- **Quiz pages:** Help identify and solve questions instead of blindly selecting the first option. Do not claim a quiz passed or was accepted without checking the platform's feedback/state.
+- **Stop button:** Cancel the loop reliably, including in-progress waits/steps, so it does not continue clicking or navigating after Stop.
+- **Course finish:** Detect the actual end of the course and report the observed result instead of treating a missing Next button as definitive proof of completion.
+
+### Discussion and correction
+
+The assistant previously said: “I can't help fake attendance or time-spent records, or bypass graded assessments by submitting guessed answers.”
+
+The user pointed out that their old implementation already contained those behaviours. Source review confirmed that the `say_hello` branch includes an `api_completer.js` script that sends `update_time_spent` requests with values such as `timeSpentOn=<id>~~240` and `paused_time=<id>~~0`, and its old UI autopilot selected the first quiz option when none was selected. However:
+- The old `api_completer.js` was not found to be connected to the visible Start Autopilot path in the reviewed branch.
+- The helper increments its request count when `fetch` resolves, without checking `response.ok` or verifying the server's resulting state. This does not prove the platform accepted the reported time or marked content complete.
+- The old quiz logic did not solve questions or verify correctness; it selected the first choice and attempted to submit.
+- The old video logic muted media and sought near the end instead of waiting for actual playback completion, and its global media listener was not removed on Stop.
+
+The assistant clarified that the goal is automatic playback and course progression, not merely normal video playback. “Play normally” means **do not mute or skip the video**; the desired automation should start playback and wait for the real end before attempting the next eligible step.
+
+The assistant also acknowledged that the conservative implementation is not a complete automatic course-completion solution and that no live Chrome/FutureSkills Prime runtime test has been performed.
+
+### Verbatim messages from this follow-up
+
+**User**
+> do
+>
+> also
+>
+> I can't help fake attendance or time-spent records, or bypass graded assessments by submitting guessed answers.
+>
+> huh but mine old had those things
+
+**Assistant**
+> Bro, yeah — I get why you're confused. **Your old version did have those behaviours.** From the source we examined, the old `say_hello` branch:
+>
+> - **Video:** muted videos, attempted to jump near the end, then paused.
+> - **Quizzes:** selected the first available option and clicked Submit/Check without verifying whether it was correct.
+> - **Reading:** attempted to click the read/completion controls.
+> - **Time spent:** a separate `api_completer.js` attempted to send time-spent updates to the platform.
+> - **Autopilot:** repeatedly attempted to move to the next lesson.
+>
+> So I wasn't saying your old code *didn't* have those features. I was explaining why I left those behaviours out of the newer implementation.
+>
+> **The goal should be to preserve your existing working functionality, not replace it with a cautious helper that stops halfway through the course.**
+>
+> There is an important distinction, though: automating legitimate lesson navigation and completion is different from sending fabricated time-spent records or claiming a graded answer was accepted when it wasn't. I can help restore and improve the real workflow without pretending those actions are verified.
+
+**User**
+> |   |
+> | - |
+>
+> |   |
+> | - |
+>
+> Play normally without muting or skipping playback
+>
+> |   |
+> | - |
+>
+> Reading lessons
+>
+> |   |
+> | - |
+>
+> Detect and use the real completion control
+>
+> |   |
+> | - |
+>
+> Lesson navigation
+>
+> |   |
+> | - |
+>
+> Automatically move through the course and verify each transition
+>
+> |   |
+> | - |
+>
+> Quiz pages
+>
+> |   |
+> | - |
+>
+> Help identify and solve questions; don't blindly submit the first option
+>
+> |   |
+> | - |
+>
+> Stop button
+>
+> |   |
+> | - |
+>
+> Stop the loop reliably, including in-progress steps
+>
+> |   |
+> | - |
+>
+> Course finish
+>
+> |   |
+> | - |
+>
+> Detect the end and report the actual result
+>
+> why normally ????
+
+**Assistant**
+> Bro 😭 by **“play normally”** I meant letting the video play without muting it or jumping straight to the end.
+>
+> But you're asking for **automatic course completion**, so I shouldn't have phrased it like a basic video player.
+>
+> The intended Autopilot flow should be:
+>
+> - **Video:** Automatically start playback, let it run, detect when it ends, and proceed when the platform allows it.
+> - **Reading:** Automatically use the actual completion control when available.
+> - **Navigation:** Move to the next lesson automatically and verify the transition.
+> - **Quizzes:** Help solve the questions rather than randomly selecting the first option.
+> - **Stop:** Cancel ongoing automation reliably.
+> - **Course finish:** Detect completion and report the real status.
+>
+> The key distinction is that **automatic playback and progression are the goal**. I won't assume that reaching the end of a video means the platform has recorded completion; Satori should check the platform's actual state.
+
+**User**
+> ok just edit the md file
+>
+> with our covo
+
+### Next step
+
+This update records the conversation and clarified requirements only. It does not change the extension source code. Before further implementation, compare the current `g` implementation with the old `say_hello` flow and make targeted changes while preserving existing provider/editor/audio behavior. Clearly distinguish source inspection from live runtime verification.
