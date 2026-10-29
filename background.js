@@ -315,8 +315,10 @@ function typeIntoMainWorldEditor(rawCodeText) {
     const aceNodes = [...document.querySelectorAll('.ace_editor')];
     for (const node of aceNodes) {
       if (node.env?.editor) {
-        node.env.editor.setValue(codeText, 1);
-        node.env.editor.clearSelection();
+        const ed = node.env.editor;
+        if (ed.session?.setValue) ed.session.setValue(codeText);
+        else ed.setValue(codeText, 1);
+        ed.clearSelection();
         return { ok: true, editor: 'ace' };
       }
       if (window.ace?.edit) {
@@ -353,11 +355,7 @@ function typeIntoMainWorldEditor(rawCodeText) {
     const monacoTextarea = document.querySelector('.monaco-editor textarea');
     if (monacoTextarea) {
       monacoTextarea.focus();
-      try {
-        const dt = new DataTransfer();
-        dt.setData('text/plain', codeText);
-        monacoTextarea.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
-      } catch (_e) {}
+      // Synthetic paste event removed to prevent anti-paste traps on test portals
       document.execCommand('selectAll', false, null);
       document.execCommand('insertText', false, codeText);
       return { ok: true, editor: 'monaco-textarea' };
@@ -384,11 +382,7 @@ function typeIntoMainWorldEditor(rawCodeText) {
       }
       if (el.tagName?.toLowerCase() === 'textarea' || el.tagName?.toLowerCase() === 'input') {
         el.focus();
-        try {
-          const dt = new DataTransfer();
-          dt.setData('text/plain', codeText);
-          el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
-        } catch (_e) {}
+        // Synthetic paste event removed to prevent anti-paste traps on test portals
         const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
         if (descriptor?.set) descriptor.set.call(el, codeText); else el.value = codeText;
@@ -574,9 +568,7 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
       }
 
       try {
-        if (attempts === 4 && mode === 'coding') {
-        chrome.tabs.sendMessage(tabId, { type: 'FORCE_AI_MODE' }).catch(() => {});
-      }
+        // Let Google overview generate naturally; AI Mode is only triggered if Google explicitly displays the unavailable banner
 
       chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode }, (res) => {
           if (chrome.runtime.lastError || !res?.ok || res.loading) return;

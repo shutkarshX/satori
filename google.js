@@ -308,29 +308,16 @@
     } catch (_error) {}
   };
 
-  function checkAndTriggerAIModeIfAppropriate(reading) {
+  function checkAndTriggerAIModeIfAppropriate(_reading) {
     if (state.aiModeTriggered) return false;
 
     const pageText = document.body ? (document.body.innerText || '') : '';
 
-    // Condition A: Google explicitly displays "An AI Overview is not available"
+    // ONLY trigger AI Mode on the special occasion:
+    // When Google explicitly displays "An AI Overview is not available for this search"
     if (unavailable.test(pageText)) {
-      sendLiveTelemetry('AI_MODE_TRIGGERED_BY_UNAVAILABLE_BANNER', { preview: pageText.slice(0, 100) });
+      sendLiveTelemetry('SPECIAL_OCCASION_AI_OVERVIEW_NOT_AVAILABLE', { preview: pageText.slice(0, 100) });
       return tryTriggerAIMode();
-    }
-
-    // Only trigger AI Mode on special occasions (when AI Overview is not available or missing code)
-
-    // Condition C: For coding mode, if results loaded (#rso present, no loading spinners) but no code card exists
-    if (state.mode === 'coding' && !reading?.code) {
-      const hasFinishedSearch = Boolean(document.querySelector('#rso, #center_col, #search'));
-      const hasSpinners = Boolean(document.querySelector('[aria-busy="true"], [role="progressbar"], div[jsname="N760b"] [class*="loading" i]'));
-      const elapsed = Date.now() - (state.startTime || Date.now());
-
-      if ((hasFinishedSearch && !hasSpinners && !reading?.loading) || elapsed > 3000) {
-        sendLiveTelemetry('AI_MODE_TRIGGERED_NO_CODE_IN_OVERVIEW');
-        return tryTriggerAIMode();
-      }
     }
 
     return false;

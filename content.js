@@ -387,11 +387,7 @@
         // B. Textarea / Input (Monaco, Ace, CodeMirror, standard forms)
         if (target.tagName?.toLowerCase() === 'textarea' || target.tagName?.toLowerCase() === 'input') {
           // 1. Dispatch synthetic paste event (supported by Monaco, Ace, and CodeMirror input handlers)
-          try {
-            const dt = new DataTransfer();
-            dt.setData('text/plain', text);
-            target.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
-          } catch (_e) {}
+          // Synthetic paste event removed to prevent anti-paste traps on test portals
 
           // 2. Set native value & trigger input/change
           const existing = append ? target.value : '';
