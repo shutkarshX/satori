@@ -40,6 +40,18 @@
     return false;
   };
 
+  function stripLeadingLanguageTag(code) {
+  if (!code || typeof code !== 'string') return '';
+  let s = code.trim();
+  // Strip leading single-word language identifiers (e.g. "c\n", "java\n", "cpp\n", "python\n")
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py|javascript|js|typescript|ts|c#|cs|golang|go|rust|rs|kotlin|swift|ruby|php)\s*\n+/i, '');
+  // Strip "Language: C\n"
+  s = s.replace(/^language:\s*(?:c|cpp|c\+\+|java|python|javascript|c#)\s*\n+/i, '');
+  // Strip leading language tag immediately preceding code keyword on same line
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
+  return s.trim();
+}
+
   function looksLikeCode(str) {
     if (!str || typeof str !== 'string') return false;
     const s = str.trim();
@@ -159,7 +171,7 @@
             .replace(/Copy code\s*$/i, '')
             .trim();
           if (codePart.length >= 30 && looksLikeCode(codePart) && !codePart.includes('window.sn=') && !codePart.includes('var(--')) {
-            codeCandidates.push(codePart);
+            codeCandidates.push(stripLeadingLanguageTag(codePart));
             break;
           }
         }
@@ -189,7 +201,7 @@
             .replace(/Copy code\s*$/i, '')
             .trim();
           if (rawCode.length >= 40 && looksLikeCode(rawCode) && !rawCode.includes('window.sn=') && !rawCode.includes('var(--')) {
-            codeCandidates.push(rawCode);
+            codeCandidates.push(stripLeadingLanguageTag(rawCode));
             break;
           }
         }
@@ -206,7 +218,7 @@
           .replace(/Copy code\s*$/i, '')
           .trim();
         if (rawCode.length >= 40 && looksLikeCode(rawCode) && !rawCode.includes('window.sn=') && !rawCode.includes('var(--')) {
-          codeCandidates.push(rawCode);
+          codeCandidates.push(stripLeadingLanguageTag(rawCode));
         }
       });
     }
@@ -223,7 +235,7 @@
     if (codeCandidates.length === 0 && text) {
       const extracted = extractCodeBlock(text);
       if (extracted && extracted.length >= 35 && looksLikeCode(extracted) && !extracted.includes('window.sn=') && !extracted.includes('var(--')) {
-        codeCandidates.push(extracted);
+        codeCandidates.push(stripLeadingLanguageTag(extracted));
       }
     }
 

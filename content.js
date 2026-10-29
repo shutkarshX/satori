@@ -339,7 +339,20 @@
     element.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function typeIntoEditor(text, append = false) {
+  function stripLeadingLanguageTag(code) {
+  if (!code || typeof code !== 'string') return '';
+  let s = code.trim();
+  // Strip leading single-word language identifiers (e.g. "c\n", "java\n", "cpp\n", "python\n")
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py|javascript|js|typescript|ts|c#|cs|golang|go|rust|rs|kotlin|swift|ruby|php)\s*\n+/i, '');
+  // Strip "Language: C\n"
+  s = s.replace(/^language:\s*(?:c|cpp|c\+\+|java|python|javascript|c#)\s*\n+/i, '');
+  // Strip leading language tag immediately preceding code keyword on same line
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
+  return s.trim();
+}
+
+  function typeIntoEditor(rawText, append = false) {
+    const text = stripLeadingLanguageTag(rawText);
     // 1. Gather all potential editor elements (focused, last clicked, or anywhere in DOM)
     const candidates = [
       lastEditable,
@@ -716,24 +729,7 @@
         });
       }
       if (message.type === 'COPY_AND_NOTIFY') {
-        try {
-          if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(message.text || '').catch(() => {});
-          }
-        } catch (_e) {}
-        renderStatus({
-          kind: 'ready',
-          text: `Code placed into ${message.editor || 'editor'} & copied to clipboard!`
-        });
-        sendResponse({ ok: true });
-        return true;
-      }
-      if (message.type === 'TYPE_INTO_EDITOR') {
-        try {
-          if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(message.text || '').catch(() => {});
-          }
-        } catch (_clipErr) {}
+        // Clipboard write removed to prevent domain permission prompts on test portals
         const typed = typeIntoEditor(message.text || '', Boolean(message.append));
         sendResponse({ ok: true, typed });
       }

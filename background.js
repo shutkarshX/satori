@@ -227,15 +227,28 @@ function validateProviderResult(provider, requestId, mode, payload, questionText
   const code = typeof payload === 'string'
     ? payload
     : (payload.code || (looksLikeCode(payload.text) ? extractCodeBlock(payload.text) : ''));
-  const isValid = looksLikeCode(code) && code.trim().length > 30;
+  const cleanCode = stripLeadingLanguageTag(code);
+  const isValid = looksLikeCode(cleanCode) && cleanCode.length > 30;
   return {
     provider,
     requestId,
     type: 'coding',
     valid: isValid,
-    code: code.trim(),
+    code: cleanCode,
     raw: typeof payload === 'object' ? (payload.text || payload.code) : code
   };
+}
+
+function stripLeadingLanguageTag(code) {
+  if (!code || typeof code !== 'string') return '';
+  let s = code.trim();
+  // Strip leading single-word language identifiers (e.g. "c\n", "java\n", "cpp\n", "python\n")
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py|javascript|js|typescript|ts|c#|cs|golang|go|rust|rs|kotlin|swift|ruby|php)\s*\n+/i, '');
+  // Strip "Language: C\n"
+  s = s.replace(/^language:\s*(?:c|cpp|c\+\+|java|python|javascript|c#)\s*\n+/i, '');
+  // Strip leading language tag immediately preceding code keyword on same line
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
+  return s.trim();
 }
 
 function looksLikeCode(str) {
@@ -272,7 +285,8 @@ function extractCodeBlock(text) {
 // -------------------------------------------------------------
 // Single Execution & Autofill Pipeline
 // -------------------------------------------------------------
-function typeIntoMainWorldEditor(codeText) {
+function typeIntoMainWorldEditor(rawCodeText) {
+  const codeText = stripLeadingLanguageTag(rawCodeText);
   // 1. Monaco Editor (Global window.monaco in MAIN world)
   try {
     if (window.monaco?.editor) {
