@@ -8,7 +8,8 @@
     "scripting",
     "storage",
     "tabs",
-    "alarms"
+    "alarms",
+    "clipboardRead"
   ],
   "host_permissions": [
     "https://www.google.com/*",

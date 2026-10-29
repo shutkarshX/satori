@@ -736,7 +736,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
 // -------------------------------------------------------------
 // Keyboard Shortcut Commands (Alt+Shift+M, Alt+Shift+C, Alt+Shift+X)
 // -------------------------------------------------------------
-async function executeShortcutCommand(command, senderTab = null) {
+async function executeShortcutCommand(command, senderTab = null, directCopiedText = '') {
   console.log('[Satori Background] Command executing:', command);
   addDiagnostic('shortcut-command', `Command executing: ${command}`);
   if (command === 'satori-cancel') {
@@ -760,57 +760,80 @@ async function executeShortcutCommand(command, senderTab = null) {
     return;
   }
 
-  // Extract question across top frame and all iframe frames
-  let page;
-  try {
-    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
-  } catch (_e) {}
+  let pageContent = (directCopiedText || '').trim();
+  let questionText = pageContent;
+  let structuredOptions = [];
 
-  if (!page?.ok || !page.fullText || page.fullText.trim().length < 20) {
+  // If shortcut was sent with copied text directly, use it immediately!
+  if (pageContent.length >= 20) {
+    addDiagnostic('shortcut-input', `Using copied text directly (${pageContent.length} chars)`);
+  } else {
+    // Extract question across top frame and all iframe frames
+    let page;
     try {
-      await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
-      const frameResults = await chrome.scripting.executeScript({
-        target: { tabId: assignmentTab.id, allFrames: true },
-        func: () => {
-          if (typeof extractQuestion === 'function') {
-            const full = extractFullPage();
-            const text = extractQuestion();
-            const opts = typeof extractStructuredMcq === 'function' ? extractStructuredMcq() : [];
-            return {
-              ok: true,
-              text,
-              fullText: full,
-              options: opts.map(o => ({ letter: o.letter, text: o.text }))
-            };
+      page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+    } catch (_e) {}
+
+    if (page?.copiedText && page.copiedText.trim().length >= 20) {
+      pageContent = page.copiedText.trim();
+      questionText = pageContent;
+      structuredOptions = page.options || [];
+      addDiagnostic('shortcut-input', `Using copied text from tab (${pageContent.length} chars)`);
+    } else if (page?.fullText && page.fullText.trim().length >= 20) {
+      pageContent = page.fullText;
+      questionText = page.text || page.fullText;
+      structuredOptions = page.options || [];
+    } else {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
+        const frameResults = await chrome.scripting.executeScript({
+          target: { tabId: assignmentTab.id, allFrames: true },
+          func: () => {
+            if (typeof extractQuestion === 'function') {
+              const full = extractFullPage();
+              const text = extractQuestion();
+              const opts = typeof extractStructuredMcq === 'function' ? extractStructuredMcq() : [];
+              return {
+                ok: true,
+                text,
+                fullText: full,
+                options: opts.map(o => ({ letter: o.letter, text: o.text }))
+              };
+            }
+            return null;
           }
-          return null;
+        });
+        const candidates = (frameResults || [])
+          .map(r => r.result)
+          .filter(r => r && r.ok && r.fullText && r.fullText.trim().length >= 20)
+          .sort((a, b) => b.fullText.length - a.fullText.length);
+        if (candidates.length > 0) {
+          page = candidates[0];
+          pageContent = page.fullText;
+          questionText = page.text || page.fullText;
+          structuredOptions = page.options || [];
         }
-      });
-      const candidates = (frameResults || [])
-        .map(r => r.result)
-        .filter(r => r && r.ok && r.fullText && r.fullText.trim().length >= 20)
-        .sort((a, b) => b.fullText.length - a.fullText.length);
-      if (candidates.length > 0) page = candidates[0];
-    } catch (injErr) {
-      console.error('[Satori Background] Multi-frame extraction error:', injErr);
+      } catch (injErr) {
+        console.error('[Satori Background] Multi-frame extraction error:', injErr);
+      }
     }
   }
 
-  if (!page?.ok || !page.fullText || page.fullText.trim().length < 10) {
+  if (!pageContent || pageContent.length < 10) {
     setStatus('Could not read enough page text to solve question.', 'error');
-    addDiagnostic('shortcut-error', 'Too little page text extracted from active tab.');
+    addDiagnostic('shortcut-error', 'Too little text found to solve.');
     return;
   }
 
   const stored = await chrome.storage.local.get(['satoriProvider']);
-  const provider = stored.satoriProvider || 'chatgpt';
+  const provider = stored.satoriProvider || 'google';
 
   await dispatchSatoriRequest({
     provider,
     mode,
-    pageContent: page.fullText,
-    questionText: page.text || page.fullText,
-    structuredOptions: page.options || [],
+    pageContent,
+    questionText: questionText || pageContent,
+    structuredOptions,
     assignmentTabId: assignmentTab.id,
     windowId: assignmentTab.windowId
   });
@@ -825,7 +848,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 // -------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'TRIGGER_SHORTCUT_DIRECT') {
-    executeShortcutCommand(message.command, _sender?.tab);
+    executeShortcutCommand(message.command, _sender?.tab, message.copiedText || '');
     sendResponse({ ok: true });
     return true;
   }

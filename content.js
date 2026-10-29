@@ -569,12 +569,20 @@
     return [];
   }
 
+  // Track user copy actions on the page
+  document.addEventListener('copy', () => {
+    try {
+      const sel = window.getSelection()?.toString().trim();
+      if (sel && sel.length > 10) window.__satoriLastCopiedText = sel;
+    } catch (_e) {}
+  }, true);
+
   // -------------------------------------------------------------
   // Content Script Direct Keyboard Shortcut Listener
   // Catches Alt+Shift+M (MCQ), Alt+Shift+C/S (Code), Alt+Shift+X (Cancel)
   // directly in the webpage DOM so browser shortcut conflicts never block it
   // -------------------------------------------------------------
-  window.addEventListener('keydown', (e) => {
+  window.addEventListener('keydown', async (e) => {
     if (e.altKey && e.shiftKey) {
       const code = e.code;
       const key = (e.key || '').toLowerCase();
@@ -587,7 +595,30 @@
         e.preventDefault();
         e.stopPropagation();
         console.log('[Satori Content] In-page shortcut detected:', cmd);
-        chrome.runtime.sendMessage({ type: 'TRIGGER_SHORTCUT_DIRECT', command: cmd });
+
+        // Prioritize immediately: current selection, last copied text, or clipboard text
+        let copiedText = '';
+        try {
+          const sel = window.getSelection()?.toString().trim();
+          if (sel && sel.length > 15) copiedText = sel;
+        } catch (_e) {}
+
+        if (!copiedText && window.__satoriLastCopiedText && window.__satoriLastCopiedText.length > 15) {
+          copiedText = window.__satoriLastCopiedText;
+        }
+
+        if (!copiedText) {
+          try {
+            const clip = await navigator.clipboard.readText();
+            if (clip && clip.trim().length > 15) copiedText = clip.trim();
+          } catch (_e) {}
+        }
+
+        chrome.runtime.sendMessage({
+          type: 'TRIGGER_SHORTCUT_DIRECT',
+          command: cmd,
+          copiedText: copiedText ? cleanProblemText(copiedText) : ''
+        });
       }
     }
   }, true);
@@ -595,11 +626,26 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       if (message.type === 'EXTRACT_QUESTION') {
+        let copiedText = '';
+        try {
+          const sel = window.getSelection()?.toString().trim();
+          if (sel && sel.length > 15) copiedText = sel;
+        } catch (_e) {}
+        if (!copiedText && window.__satoriLastCopiedText && window.__satoriLastCopiedText.length > 15) {
+          copiedText = window.__satoriLastCopiedText;
+        }
+
         const structuredOptions = extractStructuredMcq();
+        const extractedQ = extractQuestion();
+        const fullPage = extractFullPage();
+        const effectiveText = copiedText ? cleanProblemText(copiedText) : extractedQ;
+        const effectiveFull = copiedText ? cleanProblemText(copiedText) : fullPage;
+
         sendResponse({
           ok: true,
-          text: extractQuestion(),
-          fullText: extractFullPage(),
+          copiedText: copiedText ? cleanProblemText(copiedText) : '',
+          text: effectiveText,
+          fullText: effectiveFull,
           options: structuredOptions.map(o => ({ letter: o.letter, text: o.text })),
           title: document.title,
           url: location.href
