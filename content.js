@@ -749,6 +749,11 @@
           url: location.href
         });
       }
+      if (message.type === 'TYPE_INTO_EDITOR') {
+        const typed = typeIntoEditor(message.text || '', Boolean(message.append));
+        sendResponse({ ok: true, typed });
+        return true;
+      }
       if (message.type === 'COPY_AND_NOTIFY') {
         // Clipboard write removed to prevent domain permission prompts on test portals
         const typed = typeIntoEditor(message.text || '', Boolean(message.append));

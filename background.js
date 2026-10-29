@@ -285,14 +285,21 @@ function extractCodeBlock(text) {
 // -------------------------------------------------------------
 // Single Execution & Autofill Pipeline
 // -------------------------------------------------------------
-function typeIntoMainWorldEditor(rawCodeText) {
-  const codeText = stripLeadingLanguageTag(rawCodeText);
+function typeIntoMainWorldEditor(codeText) {
+  if (!codeText) return { ok: false, error: 'Empty code' };
+
+  // 100% self-contained language badge stripper (runs in MAIN world with no outer closures)
+  let cleanCode = String(codeText).trim();
+  cleanCode = cleanCode.replace(/^(?:c|cpp|c\+\+|java|python|py|javascript|js|typescript|ts|c#|cs|golang|go|rust|rs|kotlin|swift|ruby|php)\s*\n+/i, '');
+  cleanCode = cleanCode.replace(/^language:\s*(?:c|cpp|c\+\+|java|python|javascript|c#)\s*\n+/i, '');
+  cleanCode = cleanCode.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
+
   // 1. Monaco Editor (Global window.monaco in MAIN world)
   try {
     if (window.monaco?.editor) {
       const models = window.monaco.editor.getModels?.();
       if (models && models.length > 0) {
-        models[0].setValue(codeText);
+        models[0].setValue(cleanCode);
         return { ok: true, editor: 'monaco' };
       }
     }
@@ -301,11 +308,11 @@ function typeIntoMainWorldEditor(rawCodeText) {
   // 1b. Global editor instances (common in React / Vue / Examly portals)
   try {
     if (typeof window.editor?.setValue === 'function') {
-      window.editor.setValue(codeText);
+      window.editor.setValue(cleanCode);
       return { ok: true, editor: 'window.editor' };
     }
     if (typeof window.codeEditor?.setValue === 'function') {
-      window.codeEditor.setValue(codeText);
+      window.codeEditor.setValue(cleanCode);
       return { ok: true, editor: 'window.codeEditor' };
     }
   } catch (_e) {}
@@ -314,20 +321,18 @@ function typeIntoMainWorldEditor(rawCodeText) {
   try {
     const aceNodes = [...document.querySelectorAll('.ace_editor')];
     for (const node of aceNodes) {
-      if (node.env?.editor) {
-        const ed = node.env.editor;
-        if (ed.session?.setValue) ed.session.setValue(codeText);
-        else ed.setValue(codeText, 1);
-        ed.clearSelection();
-        return { ok: true, editor: 'ace' };
+      let ed = node.env?.editor;
+      if (!ed && window.ace?.edit) {
+        try { ed = window.ace.edit(node); } catch (_aceErr) {}
       }
-      if (window.ace?.edit) {
-        const ed = window.ace.edit(node);
-        if (ed) {
-          ed.setValue(codeText, 1);
-          ed.clearSelection();
-          return { ok: true, editor: 'ace' };
+      if (ed) {
+        if (ed.session?.setValue) {
+          ed.session.setValue(cleanCode);
+        } else if (typeof ed.setValue === 'function') {
+          ed.setValue(cleanCode, 1);
         }
+        try { ed.clearSelection(); } catch (_selErr) {}
+        return { ok: true, editor: 'ace' };
       }
     }
   } catch (_e) {}
@@ -337,7 +342,7 @@ function typeIntoMainWorldEditor(rawCodeText) {
     const cmNodes = [...document.querySelectorAll('.CodeMirror')];
     for (const node of cmNodes) {
       if (node.CodeMirror) {
-        node.CodeMirror.setValue(codeText);
+        node.CodeMirror.setValue(cleanCode);
         return { ok: true, editor: 'codemirror' };
       }
     }
@@ -345,19 +350,18 @@ function typeIntoMainWorldEditor(rawCodeText) {
     for (const node of cm6Nodes) {
       node.focus();
       document.execCommand('selectAll', false, null);
-      document.execCommand('insertText', false, codeText);
+      document.execCommand('insertText', false, cleanCode);
       return { ok: true, editor: 'codemirror6' };
     }
   } catch (_e) {}
 
-  // 4. Monaco Editor DOM fallback (focus Monaco hidden textarea & paste / input)
+  // 4. Monaco Editor DOM fallback (focus Monaco hidden textarea & input)
   try {
     const monacoTextarea = document.querySelector('.monaco-editor textarea');
     if (monacoTextarea) {
       monacoTextarea.focus();
-      // Synthetic paste event removed to prevent anti-paste traps on test portals
       document.execCommand('selectAll', false, null);
-      document.execCommand('insertText', false, codeText);
+      document.execCommand('insertText', false, cleanCode);
       return { ok: true, editor: 'monaco-textarea' };
     }
   } catch (_e) {}
@@ -377,23 +381,22 @@ function typeIntoMainWorldEditor(rawCodeText) {
       if (el.isContentEditable || el.matches?.('[contenteditable="true"]')) {
         el.focus();
         document.execCommand('selectAll', false, null);
-        document.execCommand('insertText', false, codeText);
+        document.execCommand('insertText', false, cleanCode);
         return { ok: true, editor: 'contenteditable' };
       }
       if (el.tagName?.toLowerCase() === 'textarea' || el.tagName?.toLowerCase() === 'input') {
         el.focus();
-        // Synthetic paste event removed to prevent anti-paste traps on test portals
         const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
-        if (descriptor?.set) descriptor.set.call(el, codeText); else el.value = codeText;
-        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: codeText }));
+        if (descriptor?.set) descriptor.set.call(el, cleanCode); else el.value = cleanCode;
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: cleanCode }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return { ok: true, editor: 'textarea' };
       }
     }
   } catch (_e) {}
 
-  return { ok: false };
+  return { ok: false, error: 'No compatible code editor found' };
 }
 
 async function autoFillAssignment(tabId, result) {
