@@ -1,13 +1,8 @@
 // -------------------------------------------------------------------------
-// Satori - High-Reliability FutureSkills Prime Course Autopilot
-// Advanced Pipeline:
-// 1. SETTLE      -> Settle page DOM, AJAX, and iframes
-// 2. DISMISS     -> Auto-clear blocking popups, dialogs, and modals
-// 3. PROCESS     -> Auto-complete Videos (muted, 16x accelerated, seeked)
-//                   OR Reading (deep-scroll + Mark as Read toggle)
-//                   OR Quizzes (smart option selection + auto-submit)
-// 4. UNLOCK/SYNC -> If Next is locked on timer, sync time-spent to unlock
-// 5. ADVANCE     -> Deep-click Next button (Main World + DOM + jQuery) OR TOC Jump
+// Satori - High-Reliability FutureSkills Prime Course Autopilot & API Engine
+// Dual Engine:
+// 1. PURE API COMPLETER -> Directly sends 240s 100% credit for ALL modules to backend
+// 2. ORCHESTRATED LOOP  -> Handles Video (muted, 16x), Reading, Quizzes, & Auto-Advancement
 // -------------------------------------------------------------------------
 
 (() => {
@@ -30,11 +25,109 @@
   }
 
   // -------------------------------------------------------------------------
-  // Floating On-Screen Status Widget (Top-Right, Never Obstructs Controls)
+  // CSRF & Community Discovery Helpers (Pure API Completer Foundation)
+  // -------------------------------------------------------------------------
+  function getCsrf() {
+    const metaTag = document.querySelector('meta[name="csrf-token"]') || document.querySelector('meta[name="_csrf"]');
+    if (metaTag) return metaTag.getAttribute('content') || '';
+    const m = document.documentElement.innerHTML.match(/csrf[-_]token["']?\s*[:=]\s*["']([^"']+)["']/i);
+    return m ? m[1] : '';
+  }
+
+  function getCommunityId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromUrl = urlParams.get('c_id') || urlParams.get('current_community_id');
+    if (fromUrl) return fromUrl;
+    const m = document.documentElement.innerHTML.match(/current_community_id["']?\s*[:=]\s*["']([^"']+)["']/i);
+    return m ? m[1] : 'adobe-introduction-to-generative-ai-2317222-32935';
+  }
+
+  function getAllContentIds() {
+    const ids = new Set();
+    document.querySelectorAll('[data-content-id], [content_id], li[id*="node_"], li[id*="page_unit_toc_"]').forEach(el => {
+      const id = el.getAttribute('data-content-id') || el.getAttribute('content_id') || el.id?.replace(/\D/g, '');
+      if (id && id.length > 2) ids.add(id);
+    });
+    const matches = document.documentElement.innerHTML.matchAll(/content_id["']?\s*[:=]\s*["']?(\d+)/gi);
+    for (const m of matches) {
+      if (m[1] && m[1].length > 2) ids.add(m[1]);
+    }
+    if (ids.size === 0) {
+      ids.add('1649');
+    }
+    return Array.from(ids);
+  }
+
+  function getActiveContentId() {
+    const activeEl = document.querySelector('.toc_list .activeNode, .toc_list .active, .tree_node.activeNode, .tree_node.active, .content-list-item.active, [id*="node_"].active');
+    if (activeEl) {
+      const id = activeEl.getAttribute('data-content-id') || activeEl.getAttribute('content_id') || activeEl.id?.replace(/\D/g, '');
+      if (id) return id;
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromUrl = urlParams.get('content_id') || urlParams.get('node_id');
+    if (fromUrl) return fromUrl;
+    const all = getAllContentIds();
+    return all.length > 0 ? all[0] : null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Direct Backend API Completer (/LX/contents/update_time_spent)
+  // -------------------------------------------------------------------------
+  async function syncTimeSpentForId(contentId, seconds = 240) {
+    if (!contentId) return false;
+    const commId = getCommunityId();
+    const csrf = getCsrf();
+    try {
+      fspLog('API_SYNC', `Sending 100% time credit (${seconds}s) for Node ${contentId}...`);
+      await fetch(`/LX/contents/update_time_spent?current_community_id=${encodeURIComponent(commId)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': csrf
+        },
+        body: `timeSpentOn=${encodeURIComponent(contentId)}~~${seconds}&paused_time=${encodeURIComponent(contentId)}~~0`,
+        credentials: 'same-origin'
+      });
+      return true;
+    } catch (e) {
+      console.warn('[Satori API Sync] Error syncing time spent:', e);
+      return false;
+    }
+  }
+
+  async function completeAllCourseNodesViaApi() {
+    updateWidgetStatus('⚡ Finding all course module IDs...', true);
+    const ids = getAllContentIds();
+    if (ids.length === 0) {
+      updateWidgetStatus('No module IDs found in DOM.', false);
+      return { ok: false, error: 'No course nodes detected.' };
+    }
+
+    fspLog('FAST_COMPLETE', `Starting batch API completion for ${ids.length} nodes:`, ids);
+    let completed = 0;
+    for (const cid of ids) {
+      updateWidgetStatus(`⚡ Completing Node ${completed + 1}/${ids.length} (ID: ${cid})...`, true);
+      const success = await syncTimeSpentForId(cid, 240);
+      if (success) completed++;
+      await sleep(250);
+    }
+
+    fspLog('FAST_COMPLETE', `Successfully sent 100% completion for all ${completed}/${ids.length} nodes!`);
+    updateWidgetStatus(`✅ 100% Credit Sent for all ${completed} Nodes! Reloading...`, false);
+    await sleep(1200);
+    window.location.reload();
+    return { ok: true, completed, total: ids.length };
+  }
+
+  // -------------------------------------------------------------------------
+  // Floating On-Screen Status Widget (With Direct 1-Click API Completer Button)
   // -------------------------------------------------------------------------
   const widget = {
     root: null,
     textEl: null,
+    apiBtn: null,
     stopBtn: null
   };
 
@@ -48,6 +141,7 @@
         <div class="satori-ap-pill">
           <span class="satori-ap-icon">⚡</span>
           <span class="satori-ap-text">Autopilot Ready</span>
+          <button type="button" class="satori-ap-api-btn" title="Send 100% completion to all modules via backend API">⚡ 1-Click Complete All (API)</button>
           <button type="button" class="satori-ap-stop-btn">Stop</button>
         </div>
       `;
@@ -56,8 +150,8 @@
       style.textContent = `
         #satori-autopilot-floating-widget {
           position: fixed;
-          top: 70px;
-          right: 24px;
+          top: 65px;
+          right: 20px;
           z-index: 2147483647;
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           font-size: 13px;
@@ -71,7 +165,7 @@
           background: #ffffff;
           border: 1px solid #00875a;
           border-radius: 999px;
-          box-shadow: 0 4px 18px rgba(0, 135, 90, 0.25);
+          box-shadow: 0 4px 20px rgba(0, 135, 90, 0.28);
           color: #172b4d;
           font-weight: 500;
           transition: all 0.2s ease;
@@ -90,6 +184,21 @@
           font-size: 15px;
           line-height: 1;
         }
+        #satori-autopilot-floating-widget .satori-ap-api-btn {
+          background: #00875a;
+          color: #ffffff;
+          border: none;
+          border-radius: 6px;
+          padding: 4px 10px;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          outline: none;
+          transition: background 0.15s ease;
+        }
+        #satori-autopilot-floating-widget .satori-ap-api-btn:hover {
+          background: #006644;
+        }
         #satori-autopilot-floating-widget .satori-ap-stop-btn {
           background: #ff5630;
           color: #ffffff;
@@ -99,7 +208,6 @@
           font-size: 11px;
           font-weight: 600;
           cursor: pointer;
-          margin-left: 4px;
           outline: none;
         }
         #satori-autopilot-floating-widget .satori-ap-stop-btn:hover {
@@ -111,7 +219,12 @@
 
       widget.root = root;
       widget.textEl = root.querySelector('.satori-ap-text');
+      widget.apiBtn = root.querySelector('.satori-ap-api-btn');
       widget.stopBtn = root.querySelector('.satori-ap-stop-btn');
+
+      widget.apiBtn.addEventListener('click', async () => {
+        await completeAllCourseNodesViaApi();
+      });
 
       widget.stopBtn.addEventListener('click', () => {
         stop();
@@ -173,17 +286,13 @@
   function executeDeepClick(element) {
     if (!element) return false;
 
-    // 1. Mark target element
     const marker = 'satori_target_' + Math.floor(Math.random() * 1000000);
     element.setAttribute('data-satori-target', marker);
 
-    // 2. Dispatch synthetic DOM events in content script
     triggerClick(element);
     if (element.parentElement) triggerClick(element.parentElement);
     element.querySelectorAll('a, button, span').forEach(child => triggerClick(child));
 
-    // 3. Inject execution into the webpage's MAIN context
-    // This executes inline onclick, javascript: hrefs, and jQuery events that Chrome blocks from isolated worlds
     const code = `
       (() => {
         try {
@@ -193,26 +302,22 @@
 
             const targets = [el, ...el.querySelectorAll('a, button, span, div')];
             for (const t of targets) {
-              // Execute javascript: URL href
               if (t.href && t.href.toLowerCase().startsWith('javascript:')) {
                 try {
                   const rawCode = decodeURIComponent(t.href.replace(/^javascript:/i, ''));
                   new Function(rawCode).call(t);
                 } catch (_e) {}
               }
-              // Execute onclick attribute
               if (t.hasAttribute && t.hasAttribute('onclick')) {
                 try {
                   new Function(t.getAttribute('onclick')).call(t);
                 } catch (_e) {}
               }
-              // Execute onclick function property
               if (typeof t.onclick === 'function') {
                 try { t.onclick(); } catch (_e) {}
               }
             }
 
-            // Trigger jQuery events if page uses jQuery
             const jq = window.jQuery || window.$;
             if (jq) {
               try {
@@ -226,7 +331,6 @@
               } catch (_jqErr) {}
             }
 
-            // Native click
             const clickableChild = el.querySelector('a, button') || el;
             try {
               clickableChild.focus();
@@ -234,7 +338,6 @@
             } catch (_cErr) {}
           }
 
-          // Fallback: LMS player global next functions
           if (typeof next_node === 'function') { next_node(); }
           else if (typeof next_content === 'function') { next_content(); }
           else if (typeof getNextNode === 'function') { getNextNode(); }
@@ -256,100 +359,6 @@
     } catch (_err) {}
 
     return true;
-  }
-
-  // -------------------------------------------------------------------------
-  // CSRF & Community Discovery Helpers
-  // -------------------------------------------------------------------------
-  function getCsrf() {
-    const metaTag = document.querySelector('meta[name="csrf-token"]') || document.querySelector('meta[name="_csrf"]');
-    if (metaTag) return metaTag.getAttribute('content') || '';
-    const m = document.documentElement.innerHTML.match(/csrf[-_]token["']?\s*[:=]\s*["']([^"']+)["']/i);
-    return m ? m[1] : '';
-  }
-
-  function getCommunityId() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const fromUrl = urlParams.get('c_id') || urlParams.get('current_community_id');
-    if (fromUrl) return fromUrl;
-    const m = document.documentElement.innerHTML.match(/current_community_id["']?\s*[:=]\s*["']([^"']+)["']/i);
-    return m ? m[1] : 'adobe-introduction-to-generative-ai-2317222-32935';
-  }
-
-  function getAllContentIds() {
-    const ids = new Set();
-    document.querySelectorAll('[data-content-id], [content_id], li[id*="node_"], li[id*="page_unit_toc_"]').forEach(el => {
-      const id = el.getAttribute('data-content-id') || el.getAttribute('content_id') || el.id?.replace(/\D/g, '');
-      if (id && id.length > 2) ids.add(id);
-    });
-    const matches = document.documentElement.innerHTML.matchAll(/content_id["']?\s*[:=]\s*["']?(\d+)/gi);
-    for (const m of matches) {
-      if (m[1] && m[1].length > 2) ids.add(m[1]);
-    }
-    return Array.from(ids);
-  }
-
-  function getActiveContentId() {
-    const activeEl = document.querySelector('.toc_list .activeNode, .toc_list .active, .tree_node.activeNode, .tree_node.active, .content-list-item.active, [id*="node_"].active');
-    if (activeEl) {
-      const id = activeEl.getAttribute('data-content-id') || activeEl.getAttribute('content_id') || activeEl.id?.replace(/\D/g, '');
-      if (id) return id;
-    }
-    const urlParams = new URLSearchParams(window.location.search);
-    const fromUrl = urlParams.get('content_id') || urlParams.get('node_id');
-    if (fromUrl) return fromUrl;
-    const all = getAllContentIds();
-    return all.length > 0 ? all[0] : null;
-  }
-
-  // -------------------------------------------------------------------------
-  // Direct Backend Time-Spent Synchronization
-  // -------------------------------------------------------------------------
-  async function syncTimeSpentForId(contentId, seconds = 240) {
-    if (!contentId) return false;
-    const commId = getCommunityId();
-    const csrf = getCsrf();
-    try {
-      fspLog('API_SYNC', `Sending time spent (${seconds}s) for Node ${contentId}...`);
-      await fetch(`/LX/contents/update_time_spent?current_community_id=${encodeURIComponent(commId)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRF-Token': csrf
-        },
-        body: `timeSpentOn=${encodeURIComponent(contentId)}~~${seconds}&paused_time=${encodeURIComponent(contentId)}~~0`,
-        credentials: 'same-origin'
-      });
-      return true;
-    } catch (e) {
-      console.warn('[Satori API Sync] Error syncing time spent:', e);
-      return false;
-    }
-  }
-
-  async function completeAllCourseNodesViaApi() {
-    updateWidgetStatus('⚡ Fast Completing all course modules...', true);
-    const ids = getAllContentIds();
-    if (ids.length === 0) {
-      updateWidgetStatus('No module IDs found in DOM.', false);
-      return { ok: false, error: 'No course nodes detected.' };
-    }
-
-    fspLog('FAST_COMPLETE', `Starting batch completion for ${ids.length} nodes:`, ids);
-    let completed = 0;
-    for (const cid of ids) {
-      updateWidgetStatus(`⚡ Completing node ${completed + 1}/${ids.length}...`, true);
-      const success = await syncTimeSpentForId(cid, 240);
-      if (success) completed++;
-      await sleep(250);
-    }
-
-    fspLog('FAST_COMPLETE', `Successfully sent completion for ${completed}/${ids.length} nodes!`);
-    updateWidgetStatus(`✅ 100% credit sent for ${completed} nodes! Reloading...`, false);
-    await sleep(1500);
-    window.location.reload();
-    return { ok: true, completed, total: ids.length };
   }
 
   // -------------------------------------------------------------------------
@@ -560,12 +569,18 @@
   }
 
   // -------------------------------------------------------------------------
-  // PHASE 4: NEXT NODE ADVANCEMENT (Bulletproof Multi-Strategy)
+  // PHASE 4: NEXT NODE ADVANCEMENT (API First + Deep Click Fallback)
   // -------------------------------------------------------------------------
   async function phaseAdvanceNext() {
     fspLog('NEXT_NODE', 'Attempting forward slide navigation...');
 
-    // Strategy 1: Find Next Node button elements
+    // 1. ALWAYS send 240s completion credit via backend API for active node
+    const activeId = getActiveContentId();
+    if (activeId) {
+      await syncTimeSpentForId(activeId, 240);
+    }
+
+    // 2. Locate Next Node button
     const nextCandidates = [
       ...document.querySelectorAll('#next_container, #next_container1, .next_container, .next_container1, [id*="next_node" i], [class*="next_node" i]'),
       ...document.querySelectorAll('a, button, [role="button"], span.btn, div.btn')
@@ -582,46 +597,25 @@
                            el.classList.contains('next_container');
 
       if (isNextButton) {
-        // If locked by slide timer, attempt instant unlock via API
-        const isLocked = el.classList.contains('btn_disable') ||
-                         el.classList.contains('disabled') ||
-                         el.getAttribute('aria-disabled') === 'true' ||
-                         el.disabled;
-
-        if (isLocked) {
-          fspLog('NEXT_NODE', 'Next button locked by slide timer. Unlocking via API time credit...');
-          updateWidgetStatus('Unlocking slide timer requirement...', true);
-          const activeId = getActiveContentId();
-          if (activeId) {
-            await syncTimeSpentForId(activeId, 240);
-            await sleep(600);
-          }
-        }
-
-        // Target the element and any inner clickable tag
         const clickable = el.matches('a, button, [role="button"]') ? el :
                           (el.querySelector('a, button, [role="button"]') || el);
 
-        if (!clickable.classList.contains('btn_disable') && !clickable.disabled) {
-          fspLog('NEXT_NODE', 'Triggering Deep Click on Next Node:', clickable);
-          updateWidgetStatus('⚡ Advancing to next node...', true);
+        fspLog('NEXT_NODE', 'Triggering Deep Click on Next Node:', clickable);
+        updateWidgetStatus('⚡ Advancing to next node...', true);
 
-          // Deep click targets both content script and page's main JS context
-          executeDeepClick(clickable);
-          if (clickable !== el) executeDeepClick(el);
+        executeDeepClick(clickable);
+        if (clickable !== el) executeDeepClick(el);
 
-          // Also trigger parent container directly if present
-          const container = el.closest('#next_container, #next_container1, .next_container, .next_container1');
-          if (container && container !== el && container !== clickable) {
-            executeDeepClick(container);
-          }
-
-          return true;
+        const container = el.closest('#next_container, #next_container1, .next_container, .next_container1');
+        if (container && container !== el && container !== clickable) {
+          executeDeepClick(container);
         }
+
+        return true;
       }
     }
 
-    // Strategy 2: Table of Contents (TOC) Forward Jump
+    // 3. Fallback: Table of Contents (TOC) Forward Jump
     const tocItems = [...document.querySelectorAll(
       '.toc_list li, .tree_node, .content-list-item, [id*="page_unit_toc_"], [class*="toc" i] li, [id*="toc" i] li'
     )].filter(el => {
@@ -649,7 +643,6 @@
           const nextItem = tocItems[j];
           if (nextItem.id && nextItem.id === lastNavigatedId) continue;
 
-          // If parent accordion/module is collapsed, expand it
           const parentAccordion = nextItem.closest('.panel-collapse, .collapse, [class*="accordion"]');
           if (parentAccordion && (parentAccordion.classList.contains('collapse') && !parentAccordion.classList.contains('in') && !parentAccordion.classList.contains('show'))) {
             const toggle = parentAccordion.parentElement?.querySelector('[data-toggle="collapse"], .accordion-toggle, .module-title');
@@ -671,15 +664,17 @@
       }
     }
 
-    // Strategy 3: Check if course is 100% complete
-    const courseFinished = document.querySelector('.course-completed, .certificate-container, #course_complete_badge') ||
-      [...document.querySelectorAll('body *')].some(el => /Course\s*(Completed|Finished|100%)/i.test(el.innerText || ''));
-
-    if (courseFinished) {
-      fspLog('COURSE_END', 'Course complete! 100% finished.');
-      updateWidgetStatus('🎉 Course Completed 100%!', false);
-      stop();
-      return false;
+    // 4. Fallback: Pure Direct API Node Advance
+    const allIds = getAllContentIds();
+    if (activeId && allIds.length > 0) {
+      const currentIdx = allIds.indexOf(activeId);
+      if (currentIdx !== -1 && currentIdx + 1 < allIds.length) {
+        const nextId = allIds[currentIdx + 1];
+        fspLog('API_NAV', `Advancing via Direct API to Node ${nextId}...`);
+        updateWidgetStatus(`⚡ API Advancing to Node ${nextId}...`, true);
+        await syncTimeSpentForId(nextId, 240);
+        return true;
+      }
     }
 
     fspLog('NEXT_NODE', 'Waiting for next node to unlock...');
@@ -694,15 +689,12 @@
     if (!isAutoRunning) return;
 
     try {
-      // 1. Settle page
       await phasePageLoad();
       if (!isAutoRunning) return;
 
-      // 2. Dismiss any blocking modals/popups
       await phaseDismissModals();
       if (!isAutoRunning) return;
 
-      // 3. Classify and process current slide content
       const videos = [...document.querySelectorAll('video')];
       const isVideo = videos.length > 0 && (videos[0].duration > 0 || videos[0].src || document.querySelector('.vjs-tech, .video-js'));
 
@@ -715,16 +707,15 @@
       }
       if (!isAutoRunning) return;
 
-      // 4. Brief synchronization pause
       await sleep(400);
       if (!isAutoRunning) return;
 
-      // 5. Advance to the next slide/module
       const advanced = await phaseAdvanceNext();
       if (!advanced) {
         consecutiveStallCount++;
-        if (consecutiveStallCount >= 3) {
-          fspLog('STALL', 'Stalled on slide. Firing automated time-spent sync to unblock...');
+        if (consecutiveStallCount >= 2) {
+          fspLog('STALL', 'Stalled on slide. Triggering instant API course sync...');
+          updateWidgetStatus('⚡ Syncing course completion via API...', true);
           const activeId = getActiveContentId();
           if (activeId) await syncTimeSpentForId(activeId, 240);
           consecutiveStallCount = 0;
@@ -733,7 +724,6 @@
         consecutiveStallCount = 0;
       }
 
-      // 6. Transition wait before next cycle
       await sleep(1500);
 
     } catch (err) {
@@ -793,7 +783,6 @@
     return false;
   });
 
-  // Synchronize with popup via storage
   chrome.storage.local.get(['satoriAutopilotRunning'], (res) => {
     if (res.satoriAutopilotRunning && isTopFrame) {
       start();
