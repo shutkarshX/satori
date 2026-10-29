@@ -292,53 +292,63 @@
   }
 
   function typeIntoEditor(text, append = false) {
-    const fallback = [...document.querySelectorAll('textarea, [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea, .ace_text-input, [class*="editor" i] textarea')]
-      .find((element) => isEditable(element) && element.offsetParent !== null) || null;
-    const target = lastEditable || (isEditable(document.activeElement) ? document.activeElement : fallback);
-    if (!target) throw new Error('Click inside the assignment answer box first, then try again.');
+    // 1. Gather all potential editor elements (focused, last clicked, or anywhere in DOM)
+    const candidates = [
+      lastEditable,
+      isEditable(document.activeElement) ? document.activeElement : null,
+      document.querySelector('.monaco-editor textarea'),
+      document.querySelector('.ace_text-input'),
+      document.querySelector('.CodeMirror textarea'),
+      document.querySelector('[class*="editor" i] textarea, [class*="code" i] textarea'),
+      ...document.querySelectorAll('textarea'),
+      ...document.querySelectorAll('[contenteditable="true"]')
+    ].filter((el) => Boolean(el));
 
-    // 1. Monaco Editor support
-    if (window.monaco?.editor) {
-      const models = window.monaco.editor.getModels?.();
-      if (models && models.length > 0) {
-        models[0].setValue(text);
-        return true;
-      }
+    if (candidates.length === 0) {
+      throw new Error('Click inside the assignment answer box first, then try again.');
     }
 
-    // 2. Ace Editor support
-    const aceEl = target.closest?.('.ace_editor') || document.querySelector('.ace_editor');
-    if (aceEl && window.ace?.edit) {
+    // Deduplicate candidates
+    const uniqueTargets = [...new Set(candidates)];
+
+    for (const target of uniqueTargets) {
       try {
-        const editor = window.ace.edit(aceEl);
-        if (editor) {
-          editor.setValue(text, 1);
+        target.focus();
+
+        // A. ContentEditable
+        if (target.isContentEditable || target.matches?.('[contenteditable="true"]')) {
+          const existing = append ? target.innerText : '';
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, existing + text);
+          return true;
+        }
+
+        // B. Textarea / Input (Monaco, Ace, CodeMirror, standard forms)
+        if (target.tagName?.toLowerCase() === 'textarea' || target.tagName?.toLowerCase() === 'input') {
+          // 1. Dispatch synthetic paste event (supported by Monaco, Ace, and CodeMirror input handlers)
+          try {
+            const dt = new DataTransfer();
+            dt.setData('text/plain', text);
+            target.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+          } catch (_e) {}
+
+          // 2. Set native value & trigger input/change
+          const existing = append ? target.value : '';
+          setNativeValue(target, existing + text);
+
+          // 3. Document execCommand fallback
+          try {
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, existing + text);
+          } catch (_e) {}
+
+          target.focus();
           return true;
         }
       } catch (_e) {}
     }
 
-    // 3. CodeMirror support
-    const cmEl = target.closest?.('.CodeMirror') || document.querySelector('.CodeMirror');
-    if (cmEl && cmEl.CodeMirror) {
-      cmEl.CodeMirror.setValue(text);
-      return true;
-    }
-
-    // 4. ContentEditable target
-    if (target.isContentEditable || target.matches('[contenteditable="true"]')) {
-      const existing = append ? target.innerText : '';
-      target.focus();
-      document.execCommand('selectAll', false);
-      document.execCommand('insertText', false, existing + text);
-      return true;
-    }
-
-    // 5. Standard Textarea/Input target
-    const existing = append ? target.value : '';
-    setNativeValue(target, existing + text);
-    target.focus();
-    return true;
+    throw new Error('Could not write into assignment editor. Click the code box first.');
   }
 
   // -------------------------------------------------------------

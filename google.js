@@ -30,6 +30,37 @@
     return false;
   };
 
+    function looksLikeCode(str) {
+    if (!str || typeof str !== 'string') return false;
+    const s = str.trim();
+    if (s.length < 30) return false;
+    if (/(#include|import\s+(?:sys|math|os|java|stdio|vector)|from\s+\w+\s+import|using\s+namespace|package\s+\w+)/i.test(s)) return true;
+    if (/(class\s+\w+|def\s+\w+\s*\(|function\s+\w+\s*\(|public\s+(?:static\s+)?void\s+main|\bint\s+main|\bvoid\s+main)/i.test(s)) return true;
+    if (/(?:scanf|printf|cin\s*>>|cout\s*<<|System\.out\.print|print\s*\(|console\.log)/i.test(s)) return true;
+    if (/(\bint\b|\bvoid\b|\bchar\b|\bfloat\b|\bdouble\b|\bbool\b)\s+\w+\s*[\(\=;]/i.test(s)) return true;
+    if (/(for\s*\(.*?;.*?;.*?\)|while\s*\(.*?\)|if\s*\(.*?\)\s*\{|return\s+0;)/i.test(s)) return true;
+    const lines = s.split('\n');
+    const codeyLines = lines.filter(l => /[;{}()=\[\]]/.test(l) || /^\s{4,}/.test(l)).length;
+    if (lines.length >= 3 && codeyLines / lines.length > 0.35) return true;
+    return false;
+  }
+
+  function extractCodeBlock(text) {
+    if (!text) return '';
+    const fenced = text.match(/```(?:c|cpp|c\+\+|java|python|javascript|js)?\s*([\s\S]*?)```/i);
+    if (fenced && fenced[1] && fenced[1].trim().length >= 30) return fenced[1].trim();
+    const startMatch = text.match(/(?:^|\n)\s*(#include|import\s+|class\s+|def\s+|void\s+|int\s+main|using\s+namespace)/i);
+    if (startMatch && startMatch.index !== undefined) {
+      const sub = text.slice(startMatch.index);
+      const endMatch = sub.match(/\n\s*(?:###\s*(?:Explanation|How it works|Complexity)|Key Highlights:|Explanation:\s*\n|Note:\s*This code|Here is how the code works:)/i);
+      if (endMatch && endMatch.index !== undefined && endMatch.index > 25) {
+        return sub.slice(0, endMatch.index).trim();
+      }
+      return sub.trim();
+    }
+    return text.trim();
+  }
+
   function readOverview(mode = 'mcq') {
     // 1. Strict AI Overview selectors ONLY
     const selectors = [
@@ -127,6 +158,14 @@
         .map(match => clean(match[1]))
         .filter(val => val.length >= 50 && !val.includes('window.sn=') && !val.includes('var(--'));
       codeCandidates.push(...fenced);
+    }
+
+    // Strategy 4: Extract from text if text contains code
+    if (codeCandidates.length === 0 && text) {
+      const extracted = extractCodeBlock(text);
+      if (extracted && extracted.length >= 40 && looksLikeCode(extracted) && !extracted.includes('window.sn=') && !extracted.includes('var(--')) {
+        codeCandidates.push(extracted);
+      }
     }
 
     const code = codeCandidates

@@ -226,22 +226,31 @@ function validateProviderResult(provider, requestId, mode, payload, questionText
 }
 
 function looksLikeCode(str) {
-  if (!str) return false;
-  return /(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\(|\bimport\s+java|\bvoid\s+main\b|class\s+\w+)/i.test(str);
+  if (!str || typeof str !== 'string') return false;
+  const s = str.trim();
+  if (s.length < 30) return false;
+  if (/(#include|import\s+(?:sys|math|os|java|stdio|vector)|from\s+\w+\s+import|using\s+namespace|package\s+\w+)/i.test(s)) return true;
+  if (/(class\s+\w+|def\s+\w+\s*\(|function\s+\w+\s*\(|public\s+(?:static\s+)?void\s+main|\bint\s+main|\bvoid\s+main)/i.test(s)) return true;
+  if (/(?:scanf|printf|cin\s*>>|cout\s*<<|System\.out\.print|print\s*\(|console\.log)/i.test(s)) return true;
+  if (/(\bint\b|\bvoid\b|\bchar\b|\bfloat\b|\bdouble\b|\bbool\b)\s+\w+\s*[\(\=;]/i.test(s)) return true;
+  if (/(for\s*\(.*?;.*?;.*?\)|while\s*\(.*?\)|if\s*\(.*?\)\s*\{|return\s+0;)/i.test(s)) return true;
+  const lines = s.split('\n');
+  const codeyLines = lines.filter(l => /[;{}()=\[\]]/.test(l) || /^\s{4,}/.test(l)).length;
+  if (lines.length >= 3 && codeyLines / lines.length > 0.35) return true;
+  return false;
 }
 
 function extractCodeBlock(text) {
   if (!text) return '';
-  // Match code between markdown blocks
-  const fenced = text.match(/```(?:c|cpp|c\+\+|java|python|javascript)?\s*([\s\S]*?)```/i);
-  if (fenced && fenced[1]) return fenced[1].trim();
-  // Match starting from #include or class or import
-  const start = text.search(/(?:^|\n)\s*(#include|import\s+|class\s+|def\s+|void\s+|int\s+main)/i);
-  if (start !== -1) {
-    const sub = text.slice(start);
-    // Cut off explanations at common end markers
-    const end = sub.search(/(?:\n\s*(?:Key Highlights|Note|Explanation|Output|Refer to|Here is|If you run))/i);
-    if (end !== -1) return sub.slice(0, end).trim();
+  const fenced = text.match(/```(?:c|cpp|c\+\+|java|python|javascript|js)?\s*([\s\S]*?)```/i);
+  if (fenced && fenced[1] && fenced[1].trim().length >= 30) return fenced[1].trim();
+  const startMatch = text.match(/(?:^|\n)\s*(#include|import\s+|class\s+|def\s+|void\s+|int\s+main|using\s+namespace)/i);
+  if (startMatch && startMatch.index !== undefined) {
+    const sub = text.slice(startMatch.index);
+    const endMatch = sub.match(/\n\s*(?:###\s*(?:Explanation|How it works|Complexity)|Key Highlights:|Explanation:\s*\n|Note:\s*This code|Here is how the code works:)/i);
+    if (endMatch && endMatch.index !== undefined && endMatch.index > 25) {
+      return sub.slice(0, endMatch.index).trim();
+    }
     return sub.trim();
   }
   return text.trim();
@@ -250,6 +259,88 @@ function extractCodeBlock(text) {
 // -------------------------------------------------------------
 // Single Execution & Autofill Pipeline
 // -------------------------------------------------------------
+function typeIntoMainWorldEditor(codeText) {
+  // 1. Monaco Editor (Global window.monaco in MAIN world)
+  try {
+    if (window.monaco?.editor) {
+      const models = window.monaco.editor.getModels?.();
+      if (models && models.length > 0) {
+        models[0].setValue(codeText);
+        return { ok: true, editor: 'monaco' };
+      }
+    }
+  } catch (_e) {}
+
+  // 2. Ace Editor (Global window.ace or .ace_editor in MAIN world)
+  try {
+    const aceNodes = [...document.querySelectorAll('.ace_editor')];
+    for (const node of aceNodes) {
+      if (node.env?.editor) {
+        node.env.editor.setValue(codeText, 1);
+        node.env.editor.clearSelection();
+        return { ok: true, editor: 'ace' };
+      }
+      if (window.ace?.edit) {
+        const ed = window.ace.edit(node);
+        if (ed) {
+          ed.setValue(codeText, 1);
+          ed.clearSelection();
+          return { ok: true, editor: 'ace' };
+        }
+      }
+    }
+  } catch (_e) {}
+
+  // 3. CodeMirror (v5 cm.CodeMirror, or v6 cm.view)
+  try {
+    const cmNodes = [...document.querySelectorAll('.CodeMirror')];
+    for (const node of cmNodes) {
+      if (node.CodeMirror) {
+        node.CodeMirror.setValue(codeText);
+        return { ok: true, editor: 'codemirror' };
+      }
+    }
+  } catch (_e) {}
+
+  // 4. Any textarea or contenteditable element in the editor container
+  try {
+    const candidates = [
+      document.activeElement,
+      document.querySelector('.monaco-editor textarea'),
+      document.querySelector('.ace_text-input'),
+      document.querySelector('.CodeMirror textarea'),
+      document.querySelector('[class*="editor" i] textarea, [class*="code" i] textarea'),
+      document.querySelector('textarea'),
+      document.querySelector('[contenteditable="true"]')
+    ].filter(Boolean);
+
+    for (const el of candidates) {
+      if (el.isContentEditable || el.matches?.('[contenteditable="true"]')) {
+        el.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, codeText);
+        return { ok: true, editor: 'contenteditable' };
+      }
+      if (el.tagName?.toLowerCase() === 'textarea' || el.tagName?.toLowerCase() === 'input') {
+        el.focus();
+        try {
+          const dt = new DataTransfer();
+          dt.setData('text/plain', codeText);
+          el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+        } catch (_e) {}
+        const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (descriptor?.set) descriptor.set.call(el, codeText); else el.value = codeText;
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: codeText }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { ok: true, editor: 'textarea' };
+      }
+    }
+  } catch (_e) {}
+
+  return { ok: false };
+}
+
 async function autoFillAssignment(tabId, result) {
   if (!tabId || !result || !result.valid) return { ok: false, error: 'Invalid AI answer' };
 
@@ -259,11 +350,32 @@ async function autoFillAssignment(tabId, result) {
       ? { type: msgType, answer: result.answer }
       : { type: msgType, text: result.code, append: false };
 
+    // For coding: execute directly into the page's MAIN world across all frames first (Monaco, Ace, CodeMirror, etc.)
+    if (result.type === 'coding') {
+      try {
+        const mainResults = await chrome.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          world: 'MAIN',
+          func: typeIntoMainWorldEditor,
+          args: [result.code]
+        });
+        const anySuccess = (mainResults || []).some(r => r.result?.ok);
+        if (anySuccess) {
+          const usedEditor = (mainResults || []).find(r => r.result?.ok)?.result?.editor || 'editor';
+          addDiagnostic(`${result.provider}-autofill`, `Code placed into ${usedEditor} via MAIN world`);
+          setStatus(`${PROVIDER_NAMES[result.provider] || result.provider} code placed into ${usedEditor}. Review before submitting.`, 'ready');
+          return { ok: true };
+        }
+      } catch (mainErr) {
+        console.warn('[Satori Background] MAIN world injection error:', mainErr);
+      }
+    }
+
     let res;
     try {
       res = await chrome.tabs.sendMessage(tabId, payload);
     } catch (_error) {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['content.js'] });
       res = await chrome.tabs.sendMessage(tabId, payload);
     }
 
@@ -648,16 +760,39 @@ async function executeShortcutCommand(command, senderTab = null) {
     return;
   }
 
-  // Inject content.js safely into all frames if needed
+  // Extract question across top frame and all iframe frames
   let page;
   try {
     page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
-  } catch (_e) {
+  } catch (_e) {}
+
+  if (!page?.ok || !page.fullText || page.fullText.trim().length < 20) {
     try {
-      await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] });
-      page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+      await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
+      const frameResults = await chrome.scripting.executeScript({
+        target: { tabId: assignmentTab.id, allFrames: true },
+        func: () => {
+          if (typeof extractQuestion === 'function') {
+            const full = extractFullPage();
+            const text = extractQuestion();
+            const opts = typeof extractStructuredMcq === 'function' ? extractStructuredMcq() : [];
+            return {
+              ok: true,
+              text,
+              fullText: full,
+              options: opts.map(o => ({ letter: o.letter, text: o.text }))
+            };
+          }
+          return null;
+        }
+      });
+      const candidates = (frameResults || [])
+        .map(r => r.result)
+        .filter(r => r && r.ok && r.fullText && r.fullText.trim().length >= 20)
+        .sort((a, b) => b.fullText.length - a.fullText.length);
+      if (candidates.length > 0) page = candidates[0];
     } catch (injErr) {
-      console.error('[Satori Background] Injection error:', injErr);
+      console.error('[Satori Background] Multi-frame extraction error:', injErr);
     }
   }
 
