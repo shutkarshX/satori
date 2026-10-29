@@ -234,8 +234,8 @@
   function cleanProblemText(text) {
     if (!text) return '';
     // Start strictly from Question No / Problem Statement, stripping preceding portal/student header
-    const match = text.match(/(?:question\s*no\s*[:\d]|problem\s*statement|single\s*file\s*programming)/i);
-    if (match && match.index > 0 && match.index < 2500) {
+    const match = text.match(/(?:question\s*no\s*[:\d]|problem\s*statement|single\s*file\s*programming|multi(?:ple)?\s*choice)/i);
+    if (match && match.index > 0 && match.index < 4000) {
       text = text.slice(match.index);
     }
     // Keep all following details intact (language C (17), fill your code here, testcases, instructions)
@@ -478,10 +478,32 @@
     }
 
     // 3. Verification & Selection Strategy
-    // A. Priority 1: Letter match directly to option index (A -> radio 0, B -> radio 1, etc.)
+    // A. Priority 1: Authoritative Letter Match
     if (letterTarget) {
-      console.log(`[Satori Content] Selecting option by Letter [${targetLetter}]:`, letterTarget);
-      return click(letterTarget, targetLetter);
+      const letterTargetText = norm(visibleText(letterTarget));
+      const answerText = norm(cleanAnswer);
+      const textAgrees = !answerText ||
+        letterTargetText === answerText ||
+        letterTargetText.includes(answerText) ||
+        answerText.includes(letterTargetText);
+
+      if (textAgrees || textMatches.length !== 1) {
+        console.log(`[Satori Content] Selecting option by Letter [${targetLetter}]:`, letterTarget);
+        return click(letterTarget, targetLetter);
+      }
+
+      const textElement = textMatches[0];
+      const sameTarget = textElement === letterTarget ||
+        textElement.contains(letterTarget) ||
+        letterTarget.contains(textElement);
+
+      if (sameTarget) {
+        return click(letterTarget, targetLetter);
+      }
+
+      // If unique text matches a different option, prefer the direct text match
+      console.warn(`[Satori Content] Discrepancy between letter [${targetLetter}] and text match [${visibleText(textElement)}]. Selecting matching text element.`);
+      return click(textElement, visibleText(textElement).slice(0, 80));
     }
 
     // B. Priority 2: If exact text match exists, prefer it immediately

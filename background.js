@@ -13,6 +13,16 @@ const PROVIDER_NAMES = {
   chatgpt: 'ChatGPT'
 };
 
+const isTransientPlaceholder = (val) => {
+  const s = String(val || '').replace(/^AI\s*Overview\s*/i, '').trim();
+  if (!s || s.length < 15) return true;
+  if (/^(thinking|loading|generating)(\.\.\.)?$/i.test(s)) return true;
+  if (/^thinking\s*generative ai is experimental/i.test(s)) return true;
+  if (/^(generative ai is experimental|learning more)/i.test(s) && s.length < 120) return true;
+  if (/^AI\s*Overview\s*(is\s*)?(thinking|generating|loading)/i.test(s)) return true;
+  return false;
+};
+
 const setStatus = (text, kind = 'waiting', extra = {}) => {
   return chrome.storage.local.set({
     satoriStatus: {
@@ -63,11 +73,38 @@ ${pageContent}`;
 // -------------------------------------------------------------
 // Normalized Provider Result Builder & Validator
 // -------------------------------------------------------------
-function formatMcqAnswer(text, questionText = '') {
+function formatMcqAnswer(text, questionText = '', structuredOptions = []) {
   if (!text) return { letter: null, text: '', raw: '' };
   let clean = text.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').trim();
+  const norm = (s) => s.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').replace(/\s+/g, '').toLowerCase();
 
-  // If question options are known, test against them directly (longest first)
+  // 1. Authoritative matching against structured options (if provided from page DOM)
+  if (Array.isArray(structuredOptions) && structuredOptions.length > 0) {
+    // A. Check for explicit Option Letter mention e.g. "Option B", "**B**", "ANSWER: B", "Correct: B"
+    const explicitLetterMatch = clean.match(/(?:(?:correct\s+(?:answer|option)|final\s+answer|answer)\s*(?:is)?\s*[:\-]?\s*|\boption\s+)\(?([A-Da-d])\)?\b/i);
+    if (explicitLetterMatch && explicitLetterMatch[1]) {
+      const targetLetter = explicitLetterMatch[1].toUpperCase();
+      const matched = structuredOptions.find(o => (o.letter || '').toUpperCase() === targetLetter);
+      if (matched) {
+        return { letter: matched.letter, text: matched.text, raw: clean };
+      }
+    }
+
+    // B. Check if AI response contains any known option text (longest first)
+    const normClean = norm(clean);
+    const sortedStructured = [...structuredOptions]
+      .filter(o => o.text && o.text.trim().length >= 2)
+      .sort((a, b) => b.text.length - a.text.length);
+
+    for (const opt of sortedStructured) {
+      const normOpt = norm(opt.text);
+      if (normOpt.length >= 2 && normClean.includes(normOpt)) {
+        return { letter: opt.letter, text: opt.text, raw: clean };
+      }
+    }
+  }
+
+  // 2. If question options are known from questionText, test against them directly (longest first)
   if (questionText) {
     const stopWords = /^(Question|Marks|Negative|Answer here|Clear|Prev|Next|Submit|Section|Time|View|Multi Choice|Single File|degree|batch|roll number|name|email|test name)/i;
     const knownOptions = questionText
@@ -75,7 +112,6 @@ function formatMcqAnswer(text, questionText = '') {
       .map((l) => l.trim())
       .filter((l) => Boolean(l) && !stopWords.test(l) && l.length < 150 && !l.includes('?') && !l.endsWith(':') && l.length >= 1);
 
-    const norm = (s) => s.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').replace(/\s+/g, '').toLowerCase();
     const normClean = norm(clean);
     const sorted = [...knownOptions].sort((a, b) => b.length - a.length);
 
@@ -141,7 +177,7 @@ function formatMcqAnswer(text, questionText = '') {
   return { letter: null, text: fallback, raw: clean };
 }
 
-function validateProviderResult(provider, requestId, mode, payload, questionText = '') {
+function validateProviderResult(provider, requestId, mode, payload, questionText = '', structuredOptions = []) {
   if (mode === 'mcq') {
     const raw = typeof payload === 'string' ? payload : (payload.text || payload.code || '');
     const cleanRaw = (raw || '').trim();
@@ -162,7 +198,7 @@ function validateProviderResult(provider, requestId, mode, payload, questionText
       };
     }
 
-    const mcq = formatMcqAnswer(cleanRaw, questionText);
+    const mcq = formatMcqAnswer(cleanRaw, questionText, structuredOptions);
     const valid = Boolean(mcq.letter || (mcq.text && mcq.text.length < 150));
     return {
       provider,
@@ -263,7 +299,7 @@ async function handleCompletedResult(provider, requestId, rawPayload) {
   activeRequestMeta = null;
   await chrome.storage.local.remove('satoriActiveRequest');
 
-  const validated = validateProviderResult(provider, requestId, active.mode, rawPayload, active.questionText);
+  const validated = validateProviderResult(provider, requestId, active.mode, rawPayload, active.questionText, active.structuredOptions || []);
 
   if (!validated.valid) {
     const reason = validated.reason || (active.mode === 'mcq'
@@ -358,20 +394,23 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
 
       try {
         chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode }, (res) => {
-          if (chrome.runtime.lastError || !res?.ok) return;
+          if (chrome.runtime.lastError || !res?.ok || res.loading) return;
           const text = (res.text || '').trim();
           const code = (res.code || '').trim();
+          const effectiveCode = code || (looksLikeCode(text) ? extractCodeBlock(text) : '');
+
           const isReady = mode === 'coding'
-            ? Boolean(code && code.length > 20 && !code.includes('var(--') && !code.includes('.o3lpyf') && !code.includes('window.sn='))
-            : Boolean(text && text.length > 30 && !text.includes('var(--') && !text.includes('.o3lpyf') && !text.includes('window.sn='));
+            ? Boolean(effectiveCode && effectiveCode.length >= 50 && looksLikeCode(effectiveCode) && !effectiveCode.includes('var(--') && !effectiveCode.includes('.o3lpyf') && !effectiveCode.includes('window.sn='))
+            : Boolean(text && text.length >= 15 && !isTransientPlaceholder(text) && !text.includes('var(--') && !text.includes('.o3lpyf') && !text.includes('window.sn='));
+
           if (isReady) {
             clearInterval(interval);
-            addDiagnostic('google-poll', `Answer captured directly via polling (${mode === 'coding' ? code.length : text.length} chars)`);
+            addDiagnostic('google-poll', `Answer captured directly via polling (${mode === 'coding' ? effectiveCode.length : text.length} chars)`);
             handleCompletedResult('google', requestId, {
               requestId,
               mode,
               text: res.text,
-              code: res.code,
+              code: effectiveCode || res.code,
               capturedAt: Date.now()
             });
           }
@@ -529,7 +568,7 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
 // -------------------------------------------------------------
 // Unified Request Dispatcher
 // -------------------------------------------------------------
-async function dispatchSatoriRequest({ provider, mode, pageContent, questionText, assignmentTabId, windowId }) {
+async function dispatchSatoriRequest({ provider, mode, pageContent, questionText, structuredOptions = [], assignmentTabId, windowId }) {
   let assignmentTab = null;
   if (assignmentTabId) {
     try { assignmentTab = await chrome.tabs.get(assignmentTabId); } catch (_e) {}
@@ -557,6 +596,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
       mode,
       assignmentTabId: assignmentTab.id,
       questionText,
+      structuredOptions,
       startedAt: Date.now()
     }
   });
@@ -635,6 +675,7 @@ async function executeShortcutCommand(command, senderTab = null) {
     mode,
     pageContent: page.fullText,
     questionText: page.text || page.fullText,
+    structuredOptions: page.options || [],
     assignmentTabId: assignmentTab.id,
     windowId: assignmentTab.windowId
   });
@@ -684,6 +725,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       mode: message.mode,
       pageContent: message.pageContent,
       questionText: message.questionText,
+      structuredOptions: message.structuredOptions || [],
       assignmentTabId: message.assignmentTabId,
       windowId: message.windowId
     }).then(() => sendResponse({ ok: true }))

@@ -4,6 +4,7 @@
 
 const $ = (id) => document.getElementById(id);
 let fullPageContent = '';
+let structuredPageOptions = [];
 
 const status = (message, error = false) => {
   $('status').textContent = message;
@@ -103,6 +104,7 @@ async function extract() {
 
   $('question').value = result.text;
   fullPageContent = result.fullText || result.text;
+  structuredPageOptions = result.options || [];
   status('Page content read successfully.');
 }
 
@@ -126,6 +128,7 @@ $('runSearch').addEventListener('click', async () => {
       mode,
       pageContent,
       questionText: questionVal || pageContent,
+      structuredOptions: structuredPageOptions,
       assignmentTabId: tab.id,
       windowId: tab.windowId
     });
