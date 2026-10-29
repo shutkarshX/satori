@@ -30,7 +30,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Floating On-Screen Status Widget (Top Frame Only)
+  // Floating On-Screen Status Widget (Positioned at Top-Right so it NEVER covers Next button)
   // -------------------------------------------------------------------------
   const widget = {
     root: null,
@@ -56,8 +56,8 @@
       style.textContent = `
         #satori-autopilot-floating-widget {
           position: fixed;
-          bottom: 20px;
-          right: 20px;
+          top: 70px;
+          right: 24px;
           z-index: 2147483647;
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           font-size: 13px;
@@ -246,8 +246,8 @@
   // PHASE 1: PAGE LOAD & SETTLING
   // -------------------------------------------------------------------------
   async function phasePageLoad() {
-    updateWidgetStatus('Waiting for slide to settle...', true);
-    await sleep(800);
+    updateWidgetStatus('Checking slide status...', true);
+    await sleep(600);
   }
 
   // -------------------------------------------------------------------------
@@ -256,6 +256,7 @@
   async function phaseDismissModals() {
     const candidates = [...document.querySelectorAll('button, a, .btn, span, [role="button"]')];
     for (const btn of candidates) {
+      if (btn.closest('#satori-autopilot-floating-widget')) continue;
       const text = (btn.innerText || btn.textContent || '').trim();
       if (/^(Complete\s*(Now|Later)|Skip(\s*Intro)?|Later|Remind\s*me\s*later|Resume(\s*course)?|Got\s*it|Close)$/i.test(text)) {
         fspLog('MODAL', `Dismissing "${text}" dialog...`);
@@ -277,7 +278,6 @@
       } catch (_e) {}
     });
 
-    // Also silence same-origin iframes
     document.querySelectorAll('iframe').forEach(frame => {
       try {
         const frameDoc = frame.contentDocument || frame.contentWindow?.document;
@@ -292,7 +292,6 @@
     });
   }
 
-  // Global listener to immediately mute any audio/video on start
   window.addEventListener('play', (e) => {
     if (isAutoRunning && e.target && (e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO')) {
       e.target.muted = true;
@@ -305,21 +304,18 @@
   // PHASE 3A: VIDEO HANDLING (Mute, 16x Speed, Smooth Fast-Forward, Complete)
   // -------------------------------------------------------------------------
   async function handleVideoElement(video) {
-    updateWidgetStatus('Handling video playback (16x accelerated)...', true);
+    updateWidgetStatus('Completing video (16x accelerated)...', true);
     fspLog('VIDEO', 'Accelerating and completing video slide...');
     enforceMuteAllMedia();
 
     if (!video.ended) {
-      // 1. Ensure playback begins
       if (video.paused) {
         try { await video.play(); } catch (_e) {}
       }
       enforceMuteAllMedia();
 
-      // 2. Set maximum playback rate for natural fast tracking
       try { video.playbackRate = 16; } catch (_e) {}
 
-      // 3. Fast-forward near end so completion hooks trigger
       await sleep(400);
       if (video.duration && !isNaN(video.duration) && video.duration > 1) {
         try {
@@ -328,14 +324,12 @@
         } catch (_e) {}
       }
 
-      // 4. Wait for player completion event
       await sleep(800);
 
       try {
         video.dispatchEvent(new Event('ended'));
       } catch (_e) {}
 
-      // 5. Cleanly pause so it doesn't loop
       try { video.pause(); } catch (_e) {}
     }
 
@@ -348,13 +342,13 @@
   // PHASE 3B: READING SLIDE HANDLING (Deep Scroll + Mark as Read)
   // -------------------------------------------------------------------------
   async function handleReadingSlide() {
-    updateWidgetStatus('Scrolling and marking reading slide as complete...', true);
+    updateWidgetStatus('Verifying reading slide completion...', true);
     fspLog('READING', 'Processing reading slide...');
 
-    // 1. Scroll window and all inner scrollable containers to bottom
+    // 1. Scroll window and containers
     try {
       window.scrollBy({ top: document.body.scrollHeight / 2, behavior: 'smooth' });
-      await sleep(300);
+      await sleep(250);
       window.scrollBy({ top: document.body.scrollHeight, behavior: 'smooth' });
     } catch (_e) {}
 
@@ -365,7 +359,7 @@
         }
       } catch (_e) {}
     });
-    await sleep(400);
+    await sleep(350);
 
     // 2. Search for Mark as Read toggle or completion pill
     const allElements = [...document.querySelectorAll('body *:not(#satori-autopilot-floating-widget):not(#satori-autopilot-floating-widget *)')];
@@ -396,9 +390,8 @@
       triggerClick(toggleWrapper);
       triggerClick(targetControl);
 
-      // Verify toggle flipped to "Yes"
       for (let i = 0; i < 4; i++) {
-        await sleep(500);
+        await sleep(400);
         const checkYes = [...document.querySelectorAll('body *:not(#satori-autopilot-floating-widget):not(#satori-autopilot-floating-widget *)')].some(el => 
           el.children.length === 0 && (el.innerText?.trim() === 'Yes' || /Marked as Read\s*:?\s*Yes/i.test(el.innerText || ''))
         );
@@ -416,12 +409,11 @@
   // PHASE 3C: QUIZ / ASSESSMENT HANDLING (Active Solver + Auto-Submit)
   // -------------------------------------------------------------------------
   async function handleQuizSlide() {
-    updateWidgetStatus('Solving quiz assessment questions...', true);
+    updateWidgetStatus('Solving quiz assessment...', true);
     fspLog('QUIZ', 'Detecting quiz questions...');
 
     const choices = [...document.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"]')];
     if (choices.length > 0) {
-      // Group choices by name or question container so multi-question quizzes are all answered
       const groups = new Map();
       choices.forEach(c => {
         const groupKey = c.name || c.closest('.question, .quiz-question, form, fieldset, li')?.id || 'default';
@@ -437,11 +429,10 @@
           target.checked = true;
           triggerClick(target);
           target.dispatchEvent(new Event('change', { bubbles: true }));
-          await sleep(250);
+          await sleep(200);
         }
       }
 
-      // Find and click the Submit / Check / Confirm button
       const submitBtn = [...document.querySelectorAll('button, input[type="button"], input[type="submit"], [role="button"], a.btn')].find(b => 
         /^(submit|check|confirm|submit answer|check answer|validate)$/i.test((b.innerText || b.value || '').trim())
       );
@@ -449,114 +440,127 @@
       if (submitBtn) {
         fspLog('QUIZ', 'Clicking quiz submit button...');
         triggerClick(submitBtn);
-        await sleep(800);
+        await sleep(600);
       }
 
-      // Check if a post-submit "Continue" or "Next Question" button appeared
       const continueBtn = [...document.querySelectorAll('button, a, .btn')].find(b =>
         /^(continue|next question|next)$/i.test((b.innerText || b.textContent || '').trim())
       );
       if (continueBtn) {
         triggerClick(continueBtn);
-        await sleep(500);
+        await sleep(400);
       }
     }
   }
 
   // -------------------------------------------------------------------------
-  // PHASE 4: NEXT NODE ADVANCEMENT (Multi-Strategy with Fixed Accordion TOC)
+  // PHASE 4: NEXT NODE ADVANCEMENT (Bulletproof Multi-Strategy)
   // -------------------------------------------------------------------------
   async function phaseAdvanceNext() {
-    updateWidgetStatus('Advancing to next slide...', true);
-    fspLog('NEXT_NODE', 'Advancing forward...');
+    fspLog('NEXT_NODE', 'Attempting forward slide navigation...');
 
-    // Strategy 1: Check standard bottom-right Next container (#next_container)
-    const nextContainers = [...document.querySelectorAll('#next_container, #next_container1, .next_container, .next_container1')];
-    for (const nc of nextContainers) {
-      if (!nc.classList.contains('btn_disable') && nc.getAttribute('aria-disabled') !== 'true') {
-        fspLog('NEXT_NODE', 'Clicking enabled #next_container');
-        triggerClick(nc);
-        return true;
-      }
-    }
+    // Strategy 1: Find any explicit Next Node button / link across the page
+    // Covers #next_container, .next_container, and any button/link with text "Next Node"
+    const nextCandidates = [
+      ...document.querySelectorAll('#next_container, #next_container1, .next_container, .next_container1, [id*="next_node" i], [class*="next_node" i]'),
+      ...document.querySelectorAll('a, button, [role="button"], span.btn, div.btn')
+    ];
 
-    // Strategy 1B: If #next_container is locked with btn_disable (Timer requirement),
-    // automatically sync time-spent for the active slide to unlock it!
-    const lockedNext = nextContainers.find(nc => nc.classList.contains('btn_disable'));
-    if (lockedNext) {
-      fspLog('NEXT_NODE', 'Next button is locked by slide timer. Triggering time-spent unlock sync...');
-      updateWidgetStatus('Unlocking slide timer requirement...', true);
-      const activeId = getActiveContentId();
-      if (activeId) {
-        await syncTimeSpentForId(activeId, 240);
-        await sleep(600);
-        if (!lockedNext.classList.contains('btn_disable')) {
-          fspLog('NEXT_NODE', 'Timer unlocked! Clicking Next container...');
-          triggerClick(lockedNext);
+    for (const el of nextCandidates) {
+      if (el.closest('.previous_container, [id*="previous" i], [class*="previous" i]')) continue;
+      if (el.closest('#satori-autopilot-floating-widget')) continue;
+
+      const rawText = (el.innerText || el.textContent || '').trim();
+      const isNextButton = /next\s*node/i.test(rawText) ||
+                           /^next(\s*slide)?(\s*[>›»]+)?$/i.test(rawText) ||
+                           el.id === 'next_container' ||
+                           el.classList.contains('next_container');
+
+      if (isNextButton) {
+        // If locked by slide timer, attempt instant unlock via API
+        const isLocked = el.classList.contains('btn_disable') ||
+                         el.classList.contains('disabled') ||
+                         el.getAttribute('aria-disabled') === 'true' ||
+                         el.disabled;
+
+        if (isLocked) {
+          fspLog('NEXT_NODE', 'Next button locked by slide timer. Unlocking via API time credit...');
+          updateWidgetStatus('Unlocking slide timer requirement...', true);
+          const activeId = getActiveContentId();
+          if (activeId) {
+            await syncTimeSpentForId(activeId, 240);
+            await sleep(600);
+          }
+        }
+
+        // Find the most specific clickable target (<a>, <button>, or element itself)
+        const clickable = el.matches('a, button, [role="button"]') ? el :
+                          (el.querySelector('a, button, [role="button"], span') || el);
+
+        if (!clickable.classList.contains('btn_disable') && !clickable.disabled) {
+          fspLog('NEXT_NODE', 'Found active Next Node button. Clicking:', clickable);
+          updateWidgetStatus('⚡ Clicking Next Node button...', true);
+          triggerClick(clickable);
+          if (clickable !== el) triggerClick(el);
           return true;
         }
       }
     }
 
-    // Strategy 2: Click any button/link matching "Next Node", "Next Slide", or "Continue"
-    const candidates = [...document.querySelectorAll('body *:not(#satori-autopilot-floating-widget):not(#satori-autopilot-floating-widget *)')];
-    for (const el of candidates) {
-      if (el.closest('.previous_container, [id*="previous"]')) continue;
-      const text = (el.innerText || el.textContent || '').trim();
-      if (/^(Next\s*(Node|Slide)?\s*[>›»]*|Continue|Proceed)$/i.test(text) && el.children.length === 0) {
-        const btn = el.closest('a, button, [role="button"], div, li') || el;
-        if (!btn.classList.contains('btn_disable') && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true') {
-          fspLog('NEXT_NODE', `Clicking "${text}" button`);
-          triggerClick(btn);
-          triggerClick(el);
-          return true;
-        }
-      }
-    }
+    // Strategy 2: Table of Contents (TOC) Forward Jump
+    // Automatically finds the active item in the sidebar TOC and jumps to the next item!
+    const tocItems = [...document.querySelectorAll(
+      '.toc_list li, .tree_node, .content-list-item, [id*="page_unit_toc_"], [class*="toc" i] li, [id*="toc" i] li'
+    )].filter(el => {
+      if (el.closest('#satori-autopilot-floating-widget')) return false;
+      return el.querySelector('a, [onclick], [data-content-id], span') || el.matches('li');
+    });
 
-    // Strategy 3: Fixed Table of Contents (TOC) Module Jump
-    // Strictly tracks the *true active* node and handles collapsed accordions!
-    const allTocNodes = [...document.querySelectorAll('.toc_list li, .tree_node, .content-list-item, [id*="page_unit_toc_"]')];
-    if (allTocNodes.length > 0) {
-      // Find current active index (strictly active, NOT just marked!)
+    if (tocItems.length > 0) {
       let activeIndex = -1;
-      for (let i = 0; i < allTocNodes.length; i++) {
-        const item = allTocNodes[i];
-        if (item.classList.contains('activeNode') || item.classList.contains('active') || item.querySelector('.activeNode, .active') || item.getAttribute('aria-current') === 'page') {
+      for (let i = 0; i < tocItems.length; i++) {
+        const item = tocItems[i];
+        const isCurrent = item.classList.contains('activeNode') ||
+                          item.classList.contains('active') ||
+                          item.classList.contains('selected') ||
+                          item.querySelector('.activeNode, .active, .selected') ||
+                          item.getAttribute('aria-current') === 'page';
+        if (isCurrent) {
           activeIndex = i;
           break;
         }
       }
 
-      // If active node found, jump to the very next node
-      if (activeIndex !== -1 && activeIndex + 1 < allTocNodes.length) {
-        for (let j = activeIndex + 1; j < allTocNodes.length; j++) {
-          const nextItem = allTocNodes[j];
+      if (activeIndex !== -1 && activeIndex + 1 < tocItems.length) {
+        for (let j = activeIndex + 1; j < tocItems.length; j++) {
+          const nextItem = tocItems[j];
           if (nextItem.id && nextItem.id === lastNavigatedId) continue;
 
-          // Check if parent module accordion is collapsed, and expand it!
+          // If parent accordion/module is collapsed, expand it!
           const parentAccordion = nextItem.closest('.panel-collapse, .collapse, [class*="accordion"]');
           if (parentAccordion && (parentAccordion.classList.contains('collapse') && !parentAccordion.classList.contains('in') && !parentAccordion.classList.contains('show'))) {
-            const accordionToggle = parentAccordion.parentElement?.querySelector('[data-toggle="collapse"], .accordion-toggle, .module-title');
-            if (accordionToggle) {
-              fspLog('NEXT_NODE', 'Expanding collapsed module accordion...');
-              triggerClick(accordionToggle);
-              await sleep(350);
+            const toggle = parentAccordion.parentElement?.querySelector('[data-toggle="collapse"], .accordion-toggle, .module-title');
+            if (toggle) {
+              triggerClick(toggle);
+              await sleep(300);
             }
           }
 
           lastNavigatedId = nextItem.id || `toc_${j}`;
-          const link = nextItem.querySelector('a') || nextItem;
-          fspLog('NEXT_NODE', `Jumping to next lesson in TOC (${j + 1}/${allTocNodes.length}): ${link.innerText?.trim() || nextItem.id}`);
-          triggerClick(link);
+          const clickable = nextItem.querySelector('a, [onclick], span') || nextItem;
+          const label = (clickable.innerText || nextItem.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 28);
+          fspLog('NEXT_NODE', `TOC Jump to item (${j + 1}/${tocItems.length}): ${label}`);
+          updateWidgetStatus(`⚡ Jumping to: ${label}...`, true);
+          triggerClick(clickable);
+          triggerClick(nextItem);
           return true;
         }
       }
     }
 
-    // Check if course has finished
+    // Strategy 3: Check if course is 100% complete
     const courseFinished = document.querySelector('.course-completed, .certificate-container, #course_complete_badge') ||
-      candidates.some(el => /Course\s*(Completed|Finished|100%)/i.test(el.innerText || ''));
+      [...document.querySelectorAll('body *')].some(el => /Course\s*(Completed|Finished|100%)/i.test(el.innerText || ''));
 
     if (courseFinished) {
       fspLog('COURSE_END', 'Course complete! 100% finished.');
@@ -565,7 +569,8 @@
       return false;
     }
 
-    fspLog('NEXT_NODE', 'No forward navigation candidate found in this step.');
+    fspLog('NEXT_NODE', 'Waiting for next node to unlock...');
+    updateWidgetStatus('Waiting for next slide to unlock...', true);
     return false;
   }
 
@@ -598,14 +603,14 @@
       if (!isAutoRunning) return;
 
       // 4. Brief synchronization pause
-      await sleep(500);
+      await sleep(400);
       if (!isAutoRunning) return;
 
       // 5. Advance to the next slide/module
       const advanced = await phaseAdvanceNext();
       if (!advanced) {
         consecutiveStallCount++;
-        if (consecutiveStallCount >= 4) {
+        if (consecutiveStallCount >= 3) {
           fspLog('STALL', 'Stalled on slide. Firing automated time-spent sync to unblock...');
           const activeId = getActiveContentId();
           if (activeId) await syncTimeSpentForId(activeId, 240);
