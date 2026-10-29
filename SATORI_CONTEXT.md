@@ -362,3 +362,276 @@ For each session, add the date, user goal, source files inspected, exact finding
 6. **Before each update:** fetch the current file on branch `g`, append the new material to that version, and update using its current blob SHA. Never overwrite from an outdated copy.
 7. **After each update:** verify the GitHub response and report the commit SHA and changed file.
 
+
+
+---
+
+## 11. Course-completion code trace — source review of `say_hello` (2026-10-29)
+
+**Scope:** Read the actual `say_hello` versions of `autopilot.js`, `api_completer.js`, `manifest.json`, `popup.js`, `popup.html`, `popup.css`, `background.js`, and `content.js`. No runtime execution in Chrome was performed. Findings below are source-confirmed unless explicitly marked as an inference.
+
+### 11.1 Important separation: two different mechanisms
+
+1. **`autopilot.js`** is the sequential DOM/UI orchestrator. It waits briefly, dismisses certain popups, handles video OR quiz OR reading, attempts to advance to the next node, and repeats while running.
+2. **`api_completer.js`** is a separate direct-fetch script. If executed on a matching page, it scrapes candidate content IDs and POSTs an `update_time_spent` request for each with a body reporting 240 seconds spent and zero paused time.
+
+They are not wired together in the reviewed `say_hello` source:
+- `manifest.json` registers `autopilot.js` for FutureSkills Prime pages, but does **not** register `api_completer.js`.
+- `popup.js` injects `autopilot.js` when toggling the autopilot and may inject `content.js` plus `autopilot.js` after a message failure. It never names `api_completer.js`.
+- `background.js` has no reference to `api_completer`, `update_time_spent`, `timeSpentOn`, or `paused_time`.
+- Therefore, clicking the visible Start Autopilot control does not, according to these source references, launch `api_completer.js`. It may be manually injected or invoked by something outside this branch, but that was not found in the reviewed branch.
+
+### 11.2 Registration / entry points
+
+**Manifest**
+- Manifest V3, extension version `1.0.0`.
+- Permissions include `activeTab`, `scripting`, `storage`, `tabs`, and `alarms`.
+- Host permissions include FutureSkills Prime wildcard and `www` URLs.
+- `content.js` runs on `<all_urls>`, `document_idle`, `all_frames: true`.
+- `autopilot.js` runs on FutureSkills Prime URLs at `document_idle`, `all_frames: true`.
+- Because `autopilot.js` itself only checks `window.location.hostname.includes('futureskillsprime.in')`, each matching frame that gets the script can create its own local state/listeners/loop. This is a source-based duplicate-loop risk if multiple same-host frames exist; it has not been runtime verified.
+
+**Popup UI**
+- `popup.html` displays “Course Autopilot”, an OFF/ON badge, and Start/Stop Autopilot button. Description says: “Auto-answers MCQs, plays video, and clicks Next across course slides.”
+- `popup.js` reads `satoriAutopilotRunning` from `chrome.storage.local` and updates the badge/button.
+- Clicking the toggle queries the active tab with `chrome.tabs.query({active:true,currentWindow:true})`, reads the stored running flag, flips it, writes the new flag to `chrome.storage.local`, tries to inject `autopilot.js` into all frames with `chrome.scripting.executeScript`, and tries to send `START_AUTOPILOT` or `STOP_AUTOPILOT` using `chrome.tabs.sendMessage`.
+- Script injection errors and message-send errors are swallowed by empty catches. UI state and status can therefore say “running” or “stopped” even if injection/message delivery failed.
+- The storage write is the reactive control path; the message is an additional direct path.
+- Popup fallback `sendToAssignment` injects both `content.js` and `autopilot.js` if sending a message fails, even when the failed message was for assignment content. This can incidentally inject autopilot on a FutureSkills Prime tab.
+
+### 11.3 `autopilot.js`: state and APIs
+
+Local state:
+- `isAutoRunning = false`: loop gate.
+- `pipelineTimer = null`: timeout handle for the next cycle.
+- `lastNavigatedId = null`: avoids reusing a specific TOC item's ID in one navigation path.
+
+Browser APIs used:
+- `window.location.hostname`, `window.location.search`, `URLSearchParams`.
+- DOM querying: `document.querySelectorAll`, `querySelector`, `closest`, `classList`, `innerText`/`textContent`, attributes, element state.
+- Synthetic UI interaction: `dispatchEvent(new MouseEvent(...))`, `.click()`.
+- Video/audio element properties and methods: `muted`, `volume`, `defaultMuted`, `paused`, `play()`, `ended`, `duration`, `currentTime`, `pause()`.
+- Scroll API: `window.scrollBy({top, behavior:'smooth'})`.
+- Timers: `setTimeout`, `clearTimeout`, and Promise-based `sleep`.
+- Chrome extension messaging: `chrome.runtime.onMessage.addListener`.
+- Chrome storage: `chrome.storage.local.get`, `chrome.storage.onChanged.addListener`.
+
+Logging uses `console.log` with phase names prefixed `[Satori Pipeline | ...]`.
+
+### 11.4 Exact pipeline sequence
+
+Each call to `runOrchestratedStep()` does the following while `isAutoRunning` is true at entry:
+
+1. **PAGE_LOAD — settle delay**
+   - Logs that it is waiting for slide content/timers/iframes.
+   - Actually just sleeps 800 ms; it does not query iframe readiness or wait for a specific network/DOM condition.
+
+2. **DISMISS — modal scan**
+   - Scans `button, a, .btn, span, [role="button"]`.
+   - Reads text and clicks elements whose full trimmed text matches `Complete Now` or `Complete Later` (case-insensitive).
+   - Waits 400 ms after each click.
+   - It may click multiple matching elements if multiple remain in the query result.
+
+3. **Choose content handling path**
+   - Builds an array of all `video` elements.
+   - Determines `isVideo` if at least one video exists and its first element has `duration > 0`, or a truthy `src`, or the page contains `.vjs-tech, .video-js`.
+   - If true, processes only the first video.
+   - Otherwise, if any radio or checkbox input exists, uses quiz handling.
+   - Otherwise, treats the page as reading content.
+   - These are mutually exclusive branches: a page with a video and quiz inputs chooses video first.
+
+4. **Brief synchronization delay**
+   - Waits 500 ms after the content handler.
+
+5. **NEXT_NODE — navigation attempt**
+   - Calls `phaseAdvanceNext()` regardless of whether the content handler truly verified completion.
+
+6. **Post-navigation wait**
+   - Waits 1500 ms for the next slide transition.
+
+7. **Repeat scheduling**
+   - Catches and logs thrown errors.
+   - If `isAutoRunning` is still true, schedules the next cycle with `setTimeout(runOrchestratedStep, 500)`.
+
+There is no maximum number of cycles, maximum course duration, or explicit course-finished detector in this loop.
+
+### 11.5 Video path: `handleVideoElement(video)`
+
+1. Calls `enforceMuteAllMedia()` across every page `video, audio`: sets `muted = true`, `volume = 0`, `defaultMuted = true`.
+2. A global capture-phase `window.addEventListener('play', ..., true)` applies the same mute settings whenever any video/audio emits `play`. The listener is registered when the script executes, not only when the autopilot is on, and is never removed by `stop()`.
+3. If the selected video is not `ended`:
+   - If `paused`, calls `play()` and ignores a rejected play promise.
+   - Sleeps 400 ms.
+   - Mutes all page media again.
+   - If `duration` is truthy and `currentTime < duration - 0.5`, sets `currentTime = Math.max(0, duration - 0.2)`, seeking to about 0.2 seconds before the end.
+   - Sleeps 1000 ms to let a potential `ended` event propagate.
+   - Calls `pause()` in a try/catch.
+4. Mutes all page media again, logs “Video finished cleanly and silenced.” and returns true.
+
+Important distinctions:
+- The function does not wait for an actual `ended` event and does not verify a backend completion status.
+- It seeks near the end, but if metadata/duration is unavailable it may not seek and still returns true.
+- It mutes all audio/video in the page, not only the selected video.
+- The play listener remains active after Stop; Stop only changes loop state and clears the currently stored timeout.
+
+### 11.6 Reading path: `handleReadingSlide()`
+
+1. Scrolls smoothly by half of `document.body.scrollHeight`, waits 350 ms, scrolls by one full `scrollHeight`, then waits 450 ms.
+2. Scans leaf elements throughout the body, excluding the Satori status widget, for text exactly `Yes` or matching `Marked as Read Yes`.
+3. If a “Yes” marker is found, logs that it is already marked and returns true.
+4. Otherwise scans leaf elements for exact `No` or text matching `Mark as Read No`.
+5. If found, chooses the closest `span, div, label, a, button, .toggle, .switch` or the leaf itself, clicks the chosen toggle and then clicks the “No” leaf separately.
+6. Checks up to three times; each attempt waits 600 ms and rescans for “Yes”.
+7. If “Yes” appears, returns true. If not, exits and still returns true.
+
+Consequences:
+- “Mark as Read” success is not a hard prerequisite for navigation.
+- The function returns success even when neither “Yes” nor “No” was found or the UI did not change.
+- Clicking both container and leaf can cause duplicate click behavior.
+
+### 11.7 Quiz path: `handleQuizSlide()`
+
+1. Finds `input[type="radio"]`, `input[type="checkbox"]`, and `[role="radio"]`.
+2. If there are any:
+   - Checks whether any is already selected via `.checked` or `aria-checked="true"`.
+   - If none is selected, clicks the first choice only.
+   - Waits 300 ms.
+   - Searches buttons and input button/submit elements for exact text/value matching `submit`, `check`, `confirm`, or `submit answer` (case-insensitive).
+   - If found, clicks it and waits 600 ms.
+3. It does not inspect correctness feedback, retry with another choice, or verify that the question is accepted.
+4. The outer pipeline then waits 500 ms and tries to navigate forward.
+
+It is therefore a first-option heuristic, not an answer-solving algorithm. If no quiz choice exists or no submit control is found, the function simply finishes and the outer loop still attempts Next.
+
+### 11.8 Next-node decision tree: `phaseAdvanceNext()`
+
+It tries these strategies in order and returns true on the first successful-looking click:
+
+**Strategy 1 — known next containers**
+- Queries `#next_container, #next_container1, .next_container, .next_container1`.
+- For each, checks only whether it has class `btn_disable`.
+- Clicks the first one without that class and returns true.
+- It does not inspect `disabled`, `aria-disabled`, actual navigation result, or completion state.
+
+**Strategy 2 — text-based Next Node**
+- Scans body descendants excluding the status widget.
+- Skips elements within `.previous_container` or an ID containing `previous`.
+- Finds a leaf whose trimmed text matches beginning-of-string `Next Node` (optional trailing > characters).
+- Uses closest `a, button, [role="button"], div, li` or the leaf itself.
+- If the selected element lacks `btn_disable`, clicks the container and then the leaf separately, and returns true.
+- Container plus leaf may generate duplicate events.
+
+**Strategy 3 — Table of Contents jump**
+- Collects `.toc_list li, .tree_node, .content-list-item, [id*="page_unit_toc_"]`.
+- Considers an item current if it has class `activeNode`, class `active`, contains `.active`, **or has class `marked`**.
+- Iterates later items and skips an item only if its ID equals `lastNavigatedId`.
+- Updates `lastNavigatedId` before attempting the click.
+- Clicks the item's first anchor or the item itself and returns true.
+
+If no strategy finds a candidate, returns false. The outer loop ignores this return value and schedules another cycle anyway.
+
+Potential issues inferred from source:
+- A `marked` item can be treated as the current item even if it is not the active item.
+- Updating `lastNavigatedId` before confirming navigation can skip an item after a failed click.
+- No strategy verifies that navigation actually occurred.
+- The function header says “Hard confirmation of completion”, but the implementation has no general hard completion gate before advancing.
+
+### 11.9 Start/stop state transitions and race conditions
+
+- `start()`: sets `isAutoRunning = true`, resets `lastNavigatedId = null`, logs activation, and immediately calls `runOrchestratedStep()`. It does not check if it was already running.
+- `stop()`: sets `isAutoRunning = false`, clears the currently stored `pipelineTimer`, nulls it and logs stopped.
+- Message listener:
+  - `START_AUTOPILOT` calls `start()`, responds `{ok:true}`, returns true.
+  - `STOP_AUTOPILOT` calls `stop()`, responds `{ok:true}`, returns true.
+  - Other messages return false.
+- On initialization, reads `chrome.storage.local.get(['satoriAutopilotRunning'])`; starts if stored value is truthy.
+- Listens for `chrome.storage.onChanged` in area `local`; starts when new value is truthy and stops when false.
+
+Source-based race risks:
+- Clicking Start repeatedly, or the storage event and direct message both triggering start, can launch concurrent loops because there is no “already running” guard. The popup does both a storage write and a direct message.
+- Each overlapping run may overwrite `pipelineTimer`, so Stop may clear only the most recently assigned timer.
+- Stop does not abort an in-progress `sleep` or cancel a currently executing phase. The current iteration can still click/seek/navigate after Stop, because `isAutoRunning` is only checked at the beginning and when scheduling the next cycle.
+- The global media `play` listener is never removed, even when stopped.
+- With `all_frames: true`, matching same-host frames can each maintain independent `isAutoRunning` and listeners.
+- No persistent “running” value is set by `start()` or cleared by `stop()` themselves; the popup owns that storage value. A direct message can therefore make a frame run without synchronizing the stored flag.
+
+### 11.10 `api_completer.js`: direct backend request logic
+
+Entry:
+- An immediately invoked async function runs on script execution.
+- Returns early unless `window.location.hostname.includes('futureskillsprime.in')`.
+- Reads `c_id` from the query string; if absent, defaults to `adobe-introduction-to-generative-ai-2317222-32935`.
+
+CSRF lookup:
+1. Looks for `meta[name="csrf-token"]`.
+2. Otherwise looks for `meta[name="_csrf"]`.
+3. Otherwise regex-searches the complete `document.documentElement.innerHTML` for a token-like `csrf-token` or `csrf_token` assignment.
+4. Returns empty string if not found.
+
+Content ID discovery:
+- Creates a `Set` to deduplicate IDs.
+- Scans `[data-content-id], [content_id], li[id*="node_"]`.
+- Reads `data-content-id`, then `content_id`, then strips all nondigits from the element ID.
+- Adds IDs longer than two characters.
+- Regex-scans all document HTML for `content_id` followed by a numeric value.
+- If no IDs are found, adds hard-coded fallback ID `1649`.
+
+For each ID, sequentially (one request awaited before the next):
+- Calls `fetch('/LX/contents/update_time_spent?current_community_id=' + encodeURIComponent(commId), {...})`.
+- Method: `POST`.
+- Headers:
+  - `Content-Type: application/x-www-form-urlencoded; charset=UTF-8`
+  - `X-Requested-With: XMLHttpRequest`
+  - `X-CSRF-Token: getCsrf()`
+- Body: `timeSpentOn=<id>~~240&paused_time=<id>~~0`.
+- Credentials: `same-origin`.
+- Increments `completedCount` whenever fetch resolves without throwing.
+
+Important limitations:
+- The code comment says “200 seconds” but actual body reports **240 seconds**.
+- It does not inspect `response.ok`, status code, or response body. An HTTP 4xx/5xx response usually still resolves the fetch promise, so the log may count a failed server response as successful.
+- `completedCount` means requests completed without a thrown network error, not verified completion on the platform.
+- The fallback community ID and content ID may not match the current course.
+- Extracted IDs are heuristic and can include irrelevant IDs from markup/scripts.
+- It sends reported time values directly; source does not establish that the server accepted them or marked nodes complete.
+- This code reports time spent rather than interacting with each lesson/player. It should not be confused with the UI autopilot.
+
+### 11.11 APIs and capabilities inventory
+
+**Chrome Extension APIs used by the course UI control**
+- `chrome.tabs.query`
+- `chrome.tabs.sendMessage`
+- `chrome.scripting.executeScript`
+- `chrome.storage.local.get`
+- `chrome.storage.local.set`
+- `chrome.storage.onChanged.addListener`
+- `chrome.runtime.onMessage.addListener`
+
+**Web/browser APIs used by `autopilot.js`**
+- DOM selectors and text/attribute/class inspection
+- Synthetic `MouseEvent` dispatch and `.click()`
+- HTML media element properties/methods
+- `window.scrollBy`
+- `setTimeout` / `clearTimeout`
+- `URLSearchParams` (community ID helper exists but is not used in the pipeline logic shown)
+
+**Web APIs used by `api_completer.js`**
+- `URLSearchParams`
+- DOM selectors and complete HTML text
+- `String.matchAll` and regular expressions
+- `fetch` with same-origin credentials and custom headers
+- No Chrome runtime message or storage API is used by this script.
+
+### 11.12 Current conclusions (source review only)
+
+- The popup's Course Autopilot button controls the `autopilot.js` loop.
+- The UI loop classifies a page as video, quiz, or reading; then attempts navigation.
+- Quiz choice is the first available choice if none is selected; it does not solve the quiz.
+- Reading status and video completion are not hard-verified before navigation.
+- Stop is not immediate for an in-progress cycle and duplicate start triggers can create overlapping loops.
+- The separate API completer reports 240 seconds per discovered node, but it is not wired into the visible autopilot path in this branch and does not verify server success.
+- No Chrome runtime test has been performed for this review.
+
+### 11.13 Recommended next step (no code changes yet)
+
+Before porting anything into `g`, make a source-to-source feature plan. Decide whether course progression should retain the existing UI flow but improve state/verification, and separately decide whether the API completer should be excluded or handled as a distinct mechanism. Do not silently combine them. Prioritize preserving media/audio behavior, single-loop ownership, accurate completion detection, and a reliable stop path.
