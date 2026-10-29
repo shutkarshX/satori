@@ -26,3 +26,11 @@ hr { border: 0; border-top: 1px solid #e4e6e8; margin: 16px 0; }
 .check input { width: auto; height: auto; }
 #status { min-height: 18px; margin: 9px 0 0; color: #4a5560; }
 small { display: block; margin-top: 10px; color: #687078; }
+
+.autopilot-panel { margin: 0 0 14px; padding: 11px; border: 1px solid #d8e0e7; border-radius: 9px; background: #f8fafc; }
+.autopilot-heading { font-weight: 700; font-size: 13px; }
+.autopilot-note { margin: 3px 0 7px; color: #687078; font-size: 11px; }
+.autopilot-actions { display: flex; gap: 8px; }
+.autopilot-actions button { flex: 1; margin-top: 0; }
+.autopilot-actions button:disabled { opacity: .5; cursor: not-allowed; }
+#autopilotStatus { margin: 8px 0 0; color: #4a5560; font-size: 11px; }
