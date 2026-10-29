@@ -1,6 +1,5 @@
 (() => {
-  if (window.__satoriGoogleAdapterLoaded) return;
-  window.__satoriGoogleAdapterLoaded = true;
+  window.__satoriGoogleAdapterLoaded = Date.now();
 
   const state = {
     requestId: 0,

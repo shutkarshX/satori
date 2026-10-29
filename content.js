@@ -1,6 +1,10 @@
 (() => {
-  if (window.__satoriContentLoaded) return;
-  window.__satoriContentLoaded = true;
+  // Clean up stale listeners/widgets from previous extension instances so page refresh is never needed
+  if (window.__satoriKeydownHandler) {
+    window.removeEventListener('keydown', window.__satoriKeydownHandler, true);
+  }
+  document.querySelectorAll('#satori-status-widget').forEach(w => w.remove());
+  window.__satoriContentLoaded = Date.now();
 
   let lastEditable = null;
   function sendLiveTelemetry(event, details = '') {
@@ -663,7 +667,7 @@
   // Catches Alt+Shift+M (MCQ), Alt+Shift+C/S (Code), Alt+Shift+X (Cancel)
   // directly in the webpage DOM so browser shortcut conflicts never block it
   // -------------------------------------------------------------
-  window.addEventListener('keydown', async (e) => {
+  window.__satoriKeydownHandler = async (e) => {
     if (e.altKey && e.shiftKey) {
       const code = e.code;
       const key = (e.key || '').toLowerCase();
@@ -676,10 +680,16 @@
         e.preventDefault();
         e.stopPropagation();
         console.log('[Satori Content] In-page shortcut detected:', cmd);
-        triggerShortcutDirect(cmd);
+        try {
+          triggerShortcutDirect(cmd);
+        } catch (_err) {
+          // If extension context was invalidated, remove stale handler
+          window.removeEventListener('keydown', window.__satoriKeydownHandler, true);
+        }
       }
     }
-  }, true);
+  };
+  window.addEventListener('keydown', window.__satoriKeydownHandler, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {

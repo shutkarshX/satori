@@ -827,7 +827,13 @@ async function executeShortcutCommand(command, senderTab = null, directPageText 
     let page;
     try {
       page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
-    } catch (_e) {}
+    } catch (_e) {
+      // If extension was reloaded, dynamically inject fresh content.js and retry without requiring page refresh
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] });
+        page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+      } catch (_retryErr) {}
+    }
 
     if (page?.copiedText && page.copiedText.trim().length >= 20) {
       pageContent = page.copiedText.trim();
@@ -953,3 +959,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return false;
 });
+
+// -------------------------------------------------------------
+// Auto-inject into existing open tabs on extension install/reload
+// Eliminates any requirement to refresh assignment tabs after reload!
+// -------------------------------------------------------------
+async function injectContentScriptIntoAllTabs() {
+  try {
+    const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+    for (const tab of tabs) {
+      if (!tab.id || /^(chrome|edge|chrome-extension|about):/i.test(tab.url || '')) continue;
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        files: ['content.js']
+      }).catch(() => {});
+    }
+  } catch (_e) {}
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  injectContentScriptIntoAllTabs();
+});
+
+// Run automatically on service worker startup / extension reload
+injectContentScriptIntoAllTabs();
