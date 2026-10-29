@@ -194,3 +194,55 @@ $('type').addEventListener('click', async () => {
     status('Text typed into the focused editor. Review it before submitting.');
   } catch (e) { status(e.message, true); }
 });
+
+
+// Course Autopilot controls (kept separate from provider/editor flows).
+function renderAutopilotStatus(value) {
+  if (!value) return;
+  $('autopilotStatus').textContent = value.text || 'Status unavailable.';
+  $('startAutopilot').disabled = !!value.running;
+  $('stopAutopilot').disabled = !value.running;
+}
+chrome.storage.local.get('satoriAutopilotStatus', (result) => {
+  if (result.satoriAutopilotStatus) renderAutopilotStatus(result.satoriAutopilotStatus);
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.satoriAutopilotStatus) {
+    renderAutopilotStatus(changes.satoriAutopilotStatus.newValue);
+  }
+});
+async function sendAutopilotCommand(type) {
+  const tab = await activeTab();
+  if (!/^https?:$/.test(new URL(tab.url || '').protocol) ||
+      !/^(?:www\.)?futureskillsprime\.in$/.test(new URL(tab.url || '').hostname) &&
+      !new URL(tab.url || '').hostname.endsWith('.futureskillsprime.in')) {
+    throw new Error('Open a FutureSkills Prime course page first.');
+  }
+  try {
+    return await chrome.tabs.sendMessage(tab.id, { type });
+  } catch (_) {
+    throw new Error('Autopilot script not found. Reload the extension and refresh the course page.');
+  }
+}
+$('startAutopilot').addEventListener('click', async () => {
+  $('autopilotStatus').textContent = 'Starting…';
+  try {
+    const result = await sendAutopilotCommand('START_AUTOPILOT');
+    if (!result?.ok) throw new Error(result?.text || 'Could not start autopilot.');
+    $('autopilotStatus').textContent = result.text || 'Autopilot started.';
+    $('startAutopilot').disabled = true;
+    $('stopAutopilot').disabled = false;
+  } catch (error) {
+    $('autopilotStatus').textContent = error.message;
+  }
+});
+$('stopAutopilot').addEventListener('click', async () => {
+  try {
+    const result = await sendAutopilotCommand('STOP_AUTOPILOT');
+    $('autopilotStatus').textContent = result?.text || 'Stop requested.';
+    $('startAutopilot').disabled = false;
+    $('stopAutopilot').disabled = true;
+  } catch (error) {
+    $('autopilotStatus').textContent = error.message;
+  }
+});
