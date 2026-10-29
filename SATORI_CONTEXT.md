@@ -212,3 +212,153 @@ These rules are important for all future Satori work:
 
 ### Append future entries here
 For each session, add the date, user goal, source files inspected, exact findings, decisions, edits, checks, known risks, commit SHA, and next step. Keep this document useful as a handoff, not just a list of vague summaries.
+
+
+---
+
+## 9. Verbatim conversation transcript (available messages)
+
+**Transcript policy:** Preserve the wording of messages exactly where the full message is available in the current conversation context. Do not silently rewrite, shorten, summarize, or delete transcript entries when updating this file. Add new entries at the end. Some older project history was supplied to this conversation as a summary rather than the full original message-by-message transcript; those older messages cannot honestly be reproduced verbatim from that summary. Their summaries above are explicitly summaries, not quotes. This section begins with the full messages available from the current branch-planning exchange.
+
+### User
+> ok so now tell me which brach can do what just summary
+
+### Assistant
+> Bro, here’s the summary of what **each Satori branch can do**, based on the source code we reviewed.
+>
+> ## Satori branch comparison
+>
+> | Branch | What it can do | Main limitation |
+> |---|---|---|
+> | **`main`** | Basic workflow — extract questions, search Google, send prompts to Gemini/ChatGPT, capture responses, fill answers into assignment pages. | Older architecture. Google response handling is less integrated, MCQ selection is less reliable, and some ChatGPT message handling appears mismatched. |
+> | **`anti-satori`** | Automated answer workflow — Google AI Overview monitoring, Gemini/ChatGPT requests, response capture, answer validation, auto-fill, request cancellation and timeout handling. | MCQ selection can be overly aggressive. Some timeout and provider-tab tracking logic is inconsistent. |
+> | **`gpt-satori`** | Unified workflow with keyboard shortcuts — request lifecycle management, Google/Gemini/ChatGPT integration, MCQ/code modes, response validation, auto-fill, cancellation, alarms, and a floating status widget. | Google monitoring has a likely initialization bug when opening a new tab. ChatGPT uses a separate background-window strategy that may behave differently from the other branches. |
+> | **`say_hello`** | Most feature-rich implementation — provider automation, Google monitoring with polling fallback, structured MCQ extraction, cleaner coding-question extraction, Monaco/Ace/CodeMirror editor support, keyboard shortcuts, status widget, plus `autopilot.js` and `api_completer.js`. | MCQ selection can trigger multiple clicks/events, and timeout configuration is inconsistent. Its extra helper scripts also need to be evaluated separately for their exact behavior. |
+>
+> ## What stands out in each branch
+>
+> - **`main` — Basic foundation:** older implementation with core provider and assignment interaction features.
+> - **`anti-satori` — Google fallback monitoring:** explicit Google response polling fallback alongside unified request lifecycle.
+> - **`gpt-satori` — Dedicated ChatGPT handling:** separate background window, keyboard shortcuts and centralized request management.
+> - **`say_hello` — Expanded automation and editor support:** broadest visible feature set, including richer question extraction, direct code-editor integration, Google polling fallback and extra automation helpers.
+>
+> ## My conclusion
+>
+> - Oldest/basic implementation: `main`
+> - Google polling fallback: `anti-satori`
+> - Dedicated ChatGPT background-window approach: `gpt-satori`
+> - Broadest visible feature set: `say_hello`
+>
+> Important: “Most features” does not automatically mean “most reliable.” These are source-code comparisons, not live Chrome compatibility or regression-test results. Since you’ve been working on `gpt-satori`, I’d preserve its current behavior and compare specific features against `say_hello` before transferring anything—especially changes affecting video/audio, tab focus, response polling or editor interaction.
+
+### User
+> so main dosnt have automation ?!
+
+### Assistant
+> No bro 😭 — **`main` does have automation.** I made it sound like it doesn't.
+>
+> The difference is *how much automation it has and how it's implemented*.
+>
+> | Automation feature | `main` |
+> |---|---|
+> | Extract question from assignment page | ✅ |
+> | Open Google Search automatically | ✅ |
+> | Send prompts to Gemini | ✅ |
+> | Send prompts to ChatGPT | ✅ |
+> | Capture AI responses automatically | ✅ |
+> | Automatically fill answers into assignment | ✅ |
+> | Automatically select MCQ options | ✅ |
+> | Automatically type code into editor | ✅ |
+> | Centralized request tracking and cancellation | ⚠️ More limited |
+> | Keyboard shortcuts for MCQ, coding and cancel | ❌ Not in its manifest |
+> | Floating status widget | ❌ Not in its content script |
+>
+> **The key distinction:** `main` automates the core workflow from question extraction to provider response and assignment filling. The newer branches add more sophisticated request management, monitoring, shortcuts and UI behavior.
+>
+> One important caveat: these are capabilities implemented in the source, not guarantees that every flow works reliably at runtime.
+
+### User
+> i meant automation like course completion thing
+
+### Assistant
+> Ohhh, you mean **course-completion automation** — not just extracting a question and filling in an answer. You mean the automation that progresses through a course, handles its activities, and moves through lessons or assessments.
+>
+> That’s a different feature. My previous comparison focused too much on the question-answering workflow.
+
+### Assistant
+> Based on the branch files we reviewed:
+>
+> - **`main`** — no `autopilot.js` or `api_completer.js`; I found no equivalent dedicated course-autopilot modules.
+> - **`anti-satori`** — focuses on provider automation and answering assignment questions; those two helper files aren't present.
+> - **`gpt-satori`** — focuses on provider automation, response capture and answer filling; those two helper files aren't present.
+> - **`say_hello`** — includes both `autopilot.js` and `api_completer.js`, making it the branch to inspect for the course-completion functionality you mean.
+>
+> So, **if you're asking which branch contains the dedicated course-autopilot code, `say_hello` is the one.** I’d need to trace those two scripts and their connections to confirm the exact course actions they automate.
+
+### User
+> ok so we gonna merge and all and gets best version so first make a new branch name g
+
+### Assistant
+> Checked your GitHub repo — a branch named `g` already exists in `shutkarshX/satori`.
+>
+> I haven't modified it, so we don't accidentally overwrite existing work.
+>
+> Do you want me to use the existing `g` branch as our integration branch, or create a fresh branch with a different name?
+
+### User
+> use g
+
+### Assistant
+> Done — we’ll use the existing **`g` branch** as the integration branch for Satori.
+>
+> **Plan**
+> 1. Preserve the existing work on `g`.
+> 2. Compare `main`, `anti-satori`, `gpt-satori` and `say_hello` against it.
+> 3. Bring together the best features, including course-completion automation, provider handling and editor support.
+> 4. Resolve conflicts carefully and check for regressions before calling it the final version.
+>
+> **No files have been changed or merged yet.** We’ll build on `g` without blindly overwriting its existing contents.
+
+### User
+> yess so first we will work on course completion thing
+>
+> for that ig say hello thing was working mid lvl
+>
+> but but even before i need u to make md file in g which gonna have all our convo every little thing
+>
+> which u gonna read and get easily whay we did what
+
+### Assistant
+> Done — I created **`SATORI_CONTEXT.md` directly on branch `g`** and GitHub confirmed the commit.
+>
+> **SATORI_CONTEXT.md**
+>
+> Commit: `9cb2b7e11cc23a4783de9a6dbe9a5c1294165bf1`
+>
+> What’s inside:
+> - Branch-by-branch comparison of `main`, `anti-satori`, `gpt-satori`, and `say_hello`.
+> - Your goal of combining the best features without breaking existing functionality.
+> - Course-completion automation as our first priority.
+> - Known implementation details and potential bugs to re-check.
+> - Your rules for code changes, testing, commits, and avoiding regressions.
+> - A dated work log with decisions made and the next steps.
+>
+> One important thing: This is a detailed project handoff, not a verbatim transcript of every message. We'll keep updating it as we work so future sessions can recover the decisions, findings, and progress.
+>
+> Next step: inspect `say_hello/autopilot.js` and `say_hello/api_completer.js`, trace how they connect to the rest of the extension, and document what the course-completion automation actually does before changing any code on `g`.
+
+### User
+> make it verbatim as i think u forgets and do cuts and all hile updating
+
+---
+
+## 10. Rules for future transcript updates
+
+1. **Append, don't replace:** retain all existing sections and transcript entries. Add new conversation messages at the end.
+2. **Quote exactly:** where full message text is available, preserve spelling, grammar, punctuation, casing, and informal wording. Do not silently clean up typos.
+3. **Label summaries:** if only a summary of an older exchange is available, label it as a summary; never present it as a verbatim quote.
+4. **No invented history:** do not reconstruct unavailable messages from guesses.
+5. **Record actions separately:** transcript text records what was said; the work log records what actually happened in GitHub/code, with confirmed commit references and tests.
+6. **Before each update:** fetch the current file on branch `g`, append the new material to that version, and update using its current blob SHA. Never overwrite from an outdated copy.
+7. **After each update:** verify the GitHub response and report the commit SHA and changed file.
+
