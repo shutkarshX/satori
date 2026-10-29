@@ -623,7 +623,6 @@
 
   async function triggerShortcutDirect(cmd) {
     sendLiveTelemetry('SHORTCUT_START', { cmd, url: location.href });
-    // Immediate visual feedback on widget
     renderStatus({
       kind: 'waiting',
       text: (cmd === 'satori-code' ? 'Solving Code' : 'Solving MCQ') + ' with Google AI…',
@@ -631,34 +630,31 @@
       startedAt: Date.now()
     });
 
-    let copiedText = '';
+    // Extract LIVE question text from page (or user mouse selection if highlighted)
+    let pageText = '';
     try {
       const sel = window.getSelection()?.toString().trim();
-      if (sel && sel.length > 15) copiedText = sel;
+      if (sel && sel.length > 20) pageText = cleanProblemText(sel);
     } catch (_e) {}
 
-    if (!copiedText && window.__satoriLastCopiedText && window.__satoriLastCopiedText.length > 15) {
-      copiedText = window.__satoriLastCopiedText;
+    if (!pageText) {
+      pageText = extractFullPage() || extractQuestion();
     }
 
-    if (!copiedText) {
-      try {
-        const clip = await navigator.clipboard.readText();
-        if (clip && clip.trim().length > 15) copiedText = clip.trim();
-      } catch (_e) {}
-    }
+    const structuredOpts = extractStructuredMcq();
 
-    sendLiveTelemetry('SHORTCUT_PAYLOAD', {
+    sendLiveTelemetry('LIVE_PAGE_READ', {
       cmd,
-      hasCopied: Boolean(copiedText),
-      copiedLen: copiedText.length,
-      preview: copiedText.slice(0, 150)
+      textLen: pageText.length,
+      preview: pageText.slice(0, 200),
+      optionsCount: structuredOpts.length
     });
 
     chrome.runtime.sendMessage({
       type: 'TRIGGER_SHORTCUT_DIRECT',
       command: cmd,
-      copiedText: copiedText ? cleanProblemText(copiedText) : ''
+      pageText,
+      options: structuredOpts.map(o => ({ letter: o.letter, text: o.text }))
     });
   }
 
@@ -688,24 +684,20 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       if (message.type === 'EXTRACT_QUESTION') {
-        let copiedText = '';
+        let selected = '';
         try {
           const sel = window.getSelection()?.toString().trim();
-          if (sel && sel.length > 15) copiedText = sel;
+          if (sel && sel.length > 20) selected = cleanProblemText(sel);
         } catch (_e) {}
-        if (!copiedText && window.__satoriLastCopiedText && window.__satoriLastCopiedText.length > 15) {
-          copiedText = window.__satoriLastCopiedText;
-        }
 
         const structuredOptions = extractStructuredMcq();
         const extractedQ = extractQuestion();
         const fullPage = extractFullPage();
-        const effectiveText = copiedText ? cleanProblemText(copiedText) : extractedQ;
-        const effectiveFull = copiedText ? cleanProblemText(copiedText) : fullPage;
+        const effectiveText = selected || extractedQ;
+        const effectiveFull = selected || fullPage;
 
         sendResponse({
           ok: true,
-          copiedText: copiedText ? cleanProblemText(copiedText) : '',
           text: effectiveText,
           fullText: effectiveFull,
           options: structuredOptions.map(o => ({ letter: o.letter, text: o.text })),

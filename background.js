@@ -749,7 +749,7 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
 // -------------------------------------------------------------
 // Keyboard Shortcut Commands (Alt+Shift+M, Alt+Shift+C, Alt+Shift+X)
 // -------------------------------------------------------------
-async function executeShortcutCommand(command, senderTab = null, directCopiedText = '') {
+async function executeShortcutCommand(command, senderTab = null, directPageText = '', directOptions = []) {
   console.log('[Satori Background] Command executing:', command);
   addDiagnostic('shortcut-command', `Command executing: ${command}`);
   if (command === 'satori-cancel') {
@@ -773,13 +773,13 @@ async function executeShortcutCommand(command, senderTab = null, directCopiedTex
     return;
   }
 
-  let pageContent = (directCopiedText || '').trim();
+  let pageContent = (directPageText || '').trim();
   let questionText = pageContent;
-  let structuredOptions = [];
+  let structuredOptions = directOptions || [];
 
-  // If shortcut was sent with copied text directly, use it immediately!
+  // If shortcut provided live page content directly from active tab, use it immediately!
   if (pageContent.length >= 20) {
-    addDiagnostic('shortcut-input', `Using copied text directly (${pageContent.length} chars)`);
+    addDiagnostic('shortcut-input', `Using live page text directly (${pageContent.length} chars)`);
   } else {
     // Extract question across top frame and all iframe frames
     let page;
@@ -866,7 +866,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'TRIGGER_SHORTCUT_DIRECT') {
-    executeShortcutCommand(message.command, _sender?.tab, message.copiedText || '');
+    executeShortcutCommand(message.command, _sender?.tab, message.pageText || '', message.options || []);
     sendResponse({ ok: true });
     return true;
   }
