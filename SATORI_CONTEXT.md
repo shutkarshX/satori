@@ -635,3 +635,16 @@ Important limitations:
 ### 11.13 Recommended next step (no code changes yet)
 
 Before porting anything into `g`, make a source-to-source feature plan. Decide whether course progression should retain the existing UI flow but improve state/verification, and separately decide whether the API completer should be excluded or handled as a distinct mechanism. Do not silently combine them. Prioritize preserving media/audio behavior, single-loop ownership, accurate completion detection, and a reliable stop path.
+
+
+---
+
+## 12. Safe course-autopilot design plan created — 2026-10-29
+
+- User replied “ok do it” after being offered a source-grounded progression map and safer design for branch `g`.
+- Reviewed the current `g` baseline: its `manifest.json` has no FutureSkills Prime host permission/content-script registration for `autopilot.js`; its popup does not contain the course-autopilot UI; its existing provider/assignment files are separate and should be preserved.
+- Created `COURSE_AUTOPILOT_PLAN.md` on branch `g`.
+- Plan commit: `e04e082778f73248078808bdd810c1f4cf46194c`.
+- Plan calls for a single explicit state machine, idempotent Start, cancellation-aware Stop, bounded waits/retries, conservative classification, verified node/navigation changes, no automatic quiz answering, no forced video seeking/muting, and no fabricated time-spent backend requests.
+- This step created documentation only. No extension source code was changed or runtime-tested.
+- Next step: implement the plan in small changes on `g`, starting with the dedicated autopilot controller and narrowly scoped manifest/popup wiring; preserve provider, editor, and unrelated media behavior.
