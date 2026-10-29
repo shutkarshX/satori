@@ -574,7 +574,11 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
       }
 
       try {
-        chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode }, (res) => {
+        if (attempts === 4 && mode === 'coding') {
+        chrome.tabs.sendMessage(tabId, { type: 'FORCE_AI_MODE' }).catch(() => {});
+      }
+
+      chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode }, (res) => {
           if (chrome.runtime.lastError || !res?.ok || res.loading) return;
           const text = (res.text || '').trim();
           const code = (res.code || '').trim();

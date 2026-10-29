@@ -7,7 +7,9 @@
     baselineText: '',
     baselineCode: '',
     quietTimer: null,
-    lastSignature: ''
+    lastSignature: '',
+    aiModeTriggered: false,
+    startTime: 0
   };
 
   function sendLiveTelemetry(event, details = '') {
@@ -51,6 +53,62 @@
   s = s.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
   return s.trim();
 }
+
+  
+  function tryTriggerAIMode() {
+    if (state.aiModeTriggered) return false;
+
+    // 1. Check for tab/link pointing to udm=50 (Google AI Mode)
+    const aiModeLink = document.querySelector('a[href*="udm=50"]');
+    if (aiModeLink) {
+      state.aiModeTriggered = true;
+      sendLiveTelemetry('SWITCHING_TO_AI_MODE_VIA_LINK', { href: aiModeLink.href });
+      aiModeLink.click();
+      return true;
+    }
+
+    // 2. Check for button / link / tab with text "AI Mode", "AI Overview", or "Generate"
+    const candidates = [...document.querySelectorAll('a, button, [role="tab"], div[role="button"]')];
+    const target = candidates.find(el => {
+      const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+      return t === 'ai mode' || t === 'ai overview' || t === 'generate' || t.startsWith('get an ai overview');
+    });
+
+    if (target) {
+      state.aiModeTriggered = true;
+      sendLiveTelemetry('SWITCHING_TO_AI_MODE_VIA_BUTTON', { text: (target.innerText || '').slice(0, 30) });
+      target.click();
+      return true;
+    }
+
+    // 3. Fallback: Append udm=50 to current URL to force Google AI Mode
+    if (!window.location.search.includes('udm=50')) {
+      state.aiModeTriggered = true;
+      sendLiveTelemetry('SWITCHING_TO_AI_MODE_VIA_URL_REDIRECT');
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set('udm', '50');
+      window.location.href = newUrl.toString();
+      return true;
+    }
+
+    return false;
+  }
+
+  function checkImmediateGenerateButton() {
+    const genButtons = [...document.querySelectorAll('button, [role="button"]')].filter(b => {
+      const t = (b.innerText || b.getAttribute('aria-label') || '').trim().toLowerCase();
+      return t === 'generate' || t.startsWith('get an ai overview');
+    });
+    for (const btn of genButtons) {
+      if (!btn.__satoriGenClicked) {
+        btn.__satoriGenClicked = true;
+        try {
+          btn.click();
+          sendLiveTelemetry('GOOGLE_GENERATE_BUTTON_CLICKED');
+        } catch (_e) {}
+      }
+    }
+  }
 
   function looksLikeCode(str) {
     if (!str || typeof str !== 'string') return false;
@@ -268,6 +326,15 @@
 
   const inspect = () => {
     if (!state.requestId) return;
+    checkImmediateGenerateButton();
+
+    const elapsed = Date.now() - (state.startTime || Date.now());
+    if (state.mode === 'coding' && elapsed > 2800 && !state.aiModeTriggered) {
+      const tempReading = readOverview(state.mode);
+      if (!tempReading.code) {
+        tryTriggerAIMode();
+      }
+    }
     const reading = readOverview(state.mode);
     if (reading.loading) return; // Still actively generating
 
@@ -319,12 +386,20 @@
       return true;
     }
 
+    if (message.type === 'FORCE_AI_MODE') {
+      tryTriggerAIMode();
+      sendResponse({ ok: true });
+      return true;
+    }
+
     if (message.type === 'START_GOOGLE_WATCH') {
       state.requestId = message.requestId || Date.now();
       state.mode = message.mode || 'mcq';
       state.baselineText = clean(message.baselineText || '');
       state.baselineCode = clean(message.baselineCode || '');
       state.lastSignature = '';
+      state.startTime = Date.now();
+      state.aiModeTriggered = false;
       sendLiveTelemetry('START_GOOGLE_WATCH', { requestId: state.requestId, mode: state.mode });
       clearTimeout(state.quietTimer);
       inspect();
