@@ -9,8 +9,7 @@
     baselineCount: 0,
     lastSentAt: 0,
     lastSignature: '',
-    quietTimer: null,
-    responsePollTimer: null
+    quietTimer: null
   };
 
   const clean = (value) => String(value || '')
@@ -134,67 +133,40 @@
 
   const clickSend = () => {
     const input = findInput();
-    const form = input?.closest('form');
-
-    // The "Please fill in this field" bubble seen in ChatGPT is native HTML
-    // form validation. Even clicking ChatGPT's real send button can invoke
-    // validation when that button is a submit control. Disable validation
-    // for Satori's send action; do not submit unrelated required fields.
-    const disableNativeValidation = () => {
-      if (!form) return () => {};
-      const previous = form.noValidate;
-      form.noValidate = true;
-      return () => {
-        try { form.noValidate = previous; } catch (_e) {}
-      };
-    };
-
-    const candidates = [
+    const sendButton = [
       document.querySelector('button[data-testid="send-button"]'),
       document.querySelector('button[data-testid="fruitjuice-send-button"]'),
       document.querySelector('button[aria-label*="Send" i]'),
-      document.querySelector('button[title*="Send" i]')
-    ];
-
-    const sendButton = candidates.find((btn) => {
+      document.querySelector('button[title*="Send" i]'),
+      ...document.querySelectorAll('button')
+    ].find((btn) => {
       if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return false;
-      const label = String(btn.getAttribute('aria-label') || '') + ' ' +
-        String(btn.getAttribute('data-testid') || '') + ' ' +
-        String(btn.getAttribute('title') || '');
-      return label.toLowerCase().includes('send');
+      const label = `${btn.getAttribute('aria-label') || ''} ${btn.getAttribute('data-testid') || ''} ${btn.getAttribute('title') || ''}`.toLowerCase();
+      return label.includes('send');
     });
 
     if (sendButton) {
-      const restoreValidation = disableNativeValidation();
       try {
+        sendButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+        sendButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
         sendButton.click();
-        setTimeout(restoreValidation, 0);
         return true;
-      } catch (_e) {
-        restoreValidation();
-      }
+      } catch (_e) {}
+    }
+
+    const form = input?.closest('form');
+    if (form) {
+      try { form.requestSubmit(); return true; } catch (_e) {}
     }
 
     if (input) {
-      const restoreValidation = disableNativeValidation();
       try {
         input.focus();
-        const eventInit = {
-          key: 'Enter',
-          code: 'Enter',
-          keyCode: 13,
-          which: 13,
-          bubbles: true,
-          cancelable: true
-        };
-        input.dispatchEvent(new KeyboardEvent('keydown', eventInit));
-        input.dispatchEvent(new KeyboardEvent('keypress', eventInit));
-        input.dispatchEvent(new KeyboardEvent('keyup', eventInit));
-        setTimeout(restoreValidation, 0);
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
         return true;
-      } catch (_e) {
-        restoreValidation();
-      }
+      } catch (_e) {}
     }
 
     return false;
@@ -284,52 +256,28 @@
     return false;
   };
 
-  const stopResponsePolling = () => {
-    if (state.responsePollTimer) {
-      clearInterval(state.responsePollTimer);
-      state.responsePollTimer = null;
-    }
-  };
-
-  const keepLatestTurnRendered = () => {
-    // ChatGPT may use an inner conversation scroller rather than the document
-    // itself. Move the actual scroll container to the newest turn while the
-    // provider tab stays in the background; do not focus or activate the tab.
-    try {
-      const assistantNodes = responseNodes();
-      const latestAssistant = assistantNodes[assistantNodes.length - 1];
-      if (latestAssistant?.scrollIntoView) {
-        latestAssistant.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' });
-      }
-
-      const scrollables = [...document.querySelectorAll('*')]
-        .filter((el) => {
-          if (!el || el === document.documentElement || el === document.body) return false;
-          const style = getComputedStyle(el);
-          const canScroll = el.scrollHeight > el.clientHeight + 40;
-          return canScroll && /(auto|scroll)/i.test(style.overflowY || '');
-        })
-        .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
-
-      for (const el of scrollables.slice(0, 3)) {
-        try {
-          el.scrollTop = el.scrollHeight;
-        } catch (_e) {}
-      }
-
-      const scrollingElement = document.scrollingElement || document.documentElement;
-      if (scrollingElement.scrollHeight > scrollingElement.clientHeight + 40) {
-        scrollingElement.scrollTop = scrollingElement.scrollHeight;
-      }
-    } catch (_e) {}
-  };
-
   const inspectForNewResponse = () => {
     if (!state.requestId || Date.now() < state.lastSentAt) return;
-    keepLatestTurnRendered();
     const candidates = candidateResponses();
     const latest = candidates[candidates.length - 1];
     if (!latest || latest.signature === state.lastSignature) return;
+
+    const generating = isGenerating();
+    const code = extractCode(latest.text, latest.node);
+
+    // If answer is ready and OpenAI is not actively streaming, emit immediately
+    if (!generating) {
+      if (state.mode === 'coding' && code) {
+        state.lastSignature = latest.signature;
+        report('CHATGPT_RESPONSE', { text: latest.text, code, capturedAt: Date.now() });
+        return;
+      }
+      if (state.mode === 'mcq' && (/ANSWER\s*:\s*[A-D]/i.test(latest.text) || latest.text.length > 20)) {
+        state.lastSignature = latest.signature;
+        report('CHATGPT_RESPONSE', { text: latest.text, code: code || latest.text, capturedAt: Date.now() });
+        return;
+      }
+    }
 
     clearTimeout(state.quietTimer);
     const processResult = () => {
@@ -344,9 +292,9 @@
       const final = current[current.length - 1] || latest;
       if (!final || final.signature === state.lastSignature) return;
 
-      const code = extractCode(final.text, final.node);
+      const finalCode = extractCode(final.text, final.node);
 
-      if (state.mode === 'coding' && !code && Date.now() - state.lastSentAt < 12000) {
+      if (state.mode === 'coding' && !finalCode && Date.now() - state.lastSentAt < 12000) {
         report('CHATGPT_DIAGNOSTIC', 'generation quiet; waiting for code block');
         clearTimeout(state.quietTimer);
         state.quietTimer = setTimeout(processResult, 400);
@@ -354,14 +302,9 @@
       }
 
       state.lastSignature = final.signature;
-      const finalCode = code || final.text;
-      stopResponsePolling();
-      const capturedRequestId = state.requestId;
-      state.requestId = 0;
       report('CHATGPT_RESPONSE', {
-        requestId: capturedRequestId,
         text: final.text,
-        code: finalCode,
+        code: finalCode || final.text,
         capturedAt: Date.now()
       });
     };
@@ -434,27 +377,13 @@
           const code = extractCode(latest.text, latest.node);
           if (!generating) {
             state.lastSignature = latest.signature;
-            sendResponse({
-              ok: true,
-              ready: true,
-              result: { text: latest.text, code: code || latest.text, capturedAt: Date.now() }
-            });
+            sendResponse({ ok: true, ready: true, result: { text: latest.text, code: code || latest.text, capturedAt: Date.now() } });
             return true;
           }
           sendResponse({ ok: true, ready: false, generating: true });
           return true;
         }
         sendResponse({ ok: true, ready: false });
-        return true;
-      }
-
-      if (message.type === 'CHECK_EXISTING_RESPONSE') {
-        const existing = checkExistingResponse(message.prompt, message.mode);
-        if (existing) {
-          sendResponse({ ok: true, existing });
-          return true;
-        }
-        sendResponse({ ok: false });
         return true;
       }
 
@@ -481,14 +410,8 @@
       state.lastSignature = '';
       state.lastSentAt = Date.now();
       clearTimeout(state.quietTimer);
-      stopResponsePolling();
 
       setInput(input, message.prompt || '');
-
-      // Render the newest conversation turn before polling. This is important
-      // for ChatGPT's virtualized/reused conversation view in a background tab.
-      keepLatestTurnRendered();
-      state.responsePollTimer = setInterval(inspectForNewResponse, 700);
 
       setTimeout(() => {
         if (clickSend()) {

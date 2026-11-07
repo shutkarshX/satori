@@ -8,16 +8,11 @@
     "scripting",
     "storage",
     "tabs",
-    "alarms"
+    "alarms",
+    "clipboardRead"
   ],
   "host_permissions": [
-    "https://www.google.com/*",
-    "https://google.com/*",
-    "https://www.google.co.in/*",
-    "https://google.co.in/*",
-    "https://gemini.google.com/*",
-    "https://chatgpt.com/*",
-    "https://chat.openai.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
@@ -57,7 +52,8 @@
       "js": [
         "content.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
       "matches": [
@@ -89,6 +85,17 @@
         "chatgpt.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.futureskillsprime.in/*",
+        "https://futureskillsprime.in/*"
+      ],
+      "js": [
+        "autopilot.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }

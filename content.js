@@ -1,8 +1,33 @@
 (() => {
-  if (window.__satoriContentLoaded) return;
-  window.__satoriContentLoaded = true;
+  // Clean up stale listeners/widgets from previous extension instances so page refresh is never needed
+  if (window.__satoriKeydownHandler) {
+    window.removeEventListener('keydown', window.__satoriKeydownHandler, true);
+  }
+  document.querySelectorAll('#satori-status-widget').forEach(w => w.remove());
+  window.__satoriContentLoaded = Date.now();
+
+  function isExtensionValid() {
+    try {
+      return Boolean(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
+    } catch (_e) {
+      return false;
+    }
+  }
 
   let lastEditable = null;
+  function sendLiveTelemetry(event, details = '') {
+    if (!isExtensionValid()) return;
+    try {
+      const p = chrome.runtime.sendMessage({
+        type: 'LIVE_TELEMETRY',
+        event,
+        details,
+        url: location.href
+      });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_e) {}
+  }
+
 
   // -------------------------------------------------------------
   // Floating Satori Status Widget (Clean DOM, Draggable, Lifecycle)
@@ -15,6 +40,7 @@
   };
 
   function ensureStatusWidget() {
+    if (window.location.hostname.includes("futureskillsprime.in")) return;
     // If an existing widget element already exists in document, clean up duplicates
     const existing = [...document.querySelectorAll('#satori-status-widget')];
     if (existing.length > 0) {
@@ -27,10 +53,12 @@
     const root = document.createElement('div');
     root.id = 'satori-status-widget';
     root.innerHTML = `
-      <button type="button" class="satori-status-pill" aria-label="Satori status">
+      <div class="satori-status-pill" aria-label="Satori status">
         <span class="satori-status-icon">◉</span>
         <span class="satori-status-time">—</span>
-      </button>
+        <button type="button" class="satori-quick-btn" id="satori-quick-code" title="Solve Code (Alt+Shift+C)">⚡ Code</button>
+        <button type="button" class="satori-quick-btn" id="satori-quick-mcq" title="Solve MCQ (Alt+Shift+M)">✓ MCQ</button>
+      </div>
       <div class="satori-status-panel" hidden>
         <strong>Satori</strong>
         <span class="satori-status-detail">Ready</span>
@@ -65,6 +93,18 @@
       #satori-status-widget .satori-status-pill:active { cursor: grabbing; }
       #satori-status-widget .satori-status-icon { font-size: 13px; line-height: 1; }
       #satori-status-widget .satori-status-time { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 11px; }
+      #satori-status-widget .satori-quick-btn {
+        border: none;
+        background: #f1f3f4;
+        color: #1a73e8;
+        font-weight: 600;
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      #satori-status-widget .satori-quick-btn:hover { background: #1a73e8; color: #fff; }
       #satori-status-widget .satori-status-panel {
         margin-top: 7px;
         min-width: 200px;
@@ -117,12 +157,31 @@
 
     pill.addEventListener('pointerup', () => { drag = null; });
 
-    pill.addEventListener('click', () => {
+    pill.addEventListener('click', (e) => {
+      if (e.target?.closest?.('.satori-quick-btn')) return;
       if (moved) { moved = false; return; }
       statusWidget.expanded = !statusWidget.expanded;
       const panel = root.querySelector('.satori-status-panel');
       if (panel) panel.hidden = !statusWidget.expanded;
     });
+
+    const codeBtn = root.querySelector('#satori-quick-code');
+    if (codeBtn) {
+      codeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendLiveTelemetry('QUICK_BUTTON_CLICKED', 'satori-code');
+        triggerShortcutDirect('satori-code');
+      });
+    }
+
+    const mcqBtn = root.querySelector('#satori-quick-mcq');
+    if (mcqBtn) {
+      mcqBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendLiveTelemetry('QUICK_BUTTON_CLICKED', 'satori-mcq');
+        triggerShortcutDirect('satori-mcq');
+      });
+    }
   }
 
   function renderStatus(value) {
@@ -190,26 +249,46 @@
   ensureStatusWidget();
   renderStatus({ kind: 'idle', text: 'Satori ready', at: Date.now() });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.satoriStatus) {
-      renderStatus(changes.satoriStatus.newValue);
-    }
-  });
+  if (isExtensionValid() && chrome.storage?.onChanged) {
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (!isExtensionValid()) return;
+        if (area === 'local' && changes.satoriStatus) {
+          renderStatus(changes.satoriStatus.newValue);
+        }
+      });
+    } catch (_e) {}
+  }
 
-  chrome.storage.local.get('satoriStatus', (result) => {
-    if (result.satoriStatus) renderStatus(result.satoriStatus);
-  });
+  if (isExtensionValid() && chrome.storage?.local) {
+    try {
+      const p = chrome.storage.local.get('satoriStatus', (result) => {
+        if (!isExtensionValid() || chrome.runtime?.lastError) return;
+        if (result?.satoriStatus) renderStatus(result.satoriStatus);
+      });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_e) {}
+  }
 
   // -------------------------------------------------------------
   // Page Text Reading & Editor Interactions
   // -------------------------------------------------------------
   const isEditable = (el) => {
     if (!el) return false;
-    return el.matches?.('textarea, input:not([type="hidden"]), [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea') || el.isContentEditable;
+    return el.matches?.('textarea, input:not([type="hidden"]), [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea, .ace_text-input, [class*="editor" i] textarea') || el.isContentEditable;
   };
 
   document.addEventListener('focusin', (event) => {
     if (isEditable(event.target)) lastEditable = event.target;
+  }, true);
+
+  // Track clicks on editor containers (e.g. Ace, Monaco, CodeMirror) even if the underlying textarea isn't focused yet
+  document.addEventListener('click', (event) => {
+    const editor = event.target?.closest?.('.monaco-editor, .CodeMirror, .ace_editor, [class*="editor" i], [class*="code" i]');
+    if (editor) {
+      const textarea = editor.querySelector('textarea, [contenteditable="true"]');
+      if (textarea) lastEditable = textarea;
+    }
   }, true);
 
   const visibleText = (node) => {
@@ -221,9 +300,20 @@
       .trim();
   };
 
+  function cleanProblemText(text) {
+    if (!text) return '';
+    // Start strictly from Question No / Problem Statement / Problem Description / Task / Coding, stripping preceding portal/student header
+    const match = text.match(/(?:question\s*(?:no\.?|number)?\s*[:\d]|problem\s*(?:statement|description)?|task\s*(?:description)?|single\s*file\s*programming|multi(?:ple)?\s*choice|coding\s*question|practice\s*question|q\s*[:\.\d])/i);
+    if (match && match.index > 0 && match.index < 4000) {
+      text = text.slice(match.index);
+    }
+    // Keep all following details intact (language C (17), fill your code here, testcases, instructions)
+    return text.trim();
+  }
+
   function extractQuestion() {
     const selection = window.getSelection()?.toString().trim();
-    if (selection && selection.length > 20) return selection;
+    if (selection && selection.length > 20) return cleanProblemText(selection);
 
     const candidates = [
       ...document.querySelectorAll(
@@ -253,11 +343,12 @@
       .filter((item) => item.text.length >= 40 && item.text.length < 30000)
       .sort((a, b) => b.score - a.score || b.text.length - a.text.length);
 
-    return ranked[0]?.text || visibleText(document.body).slice(0, 30000);
+    const raw = ranked[0]?.text || visibleText(document.body).slice(0, 30000);
+    return cleanProblemText(raw);
   }
 
   function extractFullPage() {
-    return visibleText(document.body).slice(0, 50000);
+    return cleanProblemText(visibleText(document.body).slice(0, 50000));
   }
 
   function setNativeValue(element, value) {
@@ -269,33 +360,86 @@
     element.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function typeIntoEditor(text, append = false) {
-    const fallback = [...document.querySelectorAll('textarea, [contenteditable="true"], .monaco-editor textarea, .CodeMirror textarea')]
-      .find((element) => isEditable(element) && element.offsetParent !== null) || null;
-    const target = lastEditable || (isEditable(document.activeElement) ? document.activeElement : fallback);
-    if (!isEditable(target)) throw new Error('Click inside the assignment answer box first, then try again.');
-    if (target.isContentEditable || target.matches('[contenteditable="true"]')) {
-      const existing = append ? target.innerText : '';
-      target.focus();
-      document.execCommand('selectAll', false);
-      document.execCommand('insertText', false, existing + text);
-    } else {
-      const existing = append ? target.value : '';
-      setNativeValue(target, existing + text);
-      target.focus();
+  function stripLeadingLanguageTag(code) {
+  if (!code || typeof code !== 'string') return '';
+  let s = code.trim();
+  // Strip leading single-word language identifiers (e.g. "c\n", "java\n", "cpp\n", "python\n")
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py|javascript|js|typescript|ts|c#|cs|golang|go|rust|rs|kotlin|swift|ruby|php)\s*\n+/i, '');
+  // Strip "Language: C\n"
+  s = s.replace(/^language:\s*(?:c|cpp|c\+\+|java|python|javascript|c#)\s*\n+/i, '');
+  // Strip leading language tag immediately preceding code keyword on same line
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
+  return s.trim();
+}
+
+  function typeIntoEditor(rawText, append = false) {
+    const text = stripLeadingLanguageTag(rawText);
+    // 1. Gather all potential editor elements (focused, last clicked, or anywhere in DOM)
+    const candidates = [
+      lastEditable,
+      isEditable(document.activeElement) ? document.activeElement : null,
+      document.querySelector('.monaco-editor textarea'),
+      document.querySelector('.ace_text-input'),
+      document.querySelector('.CodeMirror textarea'),
+      document.querySelector('[class*="editor" i] textarea, [class*="code" i] textarea'),
+      ...document.querySelectorAll('textarea'),
+      ...document.querySelectorAll('[contenteditable="true"]')
+    ].filter((el) => Boolean(el));
+
+    if (candidates.length === 0) {
+      throw new Error('Click inside the assignment answer box first, then try again.');
     }
-    return true;
+
+    // Deduplicate candidates
+    const uniqueTargets = [...new Set(candidates)];
+
+    for (const target of uniqueTargets) {
+      try {
+        target.focus();
+
+        // A. ContentEditable
+        if (target.isContentEditable || target.matches?.('[contenteditable="true"]')) {
+          const existing = append ? target.innerText : '';
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, existing + text);
+          return true;
+        }
+
+        // B. Textarea / Input (Monaco, Ace, CodeMirror, standard forms)
+        if (target.tagName?.toLowerCase() === 'textarea' || target.tagName?.toLowerCase() === 'input') {
+          // 1. Dispatch synthetic paste event (supported by Monaco, Ace, and CodeMirror input handlers)
+          // Synthetic paste event removed to prevent anti-paste traps on test portals
+
+          // 2. Set native value & trigger input/change
+          const existing = append ? target.value : '';
+          setNativeValue(target, existing + text);
+
+          // 3. Document execCommand fallback
+          try {
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, existing + text);
+          } catch (_e) {}
+
+          target.focus();
+          return true;
+        }
+      } catch (_e) {}
+    }
+
+    throw new Error('Could not write into assignment editor. Click the code box first.');
   }
 
   // -------------------------------------------------------------
   // MCQ Option Selection (Safety First: Letter + Text Verification)
   // -------------------------------------------------------------
   function selectMcqOption(answerInput) {
+    console.log('[Satori Content] selectMcqOption called with input:', answerInput);
     const answer = typeof answerInput === 'string'
       ? { letter: null, text: answerInput, raw: answerInput }
       : (answerInput || {});
     const cleanAnswer = String(answer.text || answer.raw || '').trim();
     const targetLetter = String(answer.letter || '').trim().toUpperCase() || null;
+    console.log('[Satori Content] Parsing answer:', { cleanAnswer, targetLetter });
     if (!cleanAnswer && !targetLetter) throw new Error('No answer provided for MCQ.');
 
     const norm = (str) => (str || '')
@@ -313,24 +457,58 @@
     const visibleRadios = [...document.querySelectorAll('input[type="radio"], [role="radio"]')]
       .filter((node) => node.offsetParent !== null || node.matches('[role="radio"]'));
 
+    console.log(`[Satori Content] Found ${candidates.length} candidate option elements, ${visibleRadios.length} visible radios.`);
+
     const click = (element, matched) => {
       if (!element) return null;
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      console.log('[Satori Content] Clicking matched element:', element, 'Label/Text:', matched);
+      try {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (_e) {}
 
+      // Find all clickable targets associated with this option:
+      // 1. The input radio/checkbox
+      // 2. The surrounding <label>
+      // 3. Any custom styled checkmark/circle elements (e.g. .radio, .custom-radio, .mat-radio, etc.)
       const label = element.closest('label') || (element.matches('label') ? element : null);
-      const radio = element.matches('input[type="radio"]') ? element : element.querySelector('input[type="radio"]');
+      const radio = element.matches('input[type="radio"], input[type="checkbox"]')
+        ? element
+        : element.querySelector('input[type="radio"], input[type="checkbox"]') ||
+          (label ? label.querySelector('input[type="radio"], input[type="checkbox"]') : null);
 
-      if (label) {
-        label.click();
-      } else if (radio) {
-        radio.click();
-      } else {
-        element.click();
-      }
+      const customCheckmark = element.querySelector('[class*="radio" i], [class*="circle" i], [class*="check" i], span, [role="radio"]') || element;
 
+      const triggerFullClick = (el) => {
+        if (!el) return;
+        ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach((evtName) => {
+          try {
+            el.dispatchEvent(new MouseEvent(evtName, { bubbles: true, cancelable: true, view: window }));
+          } catch (_e) {}
+        });
+        if (typeof el.click === 'function') el.click();
+      };
+
+      // 1. Click native radio
       if (radio) {
+        radio.checked = true;
+        triggerFullClick(radio);
         radio.dispatchEvent(new Event('input', { bubbles: true }));
         radio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      // 2. Click label
+      if (label && label !== radio) {
+        triggerFullClick(label);
+      }
+
+      // 3. Click custom checkmark element (essential for custom Angular/React UI frameworks)
+      if (customCheckmark && customCheckmark !== radio && customCheckmark !== label) {
+        triggerFullClick(customCheckmark);
+      }
+
+      // 4. Click the element container itself as fallback
+      if (element !== radio && element !== label && element !== customCheckmark) {
+        triggerFullClick(element);
       }
 
       return { matched, type: 'selected' };
@@ -342,34 +520,53 @@
       const target = norm(cleanAnswer);
       const rawMatches = unique.filter((node) => {
         const text = norm(visibleText(node));
-        return text && (text === target || (target.length > 4 && text.length <= 180 && (text.includes(target) || target.includes(text))));
+        if (!text) return false;
+        // Ignore nodes that contain the entire question or multiple other options
+        if (text.length > 300) return false;
+
+        // Exact match
+        if (text === target) return true;
+
+        // Clean standalone match: word boundary match for short answers like "n+1" or "O(n)"
+        if (target.length <= 10) {
+          // Look for target as a standalone token or exact expression in the option
+          const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, 'i');
+          return regex.test(text);
+        }
+
+        // Substring match in either direction for longer text
+        if (target.length > 5 && text.length <= 250 && (text.includes(target) || target.includes(text))) return true;
+
+        // Token overlap: if 60%+ of meaningful words match
+        const targetWords = target.split(/\s+/).filter(w => w.length > 2);
+        const textWords = text.split(/\s+/).filter(w => w.length > 2);
+        if (targetWords.length >= 2 && textWords.length >= 2) {
+          const matchedWords = targetWords.filter(w => textWords.includes(w));
+          if (matchedWords.length / targetWords.length >= 0.6 || matchedWords.length / textWords.length >= 0.6) {
+            return true;
+          }
+        }
+        return false;
       });
       // Deduplicate nested elements: if a parent already matched (e.g. <label> contains <span>), keep only the top-level option container
       textMatches = rawMatches.filter((node) => !rawMatches.some((other) => other !== node && other.contains(node)));
+      console.log(`[Satori Content] Text matching for "${target}": found ${rawMatches.length} raw, ${textMatches.length} deduplicated matches:`, textMatches.map(n => visibleText(n).slice(0, 40)));
     }
 
     // 2. Letter matching candidates (A -> 0, B -> 1, ...)
     const letterIndex = targetLetter ? targetLetter.charCodeAt(0) - 65 : -1;
     let letterTarget = null;
-    if (letterIndex >= 0) {
-      const explicit = visibleRadios.find((input) => {
-        const idAndLabel = `${input.id || ''} ${input.getAttribute('aria-label') || ''}`.toUpperCase();
-        // Check for standalone letter in id/aria-label (e.g. "choice-B", "option_B")
-        if (new RegExp(`(?:^|[^A-Z])${targetLetter}(?:[^A-Z]|$)`).test(idAndLabel)) return true;
-        // Check if value is literally just the option index or letter
-        const val = (input.value || '').trim().toUpperCase();
-        return val === targetLetter || val === String(letterIndex);
-      });
-      letterTarget = explicit || visibleRadios[letterIndex] || null;
+    if (letterIndex >= 0 && visibleRadios.length > letterIndex) {
+      // Direct sequential radio index (A = 0, B = 1, C = 2, D = 3)
+      letterTarget = visibleRadios[letterIndex];
       if (letterTarget) {
         letterTarget = letterTarget.closest('label, [class*="option" i], [class*="choice" i], [role="radio"]') || letterTarget;
       }
     }
 
-    // 3. Explicit provider letters are authoritative.
-    // Portals often render the same option text in nested/duplicate nodes.
-    // Do not let that DOM duplication turn a valid "ANSWER: B - ..." into
-    // a false ambiguity error. Only reject a clear unique text/letter conflict.
+    // 3. Verification & Selection Strategy
+    // A. Priority 1: Authoritative Letter Match
     if (letterTarget) {
       const letterTargetText = norm(visibleText(letterTarget));
       const answerText = norm(cleanAnswer);
@@ -379,6 +576,7 @@
         answerText.includes(letterTargetText);
 
       if (textAgrees || textMatches.length !== 1) {
+        console.log(`[Satori Content] Selecting option by Letter [${targetLetter}]:`, letterTarget);
         return click(letterTarget, targetLetter);
       }
 
@@ -387,38 +585,179 @@
         textElement.contains(letterTarget) ||
         letterTarget.contains(textElement);
 
-      if (sameTarget) return click(letterTarget, targetLetter);
+      if (sameTarget) {
+        return click(letterTarget, targetLetter);
+      }
 
-      throw new Error('MCQ conflict: text matched option ' +
-        visibleText(textElement).slice(0, 30) +
-        ', but letter matched ' + targetLetter + '. No option selected.');
+      // If unique text matches a different option, prefer the direct text match
+      console.warn(`[Satori Content] Discrepancy between letter [${targetLetter}] and text match [${visibleText(textElement)}]. Selecting matching text element.`);
+      return click(textElement, visibleText(textElement).slice(0, 80));
     }
 
-    // No usable letter: only accept a unique text match.
+    // B. Priority 2: If exact text match exists, prefer it immediately
+    const exactMatches = textMatches.filter(node => norm(visibleText(node)) === norm(cleanAnswer));
+    if (exactMatches.length === 1) {
+      return click(exactMatches[0], visibleText(exactMatches[0]).slice(0, 80));
+    }
+
+    // C. Single unique text match
     if (textMatches.length === 1) {
       return click(textMatches[0], visibleText(textMatches[0]).slice(0, 80));
     }
 
+    // D. If multiple text elements matched, pick the highest scoring best match
     if (textMatches.length > 1) {
-      throw new Error('MCQ answer matches multiple page options. Nothing was selected to prevent incorrect submission.');
+      const target = norm(cleanAnswer);
+      const scored = textMatches.map(node => {
+        const text = norm(visibleText(node));
+        let score = 0;
+        if (text === target) score += 100;
+        if (text.startsWith(target) || target.startsWith(text)) score += 30;
+        const targetWords = target.split(/\s+/).filter(w => w.length > 2);
+        const textWords = text.split(/\s+/).filter(w => w.length > 2);
+        const overlap = targetWords.filter(w => textWords.includes(w)).length;
+        score += overlap * 10;
+        score -= Math.abs(text.length - target.length) * 0.1;
+        return { node, score };
+      }).sort((a, b) => b.score - a.score);
+
+      if (scored.length > 0) {
+        console.log(`[Satori Content] Disambiguated multiple options, selected top scored (${scored[0].score} pts):`, scored[0].node);
+        return click(scored[0].node, visibleText(scored[0].node).slice(0, 80));
+      }
     }
 
-    throw new Error('Could not find a unique page option matching: ' + (cleanAnswer.slice(0, 80) || targetLetter));
+    throw new Error(`Could not find a unique page option matching: ${cleanAnswer.slice(0, 80) || targetLetter}`);
   }
+
+  function extractStructuredMcq() {
+    // 1. Gather all visible radio inputs and their associated labels
+    const visibleRadios = [...document.querySelectorAll('input[type="radio"], [role="radio"]')]
+      .filter((node) => node.offsetParent !== null || node.matches('[role="radio"]'));
+
+    if (visibleRadios.length >= 2) {
+      const options = visibleRadios.map((radio, idx) => {
+        const letter = String.fromCharCode(65 + idx); // A, B, C, D...
+        const label = radio.closest('label, li, tr, [class*="option" i]') || radio.parentElement;
+        const text = visibleText(label).replace(/^[A-Da-d][\).\:\-\s]+/, '').trim();
+        return { letter, text, element: radio };
+      });
+      return options;
+    }
+    return [];
+  }
+
+  // Track user copy actions on the page
+  document.addEventListener('copy', () => {
+    try {
+      const sel = window.getSelection()?.toString().trim();
+      if (sel && sel.length > 10) window.__satoriLastCopiedText = sel;
+    } catch (_e) {}
+  }, true);
+
+  async function triggerShortcutDirect(cmd) {
+    sendLiveTelemetry('SHORTCUT_START', { cmd, url: location.href });
+    renderStatus({
+      kind: 'waiting',
+      text: (cmd === 'satori-code' ? 'Solving Code' : 'Solving MCQ') + ' with Google AI…',
+      estimateSec: 10,
+      startedAt: Date.now()
+    });
+
+    // Extract LIVE question text from page (or user mouse selection if highlighted)
+    let pageText = '';
+    try {
+      const sel = window.getSelection()?.toString().trim();
+      if (sel && sel.length > 20) pageText = cleanProblemText(sel);
+    } catch (_e) {}
+
+    if (!pageText) {
+      pageText = extractFullPage() || extractQuestion();
+    }
+
+    const structuredOpts = extractStructuredMcq();
+
+    sendLiveTelemetry('LIVE_PAGE_READ', {
+      cmd,
+      textLen: pageText.length,
+      preview: pageText.slice(0, 200),
+      optionsCount: structuredOpts.length
+    });
+
+    if (!isExtensionValid()) return;
+    try {
+      const p = chrome.runtime.sendMessage({
+        type: 'TRIGGER_SHORTCUT_DIRECT',
+        command: cmd,
+        pageText,
+        options: structuredOpts.map(o => ({ letter: o.letter, text: o.text }))
+      });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_e) {}
+  }
+
+  // -------------------------------------------------------------
+  // Content Script Direct Keyboard Shortcut Listener
+  // Catches Alt+Shift+M (MCQ), Alt+Shift+C/S (Code), Alt+Shift+X (Cancel)
+  // directly in the webpage DOM so browser shortcut conflicts never block it
+  // -------------------------------------------------------------
+  window.__satoriKeydownHandler = async (e) => {
+    if (e.altKey && e.shiftKey) {
+      const code = e.code;
+      const key = (e.key || '').toLowerCase();
+      let cmd = null;
+      if (code === 'KeyM' || key === 'm' || e.keyCode === 77) cmd = 'satori-mcq';
+      else if (code === 'KeyC' || key === 'c' || e.keyCode === 67 || code === 'KeyS' || key === 's' || e.keyCode === 83) cmd = 'satori-code';
+      else if (code === 'KeyX' || key === 'x' || e.keyCode === 88) cmd = 'satori-cancel';
+
+      if (cmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[Satori Content] In-page shortcut detected:', cmd);
+        try {
+          triggerShortcutDirect(cmd);
+        } catch (_err) {
+          // If extension context was invalidated, remove stale handler
+          window.removeEventListener('keydown', window.__satoriKeydownHandler, true);
+        }
+      }
+    }
+  };
+  window.addEventListener('keydown', window.__satoriKeydownHandler, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       if (message.type === 'EXTRACT_QUESTION') {
+        let selected = '';
+        try {
+          const sel = window.getSelection()?.toString().trim();
+          if (sel && sel.length > 20) selected = cleanProblemText(sel);
+        } catch (_e) {}
+
+        const structuredOptions = extractStructuredMcq();
+        const extractedQ = extractQuestion();
+        const fullPage = extractFullPage();
+        const effectiveText = selected || extractedQ;
+        const effectiveFull = selected || fullPage;
+
         sendResponse({
           ok: true,
-          text: extractQuestion(),
-          fullText: extractFullPage(),
+          text: effectiveText,
+          fullText: effectiveFull,
+          options: structuredOptions.map(o => ({ letter: o.letter, text: o.text })),
           title: document.title,
           url: location.href
         });
       }
       if (message.type === 'TYPE_INTO_EDITOR') {
-        sendResponse({ ok: true, typed: typeIntoEditor(message.text || '', Boolean(message.append)) });
+        const typed = typeIntoEditor(message.text || '', Boolean(message.append));
+        sendResponse({ ok: true, typed });
+        return true;
+      }
+      if (message.type === 'COPY_AND_NOTIFY') {
+        // Clipboard write removed to prevent domain permission prompts on test portals
+        const typed = typeIntoEditor(message.text || '', Boolean(message.append));
+        sendResponse({ ok: true, typed });
       }
       if (message.type === 'SELECT_MCQ_OPTION') {
         sendResponse({ ok: true, selected: selectMcqOption(message.answer || message.text || '') });

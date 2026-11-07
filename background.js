@@ -13,6 +13,16 @@ const PROVIDER_NAMES = {
   chatgpt: 'ChatGPT'
 };
 
+const isTransientPlaceholder = (val) => {
+  const s = String(val || '').replace(/^AI\s*Overview\s*/i, '').trim();
+  if (!s || s.length < 15) return true;
+  if (/^(thinking|loading|generating)(\.\.\.)?$/i.test(s)) return true;
+  if (/^thinking\s*generative ai is experimental/i.test(s)) return true;
+  if (/^(generative ai is experimental|learning more)/i.test(s) && s.length < 120) return true;
+  if (/^AI\s*Overview\s*(is\s*)?(thinking|generating|loading)/i.test(s)) return true;
+  return false;
+};
+
 const setStatus = (text, kind = 'waiting', extra = {}) => {
   return chrome.storage.local.set({
     satoriStatus: {
@@ -25,11 +35,24 @@ const setStatus = (text, kind = 'waiting', extra = {}) => {
   });
 };
 
-const addDiagnostic = (step, detail) => chrome.storage.local.get('satoriDiagnostics', (result) => {
-  const entries = Array.isArray(result.satoriDiagnostics) ? result.satoriDiagnostics : [];
-  entries.push({ time: new Date().toLocaleTimeString(), step, detail });
-  chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
-});
+function sendLiveTelemetry(event, details = '') {
+  try {
+    fetch('http://127.0.0.1:8999/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event, details, context: 'background' })
+    }).catch(() => {});
+  } catch (_e) {}
+}
+
+const addDiagnostic = (step, detail) => {
+  sendLiveTelemetry(step, detail);
+  chrome.storage.local.get('satoriDiagnostics', ({ satoriDiagnostics = [] }) => {
+    const entries = Array.isArray(satoriDiagnostics) ? satoriDiagnostics : [];
+    entries.push({ time: new Date().toLocaleTimeString(), step, detail });
+    chrome.storage.local.set({ satoriDiagnostics: entries.slice(-30) });
+  });
+};
 
 // -------------------------------------------------------------
 // Unified Prompt Construction (No Question Synthesis Layer)
@@ -50,7 +73,11 @@ ${pageContent}`;
 
   return `Solve the practice coding problem contained in this page text.
 Identify the actual problem, required programming language, input/output format, constraints, and examples yourself. Ignore navigation, buttons, timers, and unrelated page elements.
-Return exactly one complete, submission-ready, compilable source file in ONE code block and nothing else outside the code block. Include all required imports/headers, helpers, and the complete entry point.
+
+CRITICAL INSTRUCTIONS FOR AUTOMATED GRADING & PLATFORM CONSTRAINTS:
+1. STRICTLY OBEY BLACKLISTED & WHITELISTED RULES: Check the problem text for any "Blacklisted" or "Whitelisted" keywords, functions, data structures, or header files. Never use any blacklisted items (e.g. built-in sorting, specific libraries). Strictly use any required whitelisted items.
+2. EXACT FORMATTING: Output strings, spaces, and line breaks must match the sample outputs 100%. No extra conversational text or debugging prints.
+3. COMPLETE SINGLE FILE: Return exactly one complete, submission-ready, compilable source file in ONE code block and nothing else outside the code block. Include all required imports/headers, helpers, and the complete entry point.
 
 PAGE CONTENT:
 ${pageContent}`;
@@ -59,12 +86,57 @@ ${pageContent}`;
 // -------------------------------------------------------------
 // Normalized Provider Result Builder & Validator
 // -------------------------------------------------------------
-function formatMcqAnswer(text, questionText = '') {
+function formatMcqAnswer(text, questionText = '', structuredOptions = []) {
   if (!text) return { letter: null, text: '', raw: '' };
   let clean = text.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').trim();
+  const norm = (s) => s.normalize('NFKD').replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*').replace(/\s+/g, '').toLowerCase();
 
-  // 1. Explicit answer marker: preserve the option letter and text exactly.
-  // The letter is authoritative; page-option matching below is only verification.
+  // 1. Authoritative matching against structured options (if provided from page DOM)
+  if (Array.isArray(structuredOptions) && structuredOptions.length > 0) {
+    // A. Check for explicit Option Letter mention e.g. "Option B", "**B**", "ANSWER: B", "Correct: B"
+    const explicitLetterMatch = clean.match(/(?:(?:correct\s+(?:answer|option)|final\s+answer|answer)\s*(?:is)?\s*[:\-]?\s*|\boption\s+)\(?([A-Da-d])\)?\b/i);
+    if (explicitLetterMatch && explicitLetterMatch[1]) {
+      const targetLetter = explicitLetterMatch[1].toUpperCase();
+      const matched = structuredOptions.find(o => (o.letter || '').toUpperCase() === targetLetter);
+      if (matched) {
+        return { letter: matched.letter, text: matched.text, raw: clean };
+      }
+    }
+
+    // B. Check if AI response contains any known option text (longest first)
+    const normClean = norm(clean);
+    const sortedStructured = [...structuredOptions]
+      .filter(o => o.text && o.text.trim().length >= 2)
+      .sort((a, b) => b.text.length - a.text.length);
+
+    for (const opt of sortedStructured) {
+      const normOpt = norm(opt.text);
+      if (normOpt.length >= 2 && normClean.includes(normOpt)) {
+        return { letter: opt.letter, text: opt.text, raw: clean };
+      }
+    }
+  }
+
+  // 2. If question options are known from questionText, test against them directly (longest first)
+  if (questionText) {
+    const stopWords = /^(Question|Marks|Negative|Answer here|Clear|Prev|Next|Submit|Section|Time|View|Multi Choice|Single File|degree|batch|roll number|name|email|test name)/i;
+    const knownOptions = questionText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => Boolean(l) && !stopWords.test(l) && l.length < 150 && !l.includes('?') && !l.endsWith(':') && l.length >= 1);
+
+    const normClean = norm(clean);
+    const sorted = [...knownOptions].sort((a, b) => b.length - a.length);
+
+    for (const opt of sorted) {
+      const normOpt = norm(opt);
+      if (normOpt.length >= 2 && normClean.includes(normOpt)) {
+        return { letter: null, text: opt, raw: clean };
+      }
+    }
+  }
+
+  // 1. Explicit answer marker: "ANSWER: B - Text" or "ANSWER: C"
   const explicitMatch = clean.match(/(?:\*{0,2}(?:FINAL\s+ANSWER|CORRECT\s+ANSWER|THE\s+CORRECT\s+ANSWER\s+IS|CORRECT\s+OPTION|ANSWER)\*{0,2})\s*[:\-]?\s*([^\n\r]+)/i);
   if (explicitMatch && explicitMatch[1]) {
     const candidate = explicitMatch[1].replace(/^\*+|\*+$/g, '').trim();
@@ -106,16 +178,19 @@ function formatMcqAnswer(text, questionText = '') {
   if (sentenceMatch && sentenceMatch[1] && sentenceMatch[1].trim().length < 40) {
     const res = sentenceMatch[1].replace(/[.\s]+$/, '').trim();
     if (/^[A-Da-d]$/.test(res)) return { letter: res.toUpperCase(), text: '', raw: clean };
-    if (res.length > 1) return { letter: null, text: res, raw: clean };
+    // Require at least 3 characters and not a common suffix like "ed"
+    if (res.length >= 3 && !/^(ed|ing|ly|es|s|th|st|nd|rd)$/i.test(res)) {
+      return { letter: null, text: res, raw: clean };
+    }
   }
 
-  // Fallback line
-  const filtered = lines.filter((l) => l.length >= 2 && !/^(#|ai overview|evaluation|analysis|explanation)/i.test(l));
-  const fallback = filtered[0] || clean.slice(0, 80);
+  // Fallback: pick the first complete sentence or line with substantive content (> 10 chars)
+  const filtered = lines.filter((l) => l.length >= 8 && !/^(#|ai overview|evaluation|analysis|explanation|here is|note)/i.test(l));
+  const fallback = filtered[0] || clean.slice(0, 120);
   return { letter: null, text: fallback, raw: clean };
 }
 
-function validateProviderResult(provider, requestId, mode, payload, questionText = '') {
+function validateProviderResult(provider, requestId, mode, payload, questionText = '', structuredOptions = []) {
   if (mode === 'mcq') {
     const raw = typeof payload === 'string' ? payload : (payload.text || payload.code || '');
     const cleanRaw = (raw || '').trim();
@@ -136,7 +211,7 @@ function validateProviderResult(provider, requestId, mode, payload, questionText
       };
     }
 
-    const mcq = formatMcqAnswer(cleanRaw, questionText);
+    const mcq = formatMcqAnswer(cleanRaw, questionText, structuredOptions);
     const valid = Boolean(mcq.letter || (mcq.text && mcq.text.length < 150));
     return {
       provider,
@@ -149,21 +224,181 @@ function validateProviderResult(provider, requestId, mode, payload, questionText
   }
 
   // Coding validation
-  const code = typeof payload === 'string' ? payload : (payload.code || payload.text || '');
-  const looksLikeCode = /(#include|public\s+class\s+Main|\bint\s+main\s*\(|\bdef\s+main\s*\(|\bimport\s+java|\bfunction\b|class\s+\w+)/i.test(code);
+  const code = typeof payload === 'string'
+    ? payload
+    : (payload.code || (looksLikeCode(payload.text) ? extractCodeBlock(payload.text) : ''));
+  const cleanCode = stripLeadingLanguageTag(code);
+  const isValid = looksLikeCode(cleanCode) && cleanCode.length > 30;
   return {
     provider,
     requestId,
     type: 'coding',
-    valid: looksLikeCode && code.trim().length > 30,
-    code: code.trim(),
-    raw: typeof payload === 'object' ? payload.text : code
+    valid: isValid,
+    code: cleanCode,
+    raw: typeof payload === 'object' ? (payload.text || payload.code) : code
   };
+}
+
+function stripLeadingLanguageTag(code) {
+  if (!code || typeof code !== 'string') return '';
+  let s = code.trim();
+  // Strip leading single-word language identifiers (e.g. "c\n", "java\n", "cpp\n", "python\n")
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py|javascript|js|typescript|ts|c#|cs|golang|go|rust|rs|kotlin|swift|ruby|php)\s*\n+/i, '');
+  // Strip "Language: C\n"
+  s = s.replace(/^language:\s*(?:c|cpp|c\+\+|java|python|javascript|c#)\s*\n+/i, '');
+  // Strip leading language tag immediately preceding code keyword on same line
+  s = s.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
+  return s.trim();
+}
+
+function looksLikeCode(str) {
+  if (!str || typeof str !== 'string') return false;
+  const s = str.trim();
+  if (s.length < 30) return false;
+  if (/(#include|import\s+(?:sys|math|os|java|stdio|vector)|from\s+\w+\s+import|using\s+namespace|package\s+\w+)/i.test(s)) return true;
+  if (/(class\s+\w+|def\s+\w+\s*\(|function\s+\w+\s*\(|public\s+(?:static\s+)?void\s+main|\bint\s+main|\bvoid\s+main)/i.test(s)) return true;
+  if (/(?:scanf|printf|cin\s*>>|cout\s*<<|System\.out\.print|print\s*\(|console\.log)/i.test(s)) return true;
+  if (/(\bint\b|\bvoid\b|\bchar\b|\bfloat\b|\bdouble\b|\bbool\b)\s+\w+\s*[\(\=;]/i.test(s)) return true;
+  if (/(for\s*\(.*?;.*?;.*?\)|while\s*\(.*?\)|if\s*\(.*?\)\s*\{|return\s+0;)/i.test(s)) return true;
+  const lines = s.split('\n');
+  const codeyLines = lines.filter(l => /[;{}()=\[\]]/.test(l) || /^\s{4,}/.test(l)).length;
+  if (lines.length >= 3 && codeyLines / lines.length > 0.35) return true;
+  return false;
+}
+
+function extractCodeBlock(text) {
+  if (!text) return '';
+  const fenced = text.match(/```(?:c|cpp|c\+\+|java|python|javascript|js)?\s*([\s\S]*?)```/i);
+  if (fenced && fenced[1] && fenced[1].trim().length >= 30) return fenced[1].trim();
+  const startMatch = text.match(/(?:^|\n)\s*(#include|import\s+|class\s+|def\s+|void\s+|int\s+main|using\s+namespace)/i);
+  if (startMatch && startMatch.index !== undefined) {
+    const sub = text.slice(startMatch.index);
+    const endMatch = sub.match(/\n\s*(?:###\s*(?:Explanation|How it works|Complexity)|Key Highlights:|Explanation:\s*\n|Note:\s*This code|Here is how the code works:)/i);
+    if (endMatch && endMatch.index !== undefined && endMatch.index > 25) {
+      return sub.slice(0, endMatch.index).trim();
+    }
+    return sub.trim();
+  }
+  return text.trim();
 }
 
 // -------------------------------------------------------------
 // Single Execution & Autofill Pipeline
 // -------------------------------------------------------------
+function typeIntoMainWorldEditor(codeText) {
+  if (!codeText) return { ok: false, error: 'Empty code' };
+
+  // 100% self-contained language badge stripper (runs in MAIN world with no outer closures)
+  let cleanCode = String(codeText).trim();
+  cleanCode = cleanCode.replace(/^(?:c|cpp|c\+\+|java|python|py|javascript|js|typescript|ts|c#|cs|golang|go|rust|rs|kotlin|swift|ruby|php)\s*\n+/i, '');
+  cleanCode = cleanCode.replace(/^language:\s*(?:c|cpp|c\+\+|java|python|javascript|c#)\s*\n+/i, '');
+  cleanCode = cleanCode.replace(/^(?:c|cpp|c\+\+|java|python|py)\s+(?=(?:#include|import|public|class|def|void|int|using)\b)/i, '');
+
+  // 1. Monaco Editor (Global window.monaco in MAIN world)
+  try {
+    if (window.monaco?.editor) {
+      const models = window.monaco.editor.getModels?.();
+      if (models && models.length > 0) {
+        models[0].setValue(cleanCode);
+        return { ok: true, editor: 'monaco' };
+      }
+    }
+  } catch (_e) {}
+
+  // 1b. Global editor instances (common in React / Vue / Examly portals)
+  try {
+    if (typeof window.editor?.setValue === 'function') {
+      window.editor.setValue(cleanCode);
+      return { ok: true, editor: 'window.editor' };
+    }
+    if (typeof window.codeEditor?.setValue === 'function') {
+      window.codeEditor.setValue(cleanCode);
+      return { ok: true, editor: 'window.codeEditor' };
+    }
+  } catch (_e) {}
+
+  // 2. Ace Editor (Global window.ace or .ace_editor in MAIN world)
+  try {
+    const aceNodes = [...document.querySelectorAll('.ace_editor')];
+    for (const node of aceNodes) {
+      let ed = node.env?.editor;
+      if (!ed && window.ace?.edit) {
+        try { ed = window.ace.edit(node); } catch (_aceErr) {}
+      }
+      if (ed) {
+        if (ed.session?.setValue) {
+          ed.session.setValue(cleanCode);
+        } else if (typeof ed.setValue === 'function') {
+          ed.setValue(cleanCode, 1);
+        }
+        try { ed.clearSelection(); } catch (_selErr) {}
+        return { ok: true, editor: 'ace' };
+      }
+    }
+  } catch (_e) {}
+
+  // 3. CodeMirror (v5 cm.CodeMirror, or v6 cm.view / .cm-content)
+  try {
+    const cmNodes = [...document.querySelectorAll('.CodeMirror')];
+    for (const node of cmNodes) {
+      if (node.CodeMirror) {
+        node.CodeMirror.setValue(cleanCode);
+        return { ok: true, editor: 'codemirror' };
+      }
+    }
+    const cm6Nodes = [...document.querySelectorAll('.cm-content[contenteditable="true"]')];
+    for (const node of cm6Nodes) {
+      node.focus();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, cleanCode);
+      return { ok: true, editor: 'codemirror6' };
+    }
+  } catch (_e) {}
+
+  // 4. Monaco Editor DOM fallback (focus Monaco hidden textarea & input)
+  try {
+    const monacoTextarea = document.querySelector('.monaco-editor textarea');
+    if (monacoTextarea) {
+      monacoTextarea.focus();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, cleanCode);
+      return { ok: true, editor: 'monaco-textarea' };
+    }
+  } catch (_e) {}
+
+  // 5. Any textarea or contenteditable element in the editor container
+  try {
+    const candidates = [
+      document.activeElement,
+      document.querySelector('.ace_text-input'),
+      document.querySelector('[class*="editor" i] textarea, [class*="code" i] textarea'),
+      ...document.querySelectorAll('textarea'),
+      ...document.querySelectorAll('[contenteditable="true"]')
+    ].filter(Boolean);
+
+    for (const el of candidates) {
+      if (el.id === 'satori-quick-search' || el.closest?.('#satori-status-widget')) continue;
+      if (el.isContentEditable || el.matches?.('[contenteditable="true"]')) {
+        el.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, cleanCode);
+        return { ok: true, editor: 'contenteditable' };
+      }
+      if (el.tagName?.toLowerCase() === 'textarea' || el.tagName?.toLowerCase() === 'input') {
+        el.focus();
+        const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (descriptor?.set) descriptor.set.call(el, cleanCode); else el.value = cleanCode;
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: cleanCode }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { ok: true, editor: 'textarea' };
+      }
+    }
+  } catch (_e) {}
+
+  return { ok: false, error: 'No compatible code editor found' };
+}
+
 async function autoFillAssignment(tabId, result) {
   if (!tabId || !result || !result.valid) return { ok: false, error: 'Invalid AI answer' };
 
@@ -173,11 +408,40 @@ async function autoFillAssignment(tabId, result) {
       ? { type: msgType, answer: result.answer }
       : { type: msgType, text: result.code, append: false };
 
+    // For coding: execute directly into the page's MAIN world across all frames first (Monaco, Ace, CodeMirror, etc.)
+    if (result.type === 'coding') {
+      try {
+        const mainResults = await chrome.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          world: 'MAIN',
+          func: typeIntoMainWorldEditor,
+          args: [result.code]
+        });
+        const anySuccess = (mainResults || []).some(r => r.result?.ok);
+        if (anySuccess) {
+          const usedEditor = (mainResults || []).find(r => r.result?.ok)?.result?.editor || 'editor';
+          addDiagnostic(`${result.provider}-autofill`, `Code placed into ${usedEditor} via MAIN world`);
+          setStatus(`${PROVIDER_NAMES[result.provider] || result.provider} code placed into ${usedEditor}. Review before submitting.`, 'ready');
+
+          // Notify content script to copy to clipboard & show green pill status
+          chrome.tabs.sendMessage(tabId, {
+            type: 'COPY_AND_NOTIFY',
+            text: result.code,
+            editor: usedEditor
+          }).catch(() => {});
+
+          return { ok: true };
+        }
+      } catch (mainErr) {
+        console.warn('[Satori Background] MAIN world injection error:', mainErr);
+      }
+    }
+
     let res;
     try {
       res = await chrome.tabs.sendMessage(tabId, payload);
     } catch (_error) {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['content.js'] });
       res = await chrome.tabs.sendMessage(tabId, payload);
     }
 
@@ -213,7 +477,7 @@ async function handleCompletedResult(provider, requestId, rawPayload) {
   activeRequestMeta = null;
   await chrome.storage.local.remove('satoriActiveRequest');
 
-  const validated = validateProviderResult(provider, requestId, active.mode, rawPayload, active.questionText);
+  const validated = validateProviderResult(provider, requestId, active.mode, rawPayload, active.questionText, active.structuredOptions || []);
 
   if (!validated.valid) {
     const reason = validated.reason || (active.mode === 'mcq'
@@ -290,12 +554,52 @@ async function getReusableTab(domainMatch, storageKeyTab, storageKeyWin, windowI
   return null;
 }
 
-// 1. Google AI Mode
+// 1. Google AI Mode (Polling + Mutation Observer for instantaneous capture)
 async function startGoogleSearch(query, requestId, mode, assignmentTab, questionText) {
   const url = `https://www.google.com/search?q=${encodeURIComponent(query.slice(0, 30000))}`;
   const windowId = assignmentTab?.windowId;
   let tab = windowId ? await getReusableTab(/^https:\/\/(www\.)?google\./i, 'satoriGoogleTabId', 'satoriGoogleWindowId', windowId) : null;
-  const targetTabId = tab?.id || null;
+
+  const startPollingGoogle = (tabId) => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      const current = await chrome.storage.local.get('satoriActiveRequest');
+      if (current.satoriActiveRequest?.requestId !== requestId || attempts > 180) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        // Let Google overview generate naturally; AI Mode is only triggered if Google explicitly displays the unavailable banner
+
+      chrome.tabs.sendMessage(tabId, { type: 'READ_GOOGLE_AI_OVERVIEW', mode }, (res) => {
+          if (chrome.runtime.lastError || !res?.ok || res.loading) return;
+          const text = (res.text || '').trim();
+          const code = (res.code || '').trim();
+          const effectiveCode = code || (looksLikeCode(text) ? extractCodeBlock(text) : '');
+
+          const isReady = mode === 'coding'
+            ? Boolean(effectiveCode && effectiveCode.length >= 30 && looksLikeCode(effectiveCode) && !effectiveCode.includes('var(--') && !effectiveCode.includes('.o3lpyf') && !effectiveCode.includes('window.sn='))
+            : Boolean(text && text.length >= 15 && !isTransientPlaceholder(text) && !text.includes('var(--') && !text.includes('.o3lpyf') && !text.includes('window.sn='));
+
+          if (isReady) {
+            clearInterval(interval);
+            addDiagnostic('google-poll', `Answer captured directly via polling (${mode === 'coding' ? effectiveCode.length : text.length} chars)`);
+            handleCompletedResult('google', requestId, {
+              requestId,
+              mode,
+              text: res.text,
+              code: effectiveCode || res.code,
+              capturedAt: Date.now()
+            });
+          }
+        });
+      } catch (_e) {
+        clearInterval(interval);
+      }
+    }, 1000);
+  };
 
   const initiateWatch = async (tabId) => {
     try {
@@ -305,27 +609,41 @@ async function startGoogleSearch(query, requestId, mode, assignmentTab, question
         requestId,
         mode
       });
-      addDiagnostic('google-watch', `MutationObserver attached to Google Search tab ${tabId}`);
+      addDiagnostic('google-watch', `Watch attached to Google Search tab ${tabId}`);
+      startPollingGoogle(tabId);
     } catch (err) {
       addDiagnostic('google-error', err.message);
+      startPollingGoogle(tabId);
     }
   };
-
-  let handled = false;
-  const listener = (updatedTabId, changeInfo) => {
-    if (updatedTabId === targetTabId && changeInfo.status === 'complete' && !handled) {
-      handled = true;
-      chrome.tabs.onUpdated.removeListener(listener);
-      initiateWatch(targetTabId);
-    }
-  };
-  chrome.tabs.onUpdated.addListener(listener);
 
   if (tab?.id) {
+    const targetTabId = tab.id;
+    let handled = false;
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId === targetTabId && changeInfo.status === 'complete' && !handled) {
+        handled = true;
+        chrome.tabs.onUpdated.removeListener(listener);
+        initiateWatch(targetTabId);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
     await chrome.tabs.update(tab.id, { url, active: false });
+    setTimeout(() => { if (!handled) { handled = true; initiateWatch(targetTabId); } }, 1500);
   } else {
     tab = await chrome.tabs.create({ url, active: false, windowId });
+    const targetTabId = tab.id;
     await chrome.storage.local.set({ satoriGoogleTabId: tab.id, satoriGoogleWindowId: tab.windowId });
+    let handled = false;
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId === targetTabId && changeInfo.status === 'complete' && !handled) {
+        handled = true;
+        chrome.tabs.onUpdated.removeListener(listener);
+        initiateWatch(targetTabId);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => { if (!handled) { handled = true; initiateWatch(targetTabId); } }, 1800);
   }
 }
 
@@ -359,78 +677,13 @@ async function startGeminiSearch(prompt, requestId, mode, assignmentTab, questio
   }
 }
 
-// 3. ChatGPT (Reused Conversation, Dedicated Unfocused Window)
-// Chrome can freeze an inactive background tab (Chrome 132+). A frozen tab
-// cannot execute its page tasks until activated, which is exactly the failure
-// mode where ChatGPT only finishes/rendering after the user clicks its tab.
-// Keep ChatGPT active in its own unfocused window instead. The assignment
-// window remains the user's focused window and is never switched by Satori.
-async function getBackgroundChatGPTTab(assignmentTab) {
-  const assignmentWindowId = assignmentTab?.windowId;
-  const stored = await chrome.storage.local.get(['satoriChatGPTTabId', 'satoriChatGPTWindowId']);
-
-  const moveToProviderWindow = async (tab) => {
-    if (!tab?.id) return null;
-    if (tab.windowId !== assignmentWindowId) {
-      try {
-        await chrome.tabs.update(tab.id, { active: true });
-      } catch (_e) {}
-      return await chrome.tabs.get(tab.id);
-    }
-
-    try {
-      const providerWindow = await chrome.windows.create({
-        tabId: tab.id,
-        focused: false,
-        type: 'normal'
-      });
-      await chrome.storage.local.set({
-        satoriChatGPTTabId: tab.id,
-        satoriChatGPTWindowId: providerWindow.id
-      });
-      return await chrome.tabs.get(tab.id);
-    } catch (_e) {
-      return tab;
-    }
-  };
-
-  if (stored.satoriChatGPTTabId) {
-    try {
-      const tab = await chrome.tabs.get(stored.satoriChatGPTTabId);
-      if (tab?.id && /https:\/\/(?:chatgpt\.com|chat\.openai\.com)\//i.test(tab.url || '')) {
-        return moveToProviderWindow(tab);
-      }
-    } catch (_e) {}
-  }
-
-  const providerTabs = await chrome.tabs.query({
-    url: ['https://chatgpt.com/*', 'https://chat.openai.com/*']
-  });
-  const existing = providerTabs.find((tab) => tab.id);
-  if (existing) {
-    return moveToProviderWindow(existing);
-  }
-
-  const providerWindow = await chrome.windows.create({
-    url: 'https://chatgpt.com/',
-    focused: false,
-    type: 'normal'
-  });
-  const tab = providerWindow?.tabs?.[0];
-  if (!tab?.id) return null;
-
-  await chrome.storage.local.set({
-    satoriChatGPTTabId: tab.id,
-    satoriChatGPTWindowId: providerWindow.id
-  });
-  return tab;
-}
-
+// 3. ChatGPT (Reused Conversation, Background)
 async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questionText) {
-  let tab = await getBackgroundChatGPTTab(assignmentTab);
-  activeChatGPTRequest = { requestId, mode, questionText, tabId: tab?.id || null, assignmentTabId: assignmentTab?.id };
+  const windowId = assignmentTab?.windowId;
+  let tab = windowId ? await getReusableTab(/https:\/\/(chatgpt\.com|chat\.openai\.com)\//i, 'satoriChatGPTTabId', 'satoriChatGPTWindowId', windowId) : null;
+  activeChatGPTRequest = { requestId, mode, questionText, tabId: null, assignmentTabId: assignmentTab?.id };
 
-  const startChatGPTPolling = (tabId) => {
+  const startPolling = (tabId) => {
     let pollCount = 0;
     const interval = setInterval(async () => {
       pollCount += 1;
@@ -439,13 +692,17 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
         clearInterval(interval);
         return;
       }
-      chrome.tabs.sendMessage(tabId, { type: 'POLL_LATEST_RESPONSE' }, (res) => {
-        if (chrome.runtime.lastError || !res?.ok) return;
-        if (res.ready && res.result) {
-          clearInterval(interval);
-          handleCompletedResult('chatgpt', requestId, res.result);
-        }
-      });
+      try {
+        chrome.tabs.sendMessage(tabId, { type: 'POLL_LATEST_RESPONSE' }, (res) => {
+          if (chrome.runtime.lastError || !res?.ok) return;
+          if (res.ready && res.result) {
+            clearInterval(interval);
+            handleCompletedResult('chatgpt', requestId, res.result);
+          }
+        });
+      } catch (_e) {
+        clearInterval(interval);
+      }
     }, 1000);
   };
 
@@ -453,45 +710,45 @@ async function startChatGPTSearch(prompt, requestId, mode, assignmentTab, questi
     chrome.tabs.sendMessage(tabId, { type: 'FILL_AND_SEND_CHATGPT', prompt, requestId, mode }, (res) => {
       if (chrome.runtime.lastError || !res?.ok) {
         if (retries > 0) setTimeout(() => sendPrompt(tabId, retries - 1), 800);
-        else setStatus('ChatGPT composer was not ready. Check the background ChatGPT window.', 'error');
+        else setStatus('ChatGPT composer was not ready. Check the background ChatGPT tab.', 'error');
       } else {
         addDiagnostic('chatgpt-submit', 'Prompt dispatched to ChatGPT MutationObserver');
-        startChatGPTPolling(tabId);
+        startPolling(tabId);
       }
     });
   };
 
-  if (!tab?.id) {
-    setStatus('Could not create the background ChatGPT window.', 'error');
-    return;
-  }
+  const url = 'https://chatgpt.com/';
+  if (tab?.id) {
+    activeChatGPTRequest.tabId = tab.id;
+    let isAlive = false;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['chatgpt.js'] }).catch(() => {});
+      const ping = await Promise.race([
+        chrome.tabs.sendMessage(tab.id, { type: 'PING_CHATGPT' }),
+        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 500))
+      ]);
+      if (ping?.ok) isAlive = true;
+    } catch (_e) {}
 
-  activeChatGPTRequest.tabId = tab.id;
-
-  try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['chatgpt.js'] }).catch(() => {});
-    const ping = await Promise.race([
-      chrome.tabs.sendMessage(tab.id, { type: 'PING_CHATGPT' }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 700))
-    ]);
-
-    if (ping?.ok) {
-      setTimeout(() => sendPrompt(tab.id), 100);
-      return;
+    if (isAlive) {
+      setTimeout(() => sendPrompt(tab.id), 50);
+    } else {
+      await chrome.tabs.update(tab.id, { url, active: false });
+      setTimeout(() => sendPrompt(tab.id), 1200);
     }
-  } catch (_e) {}
-
-  try {
-    await chrome.tabs.update(tab.id, { url: 'https://chatgpt.com/', active: true });
-  } catch (_e) {}
-
-  setTimeout(() => sendPrompt(tab.id), 1500);
+  } else {
+    tab = await chrome.tabs.create({ url, active: false, windowId });
+    activeChatGPTRequest.tabId = tab.id;
+    await chrome.storage.local.set({ satoriChatGPTTabId: tab.id, satoriChatGPTWindowId: tab.windowId });
+    setTimeout(() => sendPrompt(tab.id), 1500);
+  }
 }
 
 // -------------------------------------------------------------
 // Unified Request Dispatcher
 // -------------------------------------------------------------
-async function dispatchSatoriRequest({ provider, mode, pageContent, questionText, assignmentTabId, windowId }) {
+async function dispatchSatoriRequest({ provider, mode, pageContent, questionText, structuredOptions = [], assignmentTabId, windowId }) {
   let assignmentTab = null;
   if (assignmentTabId) {
     try { assignmentTab = await chrome.tabs.get(assignmentTabId); } catch (_e) {}
@@ -519,18 +776,24 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
       mode,
       assignmentTabId: assignmentTab.id,
       questionText,
+      structuredOptions,
       startedAt: Date.now()
     }
   });
 
-  await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 2 });
+  await chrome.alarms.create(`satori-timeout-${requestId}`, { delayInMinutes: 5 });
   setStatus(`${PROVIDER_NAMES[provider] || provider} is processing ${mode === 'mcq' ? 'MCQ' : 'code'}…`, 'waiting');
   addDiagnostic('request', `Started ${provider} ${mode} (request ${requestId})`);
 
   const prompt = buildDirectPrompt(provider, mode, pageContent);
 
   if (provider === 'google') {
-    startGoogleSearch(pageContent, requestId, mode, assignmentTab, questionText);
+    // For Google AI Mode, keep the actual question text at the start so Google triggers AI Overview,
+    // and append strict grading & blacklist/whitelist constraints at the end
+    const googleQuery = mode === 'coding'
+      ? `${pageContent}\n\nStrictly follow all blacklisted and whitelisted constraints, pass all sample test cases, and return complete code.`
+      : pageContent;
+    startGoogleSearch(googleQuery, requestId, mode, assignmentTab, questionText);
   } else if (provider === 'gemini') {
     startGeminiSearch(prompt, requestId, mode, assignmentTab, questionText);
   } else {
@@ -541,7 +804,9 @@ async function dispatchSatoriRequest({ provider, mode, pageContent, questionText
 // -------------------------------------------------------------
 // Keyboard Shortcut Commands (Alt+Shift+M, Alt+Shift+C, Alt+Shift+X)
 // -------------------------------------------------------------
-chrome.commands.onCommand.addListener(async (command) => {
+async function executeShortcutCommand(command, senderTab = null, directPageText = '', directOptions = []) {
+  console.log('[Satori Background] Command executing:', command);
+  addDiagnostic('shortcut-command', `Command executing: ${command}`);
   if (command === 'satori-cancel') {
     await cancelActiveRequest();
     return;
@@ -549,41 +814,124 @@ chrome.commands.onCommand.addListener(async (command) => {
 
   const mode = command === 'satori-mcq' ? 'mcq' : command === 'satori-code' ? 'coding' : null;
   if (!mode) return;
+  setStatus(`${mode === 'coding' ? 'Coding' : 'MCQ'} shortcut detected. Reading the active assignment tab…`, 'waiting');
 
-  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const assignmentTab = tabs.find((t) => t.id && !/google\.|gemini\.|chatgpt\./i.test(t.url || '')) || tabs[0];
-  if (!assignmentTab?.id) return;
-
-  let page;
-  try {
-    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
-  } catch (_e) {
-    await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id }, files: ['content.js'] });
-    page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+  let assignmentTab = senderTab;
+  if (!assignmentTab?.id) {
+    const activeTabs = await chrome.tabs.query({ active: true });
+    assignmentTab = activeTabs.find((t) => t.id && !/^(chrome|edge|chrome-extension|about):/i.test(t.url || '') && !/google\.|gemini\.|chatgpt\./i.test(t.url || '')) || activeTabs[0];
   }
 
-  if (!page?.ok || !page.fullText || page.fullText.trim().length < 10) {
+  if (!assignmentTab?.id) {
+    console.warn('[Satori Background] Active tab is an internal or provider page. Ignoring shortcut.');
+    setStatus('Cannot run on internal browser pages (e.g. chrome://). Switch to an assignment tab.', 'error');
+    return;
+  }
+
+  let pageContent = (directPageText || '').trim();
+  let questionText = pageContent;
+  let structuredOptions = directOptions || [];
+
+  // If shortcut provided live page content directly from active tab, use it immediately!
+  if (pageContent.length >= 20) {
+    addDiagnostic('shortcut-input', `Using live page text directly (${pageContent.length} chars)`);
+  } else {
+    // Extract question across top frame and all iframe frames
+    let page;
+    try {
+      page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+    } catch (_e) {
+      // If extension was reloaded, dynamically inject fresh content.js and retry without requiring page refresh
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] });
+        page = await chrome.tabs.sendMessage(assignmentTab.id, { type: 'EXTRACT_QUESTION' });
+      } catch (_retryErr) {}
+    }
+
+    if (page?.copiedText && page.copiedText.trim().length >= 20) {
+      pageContent = page.copiedText.trim();
+      questionText = pageContent;
+      structuredOptions = page.options || [];
+      addDiagnostic('shortcut-input', `Using copied text from tab (${pageContent.length} chars)`);
+    } else if (page?.fullText && page.fullText.trim().length >= 20) {
+      pageContent = page.fullText;
+      questionText = page.text || page.fullText;
+      structuredOptions = page.options || [];
+    } else {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: assignmentTab.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
+        const frameResults = await chrome.scripting.executeScript({
+          target: { tabId: assignmentTab.id, allFrames: true },
+          func: () => {
+            if (typeof extractQuestion === 'function') {
+              const full = extractFullPage();
+              const text = extractQuestion();
+              const opts = typeof extractStructuredMcq === 'function' ? extractStructuredMcq() : [];
+              return {
+                ok: true,
+                text,
+                fullText: full,
+                options: opts.map(o => ({ letter: o.letter, text: o.text }))
+              };
+            }
+            return null;
+          }
+        });
+        const candidates = (frameResults || [])
+          .map(r => r.result)
+          .filter(r => r && r.ok && r.fullText && r.fullText.trim().length >= 20)
+          .sort((a, b) => b.fullText.length - a.fullText.length);
+        if (candidates.length > 0) {
+          page = candidates[0];
+          pageContent = page.fullText;
+          questionText = page.text || page.fullText;
+          structuredOptions = page.options || [];
+        }
+      } catch (injErr) {
+        console.error('[Satori Background] Multi-frame extraction error:', injErr);
+      }
+    }
+  }
+
+  if (!pageContent || pageContent.length < 10) {
     setStatus('Could not read enough page text to solve question.', 'error');
+    addDiagnostic('shortcut-error', 'Too little text found to solve.');
     return;
   }
 
   const stored = await chrome.storage.local.get(['satoriProvider']);
-  const provider = stored.satoriProvider || 'chatgpt';
+  const provider = stored.satoriProvider || 'google';
 
   await dispatchSatoriRequest({
     provider,
     mode,
-    pageContent: page.fullText,
-    questionText: page.text || page.fullText,
+    pageContent,
+    questionText: questionText || pageContent,
+    structuredOptions,
     assignmentTabId: assignmentTab.id,
     windowId: assignmentTab.windowId
   });
+}
+
+chrome.commands.onCommand.addListener(async (command) => {
+  await executeShortcutCommand(command);
 });
 
 // -------------------------------------------------------------
 // Message Gateway (Provider Responses & Popup Triggers)
 // -------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'LIVE_TELEMETRY') {
+    sendLiveTelemetry(message.event, message.details);
+    return false;
+  }
+
+  if (message.type === 'TRIGGER_SHORTCUT_DIRECT') {
+    executeShortcutCommand(message.command, _sender?.tab, message.pageText || '', message.options || []);
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (message.type === 'CANCEL_REQUEST') {
     cancelActiveRequest();
     sendResponse({ ok: true });
@@ -614,6 +962,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       mode: message.mode,
       pageContent: message.pageContent,
       questionText: message.questionText,
+      structuredOptions: message.structuredOptions || [],
       assignmentTabId: message.assignmentTabId,
       windowId: message.windowId
     }).then(() => sendResponse({ ok: true }))
@@ -623,3 +972,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return false;
 });
+
+// -------------------------------------------------------------
+// Auto-inject into existing open tabs on extension install/reload
+// Eliminates any requirement to refresh assignment tabs after reload!
+// -------------------------------------------------------------
+async function injectContentScriptIntoAllTabs() {
+  try {
+    const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+    for (const tab of tabs) {
+      if (!tab.id || /^(chrome|edge|chrome-extension|about):/i.test(tab.url || '')) continue;
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        files: ['content.js']
+      }).catch(() => {});
+    }
+  } catch (_e) {}
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  injectContentScriptIntoAllTabs();
+});
+
+// Run automatically on service worker startup / extension reload
+injectContentScriptIntoAllTabs();
