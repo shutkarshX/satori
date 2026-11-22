@@ -97,10 +97,23 @@
     if (!button) throw new Error('Gemini Send button did not become enabled.');
     button.click();
 
+    // In background/hidden tabs, synthetic Enter keydown is required to submit
+    const input = findInput();
+    if (input) {
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+    }
+
     const confirmStarted = Date.now();
     while (Date.now() - confirmStarted < 12000) {
       const cleared = !normalize(composerText());
       if (cleared || submittedPromptVisible(prompt, previousUserCount) || isGenerating()) return;
+      // Retry clicking send and Enter key if not cleared
+      const curBtn = findSendButton();
+      if (curBtn) curBtn.click();
+      if (input) {
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      }
       await sleep(250);
     }
     throw new Error('Gemini prompt is still in the input box; Send was not confirmed.');
