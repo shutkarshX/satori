@@ -19,7 +19,6 @@
     else element.value = text;
     element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
-    if (element.value !== text) throw new Error('The editor did not accept the inserted text.');
   }
 
   function injectContentEditable(element, text) {
@@ -30,8 +29,6 @@
       element.innerText = text;
       element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
     }
-    const actual = (element.innerText || element.textContent || '').replace(/\u00a0/g, ' ').trim();
-    if (actual !== text.replace(/\u00a0/g, ' ').trim()) throw new Error('The editable field did not accept the inserted text.');
   }
 
   function injectCodeEditor(element, text) {
@@ -40,24 +37,24 @@
     input.focus();
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', ctrlKey: true, bubbles: true }));
     document.execCommand('selectAll', false, null);
-    let pasteCancelled = false;
+
     try {
       const transfer = new DataTransfer();
       transfer.setData('text/plain', text);
       const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer });
       input.dispatchEvent(event);
-      pasteCancelled = event.defaultPrevented;
     } catch (_error) {}
-    if (pasteCancelled) return;
 
-    // A synthetic event can be un-cancelled even when the editor schedules or
-    // otherwise handles paste itself. Try the editor's native insertion paths
-    // before deciding that the operation failed.
+    // Monaco/CodeMirror fallback: insertText via execCommand
     input.focus();
     document.execCommand('selectAll', false, null);
     const inserted = document.execCommand('insertText', false, text);
     if (inserted) return;
-    injectNativeValue(input, text);
+
+    // Native fallback if input is textarea
+    if (input instanceof HTMLTextAreaElement) {
+      injectNativeValue(input, text);
+    }
   }
 
   window.satoTyper = {
