@@ -63,6 +63,46 @@
       const loaded = waitForComplete(tab.id);
       await chrome.tabs.update(tab.id, { url: GEMINI_URL });
       await loaded;
+    },
+    async toggleSideBySide(callerTab) {
+      const tabs = await chrome.tabs.query({ url: '*://gemini.google.com/*' });
+      let geminiTab = tabs.find((t) => t.id === pinnedTabId) || tabs[0];
+      
+      // If no tab exists, create one
+      if (!geminiTab) {
+        geminiTab = await chrome.tabs.create({ url: GEMINI_URL, active: false });
+        pinnedTabId = geminiTab.id;
+      }
+
+      // Check if Gemini is in a separate popup window already
+      const geminiWindow = await chrome.tabs.get(geminiTab.id).then((t) => chrome.windows.get(t.windowId)).catch(() => null);
+      const callerWindow = callerTab?.windowId ? await chrome.windows.get(callerTab.windowId).catch(() => null) : null;
+
+      if (geminiWindow && geminiWindow.id !== callerWindow?.id && geminiWindow.type === 'popup') {
+        // Toggle: close it if it's already open as side panel popup
+        await chrome.windows.remove(geminiWindow.id).catch(() => {});
+        return { open: false };
+      }
+
+      // Position side-by-side: right half of the screen
+      const screenWidth = callerWindow?.width || 1920;
+      const screenHeight = callerWindow?.height || 1080;
+      const halfWidth = Math.floor(screenWidth * 0.45);
+      const left = (callerWindow?.left || 0) + (screenWidth - halfWidth);
+
+      // Detach Gemini tab into its own companion side window
+      const win = await chrome.windows.create({
+        tabId: geminiTab.id,
+        type: 'popup',
+        left: left,
+        top: callerWindow?.top || 0,
+        width: halfWidth,
+        height: screenHeight,
+        focused: true
+      });
+
+      pinnedTabId = geminiTab.id;
+      return { open: true, windowId: win.id };
     }
   };
 })();

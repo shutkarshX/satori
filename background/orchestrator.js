@@ -71,9 +71,47 @@ async function handleSolve(question, mode, callerTabId, runId, isNew = false, is
   }
 }
 
+async function handleGetLatestCode() {
+  const tabs = await chrome.tabs.query({ url: '*://gemini.google.com/*' });
+  if (!tabs || tabs.length === 0) return { success: false, error: 'No Gemini tab found' };
+  
+  // Prefer the active/focused tab or pinned tab
+  const tab = tabs.find((t) => t.active) || tabs[0];
+  const res = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => {
+      const nodes = document.querySelectorAll(
+        'model-response, message-content, [data-message-author-role="model"], .model-response-text'
+      );
+      const latest = nodes[nodes.length - 1];
+      const text = latest ? (latest.innerText || latest.textContent || '').trim() : '';
+      const codeEl = latest?.querySelector('pre code, pre, [data-code-block], [class*="code-block" i]');
+      const rawCode = codeEl ? (codeEl.innerText || codeEl.textContent || '').trim() : '';
+      const match = text.match(/```(?:[a-zA-Z0-9_+#.-]+)?\s*\n([\s\S]*?)```/);
+      return rawCode || (match ? match[1].trim() : text);
+    }
+  }).catch(() => null);
+
+  const code = res?.[0]?.result;
+  if (!code || code.length < 5) return { success: false, error: 'No code found in Gemini response' };
+  return { success: true, code };
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request?.type?.startsWith('SATO_SNIPPET_')) {
     self.satoSnippetStore.handleMessage(request, sender, sendResponse);
+    return true;
+  }
+  if (request?.type === 'SATO_GET_LATEST_GEMINI_CODE') {
+    handleGetLatestCode()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+  if (request?.type === 'SATO_TOGGLE_SIDE_BY_SIDE') {
+    self.satoTabManager.toggleSideBySide(sender?.tab)
+      .then((res) => sendResponse({ success: true, ...res }))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
   if (request?.type === 'SATO_ABORT_PROCESS') {
