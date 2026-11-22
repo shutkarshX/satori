@@ -84,7 +84,22 @@
       try {
         const target = window.satoEditorDetector.getActiveTarget();
         if (!target) throw new Error('Click into the site editor first.');
-        const text = await navigator.clipboard.readText();
+        
+        let text = '';
+        try {
+          text = await navigator.clipboard.readText();
+        } catch (_clipErr) {
+          // If navigator.clipboard is blocked by browser permissions, use paste fallback via offscreen textarea
+          const helper = document.createElement('textarea');
+          helper.style.position = 'fixed';
+          helper.style.left = '-9999px';
+          document.body.appendChild(helper);
+          helper.focus();
+          document.execCommand('paste');
+          text = helper.value;
+          helper.remove();
+        }
+
         if (!text || !text.trim()) throw new Error('Clipboard is empty.');
         window.satoTyper.insert(target, text);
         window.satoToast.show('Pasted clipboard code into the editor.', 'success', 2500);

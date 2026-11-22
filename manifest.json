@@ -3,7 +3,7 @@
   "name": "Sato Quick Assist",
   "version": "1.8.0",
   "description": "Modular code typer and MCQ solver with Gemini bridge and fresh-chat reset.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "clipboardRead"],
   "host_permissions": ["https://*.examly.io/*", "https://gemini.google.com/*"],
   "background": { "service_worker": "background/orchestrator.js" },
   "action": { "default_popup": "popup/popup.html", "default_title": "Sato Quick Assist" },
