@@ -87,65 +87,54 @@
 
   async function clickSend(prompt) {
     const previousUserCount = userMessageCount();
-    const started = Date.now();
     let button = null;
-    while (Date.now() - started < 10000) {
+    
+    // Dynamic find: look for send button, but don't stall if missing
+    for (let i = 0; i < 15; i++) {
       button = findSendButton();
       if (button) break;
-      await sleep(200);
+      await sleep(100);
     }
-    if (!button) throw new Error('Gemini Send button did not become enabled.');
-    button.click();
 
-    // In background/hidden tabs, synthetic Enter keydown is required to submit
+    if (button) button.click();
+
+    // Immediately dispatch synthetic Enter keydown on input
     const input = findInput();
     if (input) {
       input.focus();
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
     }
 
-    // Auto-scroll Gemini to bottom to trigger virtual DOM rendering & keep-alive
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
 
-    const confirmStarted = Date.now();
-    while (Date.now() - confirmStarted < 6000) {
+    // Dynamic verification: exit the moment input clears or response begins
+    const startConfirm = Date.now();
+    while (Date.now() - startConfirm < 3000) {
       const cleared = !normalize(composerText());
       if (cleared || submittedPromptVisible(prompt, previousUserCount) || isGenerating()) {
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
         return;
       }
-      // Retry clicking send and Enter key if not cleared
       const curBtn = findSendButton();
       if (curBtn) curBtn.click();
       if (input) {
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
       }
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
-      await sleep(200);
+      await sleep(150);
     }
-    // Return gracefully so polling starts instead of crashing early
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
     return;
   }
 
   async function submitPrompt(promptText, isNewChat = false) {
     dismissCancelModal();
-    // Shorter idle check so we do not block for 90 seconds
-    if (!isNewChat && isGenerating()) {
-      const waitStart = Date.now();
-      while (Date.now() - waitStart < 5000 && isGenerating()) {
-        await sleep(200);
-      }
-    }
 
-    const start = Date.now();
     let input = null;
-    while (Date.now() - start < 10000) {
+    for (let i = 0; i < 20; i++) {
       input = findInput();
       if (input) break;
       await sleep(100);
     }
-    if (!input) throw new Error('Gemini input box not found. Ensure Gemini is open and signed in.');
+    if (!input) throw new Error('Gemini input box not found. Ensure Gemini is open.');
 
     const nodes = document.querySelectorAll(
       'model-response, message-content, [data-message-author-role="model"], .model-response-text, [data-test-id*="model-response" i]'
@@ -154,10 +143,7 @@
     const baselineText = nodes.length ? (nodes[nodes.length - 1].innerText || nodes[nodes.length - 1].textContent || '').trim() : '';
 
     setInputText(input, promptText);
-    await sleep(250);
-    if (normalize(composerText(input)) !== normalize(promptText)) {
-      throw new Error('Gemini composer did not accept the prompt text.');
-    }
+    await sleep(100);
     await clickSend(promptText);
     return { baseline, baselineText };
   }

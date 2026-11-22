@@ -47,9 +47,9 @@
       let lastChange = start;
       let sawGrowth = false;
       try {
-        while (Date.now() - start < 90000) {
+        while (Date.now() - start < 75000) {
           if (abortedRuns.has(runId)) throw new Error('Process aborted by user');
-          await sleep(300);
+          await sleep(200);
           const result = await chrome.scripting.executeScript({ target: { tabId }, func: readGeminiState }).catch(() => null);
           const state = result?.[0]?.result;
           if (!state) continue;
@@ -69,9 +69,9 @@
               }).catch(() => {});
             }
           }
-          const quietThreshold = (mode === 'code' && /```[\s\S]*?```/.test(state.text))
-            ? 800
-            : (state.isStreaming ? 3500 : (mode === 'mcq' ? 1000 : 1500));
+          // Dynamic completion: If closing markdown backticks (```) are detected or stop button gone, return immediately!
+          const hasClosedCode = mode === 'code' && /```[\s\S]*?```/.test(state.text);
+          const quietThreshold = hasClosedCode ? 350 : (state.isStreaming ? 2500 : (mode === 'mcq' ? 600 : 1000));
           if (sawGrowth && state.text.length > 10 && Date.now() - lastChange >= quietThreshold) {
             return mode === 'code' ? sanitizeCode(state.code) : state.text;
           }
