@@ -40,14 +40,24 @@
     input.focus();
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', ctrlKey: true, bubbles: true }));
     document.execCommand('selectAll', false, null);
-    let pasteHandled = false;
+    let pasteCancelled = false;
     try {
       const transfer = new DataTransfer();
       transfer.setData('text/plain', text);
       const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer });
-      pasteHandled = !input.dispatchEvent(event);
+      input.dispatchEvent(event);
+      pasteCancelled = event.defaultPrevented;
     } catch (_error) {}
-    if (!pasteHandled) throw new Error('The code editor did not confirm the paste. No success was reported.');
+    if (pasteCancelled) return;
+
+    // A synthetic event can be un-cancelled even when the editor schedules or
+    // otherwise handles paste itself. Try the editor's native insertion paths
+    // before deciding that the operation failed.
+    input.focus();
+    document.execCommand('selectAll', false, null);
+    const inserted = document.execCommand('insertText', false, text);
+    if (inserted) return;
+    injectNativeValue(input, text);
   }
 
   window.satoTyper = {

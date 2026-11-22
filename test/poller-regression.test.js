@@ -40,3 +40,39 @@ test('detects text added to an existing empty model response node and emits prog
   assert.ok(progress.some((message) => message.payload?.status === 'streaming'));
   assert.ok(calls >= 8, 'the stable-response delay should avoid an early partial return');
 });
+
+test('tries native insertion fallbacks when synthetic paste is not synchronously canceled', () => {
+  const nativeTyperSource = fs.readFileSync(path.join(__dirname, '..', 'content', 'native-typer.js'), 'utf8');
+  const commands = [];
+  class FakeTextarea {
+    constructor() { this._value = ''; }
+    get value() { return this._value; }
+    set value(value) { this._value = value; }
+    matches(selector) { return selector === 'textarea'; }
+    closest() { return null; }
+    querySelector() { return null; }
+    focus() {}
+    dispatchEvent() { return true; }
+  }
+  class FakeEvent {
+    constructor(type) { this.type = type; this.defaultPrevented = false; }
+  }
+  class FakeDataTransfer { setData() {} }
+  const input = new FakeTextarea();
+  const document = {
+    execCommand(command) {
+      commands.push(command);
+      return command !== 'insertText';
+    }
+  };
+  const window = { satoEditorDetector: { isMonaco: () => true, isCodeMirror: () => false } };
+  const context = {
+    window, document, HTMLTextAreaElement: FakeTextarea, HTMLInputElement: class {},
+    KeyboardEvent: FakeEvent, ClipboardEvent: FakeEvent, InputEvent: FakeEvent, Event: FakeEvent,
+    DataTransfer: FakeDataTransfer, Object, String
+  };
+  vm.runInNewContext(nativeTyperSource, context, { filename: 'native-typer.js' });
+  assert.equal(window.satoTyper.insert(input, 'let answer = 42;'), true);
+  assert.ok(commands.includes('insertText'), 'execCommand fallback should run after uncancelled synthetic paste');
+  assert.equal(input.value, 'let answer = 42;', 'native value fallback should run after execCommand declines');
+});
