@@ -23,46 +23,11 @@ function buildPrompt(question, mode, isFollowUp = false) {
   return 'Read the question carefully. Check the requested programming language (e.g. C, C++, Java, Python) in the prompt and provide complete, optimal, compiling code for it. Do not output explanation or multiple choice options. Output strictly raw working code inside a single code block:\n\n' + question;
 }
 
-async function submitToGemini(tab, callerTabId, payload, runId) {
-  const caller = callerTabId ? await chrome.tabs.get(callerTabId).catch(() => null) : null;
-  let temporarilyActivated = false;
-  try {
-    if (caller && caller.windowId === tab.windowId) {
-      const [active] = await chrome.tabs.query({ active: true, windowId: caller.windowId });
-      if (active?.id === callerTabId && tab.id !== callerTabId) {
-        reportProgress(callerTabId, runId, 'info', 'Waking Gemini briefly to send the prompt…');
-        await chrome.tabs.update(tab.id, { active: true });
-        temporarilyActivated = true;
-        const deadline = Date.now() + 3000;
-        let isActive = false;
-        while (Date.now() < deadline) {
-          const [current] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
-          if (current?.id === tab.id) { isActive = true; break; }
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-        if (!isActive) throw new Error('Could not activate Gemini to submit the prompt. Please bring the Gemini tab forward and retry.');
-      }
-    }
-    return await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tab.id, {
-        type: 'SATO_SUBMIT_PROMPT',
-        payload
-      }, (result) => resolve(chrome.runtime.lastError ? { success: false, error: chrome.runtime.lastError.message } : result));
-    });
-  } finally {
-    if (temporarilyActivated && callerTabId) {
-      const [current] = await chrome.tabs.query({ active: true, windowId: tab.windowId }).catch(() => []);
-      if (current?.id === tab.id) await chrome.tabs.update(callerTabId, { active: true }).catch(() => {});
-    }
-  }
-}
-
 async function handleSolve(question, mode, callerTabId, runId, isNew = false, isFollowUp = false) {
   activeRuns.set(runId, { callerTabId });
   try {
     reportProgress(callerTabId, runId, 'info', 'Connecting to Gemini…');
-    const caller = callerTabId ? await chrome.tabs.get(callerTabId).catch(() => null) : null;
-    const tab = await self.satoTabManager.getOrCreateTab(caller?.windowId);
+    const tab = await self.satoTabManager.getOrCreateTab();
     activeRuns.set(runId, { callerTabId, geminiTabId: tab.id });
     if (cancelledRuns.has(runId)) throw new Error('Process aborted by user');
     const wantsNew = !isFollowUp && (isNew || (pendingNewChat && Date.now() - pendingNewChatAt < 6000));
@@ -83,7 +48,12 @@ async function handleSolve(question, mode, callerTabId, runId, isNew = false, is
     reportProgress(callerTabId, runId, 'info', isFollowUp ? 'Sending follow-up to Gemini…' : 'Sending prompt to Gemini…');
     const prompt = buildPrompt(question, mode, isFollowUp);
     if (cancelledRuns.has(runId)) throw new Error('Process aborted by user');
-    const submitRes = await submitToGemini(tab, callerTabId, { prompt, isNewChat: wantsNew }, runId);
+    const submitRes = await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'SATO_SUBMIT_PROMPT',
+        payload: { prompt, isNewChat: wantsNew }
+      }, (result) => resolve(chrome.runtime.lastError ? { success: false, error: chrome.runtime.lastError.message } : result));
+    });
     if (cancelledRuns.has(runId)) {
       chrome.tabs.sendMessage(tab.id, { type: 'SATO_CANCEL_GENERATION' }).catch(() => {});
       throw new Error('Process aborted by user');

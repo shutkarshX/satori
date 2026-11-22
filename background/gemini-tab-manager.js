@@ -4,35 +4,32 @@
   let pinnedTabId = null;
   let isOpening = false;
 
-  async function getOrCreateTab(windowId) {
+  async function getOrCreateTab() {
     if (pinnedTabId) {
       try {
         const tab = await chrome.tabs.get(pinnedTabId);
-        if (tab && (tab.url || tab.pendingUrl)?.includes('gemini.google.com') && (!windowId || tab.windowId === windowId)) return tab;
+        if (tab && (tab.url || tab.pendingUrl)?.includes('gemini.google.com')) return tab;
       } catch (_e) {
         pinnedTabId = null;
       }
     }
 
     const tabs = await chrome.tabs.query({ url: '*://gemini.google.com/*' });
-    const matchingWindow = windowId ? tabs.filter((tab) => tab.windowId === windowId) : tabs;
-    if (matchingWindow.length > 0) {
-      const selected = matchingWindow.find((tab) => tab.active) || matchingWindow[0];
-      pinnedTabId = selected.id;
-      chrome.tabs.update(selected.id, { autoDiscardable: false }).catch(() => {});
-      return selected;
+    if (tabs && tabs.length > 0) {
+      const activeOne = tabs.find((t) => t.active) || tabs[0];
+      pinnedTabId = activeOne.id;
+      chrome.tabs.update(activeOne.id, { autoDiscardable: false }).catch(() => {});
+      return activeOne;
     }
 
     if (isOpening) {
       await new Promise((r) => setTimeout(r, 600));
-      return getOrCreateTab(windowId);
+      return getOrCreateTab();
     }
 
     isOpening = true;
     try {
-      const createOptions = { url: GEMINI_URL, active: false };
-      if (windowId) createOptions.windowId = windowId;
-      const newTab = await chrome.tabs.create(createOptions);
+      const newTab = await chrome.tabs.create({ url: GEMINI_URL, active: false });
       pinnedTabId = newTab.id;
       chrome.tabs.update(newTab.id, { autoDiscardable: false }).catch(() => {});
       return newTab;
