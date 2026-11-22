@@ -5,6 +5,16 @@
   let isOpening = false;
 
   async function getOrCreateTab() {
+    // 1. First priority: Check if a visible/side-by-side Gemini tab exists across any window!
+    const tabs = await chrome.tabs.query({ url: '*://gemini.google.com/*' });
+    if (tabs && tabs.length > 0) {
+      // Find the tab that is visible/active in its window (like the side-by-side popup or another window)
+      const visibleOne = tabs.find((t) => t.active) || (pinnedTabId ? tabs.find((t) => t.id === pinnedTabId) : null) || tabs[0];
+      pinnedTabId = visibleOne.id;
+      chrome.tabs.update(visibleOne.id, { autoDiscardable: false }).catch(() => {});
+      return visibleOne;
+    }
+
     if (pinnedTabId) {
       try {
         const tab = await chrome.tabs.get(pinnedTabId);
@@ -12,14 +22,6 @@
       } catch (_e) {
         pinnedTabId = null;
       }
-    }
-
-    const tabs = await chrome.tabs.query({ url: '*://gemini.google.com/*' });
-    if (tabs && tabs.length > 0) {
-      const activeOne = tabs.find((t) => t.active) || tabs[0];
-      pinnedTabId = activeOne.id;
-      chrome.tabs.update(activeOne.id, { autoDiscardable: false }).catch(() => {});
-      return activeOne;
     }
 
     if (isOpening) {
