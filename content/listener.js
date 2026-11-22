@@ -31,9 +31,15 @@
     }
     if (matchesKey(event, 'g')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-      chrome.runtime.sendMessage({ type: 'SATO_TOGGLE_SIDE_BY_SIDE' }, (res) => {
-        window.satoToast.show(res?.open ? 'Gemini opened side-by-side!' : 'Gemini closed.', 'info', 2000);
-      });
+      if (event.shiftKey) {
+        // Alt + Shift + G: Grab and insert the latest answer directly from open Gemini
+        window.satoWorkflowRunner.grabAndInsertFromGemini();
+      } else {
+        // Alt + G: Toggle side-by-side view
+        chrome.runtime.sendMessage({ type: 'SATO_TOGGLE_SIDE_BY_SIDE' }, (res) => {
+          window.satoToast.show(res?.open ? 'Gemini opened side-by-side!' : 'Gemini closed.', 'info', 2000);
+        });
+      }
       return;
     }
     if (matchesKey(event, 'f')) {

@@ -27,17 +27,6 @@
       const target = mode === 'code' ? window.satoEditorDetector.getActiveTarget() : null;
       if (mode === 'code' && !target) throw new Error('Click into the site editor first.');
 
-      // Check if user has side-by-side Gemini already displaying an answer (and not requesting a fresh chat)
-      if (mode === 'code' && !isNewChat && !isFollowUp) {
-        const sideCheck = await chrome.runtime.sendMessage({ type: 'SATO_GET_LATEST_GEMINI_CODE' }).catch(() => null);
-        if (sideCheck?.success && sideCheck.code) {
-          const editorName = window.satoEditorDetector.isMonaco(target) ? 'Monaco' : 'Editor';
-          window.satoTyper.insert(target, sideCheck.code);
-          window.satoToast.show(`Inserted code from Gemini (${editorName})!`, 'success', 3000);
-          return;
-        }
-      }
-
       window.satoToast.show(mode === 'mcq' ? 'Extracting MCQ problem…' : (isFollowUp ? 'Extracting follow-up / error…' : 'Extracting problem…'), 'loading', 0);
       const { text: question, snippetCount } = await window.satoExtractor.extract(mode);
       ensureActive(runId);
@@ -91,6 +80,20 @@
     },
     runMcqWorkflow(isNewChat = false) {
       return solve('mcq', isNewChat, false);
+    },
+    async grabAndInsertFromGemini() {
+      try {
+        const target = window.satoEditorDetector.getActiveTarget();
+        if (!target) throw new Error('Click into the site editor first.');
+        window.satoToast.show('Fetching latest code from Gemini…', 'loading', 0);
+        const res = await chrome.runtime.sendMessage({ type: 'SATO_GET_LATEST_GEMINI_CODE' });
+        if (!res?.success || !res?.code) throw new Error(res?.error || 'No code found in Gemini.');
+        const editorName = window.satoEditorDetector.isMonaco(target) ? 'Monaco' : 'Editor';
+        window.satoTyper.insert(target, res.code);
+        window.satoToast.show(`Inserted latest code from Gemini (${editorName})!`, 'success', 2500);
+      } catch (err) {
+        window.satoToast.show(err.message, 'error', 3000);
+      }
     },
     async pasteClipboardCode() {
       try {
