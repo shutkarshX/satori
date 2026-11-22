@@ -3,6 +3,7 @@
   if (window.__satoWorkflowRunnerLoaded) return;
   window.__satoWorkflowRunnerLoaded = true;
   let activeRunId = null;
+  let activeRunStartTime = 0;
   const cancelledRuns = new Set();
   const makeRunId = () => `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -11,9 +12,17 @@
   }
 
   async function solve(mode, isNewChat = false, isFollowUp = false) {
-    if (activeRunId) return;
+    // If a previous run got stuck for >25s without completing, auto-unlock!
+    if (activeRunId && Date.now() - activeRunStartTime > 25000) {
+      activeRunId = null;
+    }
+    if (activeRunId) {
+      window.satoToast.show('Already solving... press popup Stop to abort if stuck.', 'info', 2000);
+      return;
+    }
     const runId = makeRunId();
     activeRunId = runId;
+    activeRunStartTime = Date.now();
     try {
       const target = mode === 'code' ? window.satoEditorDetector.getActiveTarget() : null;
       if (mode === 'code' && !target) throw new Error('Click into the site editor first.');

@@ -105,7 +105,7 @@
     }
 
     const confirmStarted = Date.now();
-    while (Date.now() - confirmStarted < 12000) {
+    while (Date.now() - confirmStarted < 6000) {
       const cleared = !normalize(composerText());
       if (cleared || submittedPromptVisible(prompt, previousUserCount) || isGenerating()) return;
       // Retry clicking send and Enter key if not cleared
@@ -114,14 +114,21 @@
       if (input) {
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
       }
-      await sleep(250);
+      await sleep(200);
     }
-    throw new Error('Gemini prompt is still in the input box; Send was not confirmed.');
+    // Return gracefully so polling starts instead of crashing early
+    return;
   }
 
   async function submitPrompt(promptText, isNewChat = false) {
     dismissCancelModal();
-    if (!isNewChat) await waitUntilIdle();
+    // Shorter idle check so we do not block for 90 seconds
+    if (!isNewChat && isGenerating()) {
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < 5000 && isGenerating()) {
+        await sleep(200);
+      }
+    }
 
     const start = Date.now();
     let input = null;

@@ -62,7 +62,9 @@
               }).catch(() => {});
             }
           }
-          const quietThreshold = state.isStreaming ? 6000 : (mode === 'mcq' ? 1200 : 1800);
+          const quietThreshold = (mode === 'code' && /```[\s\S]*?```/.test(state.text))
+            ? 800
+            : (state.isStreaming ? 3500 : (mode === 'mcq' ? 1000 : 1500));
           if (sawGrowth && state.text.length > 10 && Date.now() - lastChange >= quietThreshold) {
             return mode === 'code' ? sanitizeCode(state.code) : state.text;
           }
