@@ -13,6 +13,13 @@
   }
 
   function readGeminiState() {
+    // Keep Gemini scrolled to bottom so Angular/virtual-scroll DOM nodes stay mounted
+    try {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+      const scrollable = document.querySelector('chat-window, infinite-scroller, [class*="chat-history" i], main');
+      if (scrollable) scrollable.scrollTop = scrollable.scrollHeight;
+    } catch (_scrollErr) {}
+
     const nodes = document.querySelectorAll(
       'model-response, message-content, [data-message-author-role="model"], .model-response-text, [data-test-id*="model-response" i]'
     );

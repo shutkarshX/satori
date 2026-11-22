@@ -104,19 +104,27 @@
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
     }
 
+    // Auto-scroll Gemini to bottom to trigger virtual DOM rendering & keep-alive
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+
     const confirmStarted = Date.now();
     while (Date.now() - confirmStarted < 6000) {
       const cleared = !normalize(composerText());
-      if (cleared || submittedPromptVisible(prompt, previousUserCount) || isGenerating()) return;
+      if (cleared || submittedPromptVisible(prompt, previousUserCount) || isGenerating()) {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+        return;
+      }
       // Retry clicking send and Enter key if not cleared
       const curBtn = findSendButton();
       if (curBtn) curBtn.click();
       if (input) {
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
       }
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
       await sleep(200);
     }
     // Return gracefully so polling starts instead of crashing early
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
     return;
   }
 
