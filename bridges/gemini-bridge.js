@@ -52,16 +52,14 @@
       element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
       return;
     }
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    const inserted = document.execCommand('insertText', false, text);
-    if (!inserted || normalize(composerText(element)) !== normalize(text)) {
-      element.replaceChildren(document.createTextNode(text));
-      element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
-    }
+
+    // Direct innerHTML with <p> ensures Angular's rich-textarea detects content immediately
+    element.innerHTML = '';
+    const p = document.createElement('p');
+    p.textContent = text;
+    element.appendChild(p);
+    element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   function findSendButton() {
