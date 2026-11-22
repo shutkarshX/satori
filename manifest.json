@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Sato Quick Assist",
+  "version": "1.8.0",
+  "description": "Modular code typer and MCQ solver with Gemini bridge and fresh-chat reset.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["https://*.examly.io/*", "https://gemini.google.com/*"],
+  "background": { "service_worker": "background/orchestrator.js" },
+  "action": { "default_popup": "popup/popup.html", "default_title": "Sato Quick Assist" },
+  "commands": {
+    "solve-code": {
+      "suggested_key": { "default": "Alt+C" },
+      "description": "Solve code"
+    },
+    "solve-mcq": {
+      "suggested_key": { "default": "Alt+M" },
+      "description": "Solve MCQ"
+    },
+    "solve-code-new": {
+      "suggested_key": { "default": "Ctrl+Shift+C" },
+      "description": "Solve code (new chat)"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["bridges/gemini-visible.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["bridges/gemini-bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.examly.io/*", "file:///*"],
+      "js": [
+        "content/toast-pill.js",
+        "content/editor-detector.js",
+        "content/native-typer.js",
+        "content/mcq-selector.js",
+        "content/snippet-client.js",
+        "content/examly-extractor.js",
+        "content/workflow-runner.js",
+        "content/listener.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

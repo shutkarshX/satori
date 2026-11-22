@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sato Local Sandbox & Test Bed</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      max-width: 860px;
+      margin: 30px auto;
+      padding: 24px;
+    }
+    h1 { color: #38bdf8; font-size: 22px; margin-bottom: 4px; }
+    p.desc { color: #94a3b8; font-size: 13px; margin-bottom: 24px; line-height: 1.6; }
+    .box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 24px;
+    }
+    .box h2 { font-size: 15px; color: #f1f5f9; margin-top: 0; margin-bottom: 12px; }
+    .question-description {
+      background: #0f172a;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+    .options-group {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .choice-card {
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      padding: 10px 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .choice-card:hover { background: #334155; }
+    .choice-card[aria-checked="true"] { border-color: #38bdf8; background: #0369a122; }
+    textarea {
+      width: 100%;
+      height: 120px;
+      background: #090d16;
+      border: 1px solid #3b82f6;
+      border-radius: 6px;
+      color: #f8fafc;
+      padding: 12px;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    kbd {
+      background: #334155;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #38bdf8;
+      font-family: monospace;
+    }
+    .tag {
+      font-size: 11px;
+      background: #0284c7;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+    .tag-accent {
+      background: #8b5cf6;
+    }
+    .chunk-card {
+      background: #090d16;
+      border: 1px dashed #64748b;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .chunk-card b {
+      color: #38bdf8;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚡ Sato Local Sandbox & Test Bed</h1>
+  <p class="desc">
+    Shortcuts: 
+    <b>Coding</b> (<kbd>Alt + C</kbd> | Fresh: <kbd>Alt + Shift + C</kbd>) • 
+    <b>MCQ</b> (<kbd>Alt + M</kbd> | Fresh: <kbd>Alt + Shift + M</kbd>) • 
+    <b>Multi-Chunk Accumulator</b>: Highlight text &amp; press <kbd>Alt + S</kbd> to bundle chunks (Clear: <kbd>Alt + X</kbd>).
+  </p>
+
+  <!-- Scenario 4: Multi-Chunk Highlight Test Bed -->
+  <div class="box" style="border-color: #8b5cf6;">
+    <h2>Scenario 4: Multi-Chunk Highlight &amp; Accumulate Test <span class="tag tag-accent">Alt + S Buffer</span></h2>
+    <p style="font-size: 13px; color: #94a3b8; margin-top: 0;">
+      Try highlighting Chunk 1, press <kbd>Alt + S</kbd>. Highlight Chunk 2, press <kbd>Alt + S</kbd>. Highlight Chunk 3, press <kbd>Alt + S</kbd>. Then click the editor below and press <kbd>Alt + C</kbd>!
+    </p>
+
+    <div class="chunk-card">
+      <b>Chunk 1 (Task Definition):</b><br>
+      Write a JavaScript function <code>sumPositivePrimes(numbers)</code> that filters out all non-prime numbers and negative values.
+    </div>
+
+    <div class="chunk-card">
+      <b>Chunk 2 (Constraints &amp; Edge Cases):</b><br>
+      Numbers array can contain up to 10,000 integers ranging from -500 to 500. Return 0 if no valid positive prime numbers exist.
+    </div>
+
+    <div class="chunk-card">
+      <b>Chunk 3 (Sample Test Case):</b><br>
+      Example: <code>sumPositivePrimes([2, 3, 4, 5, -7, 11])</code> must return <code>21</code> (since 2 + 3 + 5 + 11 = 21).
+    </div>
+
+    <br>
+    <textarea id="chunk-editor" placeholder="// Focus here and press Alt + C after accumulating chunks above..."></textarea>
+  </div>
+
+  <!-- Scenario 1: Standard Real Radios with Letter Prefixes -->
+  <div class="box">
+    <h2>Scenario 1: Standard Radios with Letter Prefixes <span class="tag">Real Input</span></h2>
+    <div class="question-description">
+      Which data structure operates on a Last-In, First-Out (LIFO) principle?
+    </div>
+    <div class="options-group">
+      <label class="choice-card">
+        <input type="radio" name="mcq_s1" value="A"> A) Queue
+      </label>
+      <label class="choice-card">
+        <input type="radio" name="mcq_s1" value="B"> B) Stack
+      </label>
+      <label class="choice-card">
+        <input type="radio" name="mcq_s1" value="C"> C) Binary Search Tree
+      </label>
+      <label class="choice-card">
+        <input type="radio" name="mcq_s1" value="D"> D) Linked List
+      </label>
+    </div>
+  </div>
+
+  <!-- Scenario 2: Positional Radios (No A, B, C, D in text) -->
+  <div class="box">
+    <h2>Scenario 2: Positional Radios without Letter Prefixes <span class="tag">Positional Match</span></h2>
+    <div class="question-description">
+      What is the average time complexity of searching an element in a balanced Binary Search Tree?
+    </div>
+    <div class="options-group">
+      <label class="choice-card">
+        <input type="radio" name="mcq_s2" value="1"> O(1)
+      </label>
+      <label class="choice-card">
+        <input type="radio" name="mcq_s2" value="2"> O(log n)
+      </label>
+      <label class="choice-card">
+        <input type="radio" name="mcq_s2" value="3"> O(n)
+      </label>
+      <label class="choice-card">
+        <input type="radio" name="mcq_s2" value="4"> O(n log n)
+      </label>
+    </div>
+  </div>
+
+  <!-- Scenario 3: Custom ARIA Radio Cards (No <input type="radio">) -->
+  <div class="box">
+    <h2>Scenario 3: Custom DIVs with ARIA Roles <span class="tag">ARIA / Modern SPA</span></h2>
+    <div class="question-description">
+      Which keyword in Java is used to inherit a class?
+    </div>
+    <div class="options-group" role="radiogroup">
+      <div role="radio" tabindex="0" class="choice-card" onclick="this.setAttribute('aria-checked', 'true')">
+        A) implements
+      </div>
+      <div role="radio" tabindex="0" class="choice-card" onclick="this.setAttribute('aria-checked', 'true')">
+        B) extends
+      </div>
+      <div role="radio" tabindex="0" class="choice-card" onclick="this.setAttribute('aria-checked', 'true')">
+        C) inherits
+      </div>
+      <div role="radio" tabindex="0" class="choice-card" onclick="this.setAttribute('aria-checked', 'true')">
+        D) super
+      </div>
+    </div>
+  </div>
+
+  <!-- Coding Sandbox -->
+  <div class="box">
+    <h2>Coding Test Section <span class="tag">Alt + C</span></h2>
+    <div class="question-description">
+      Write a Python function <code>find_maximum(arr)</code> that takes a list of integers and returns the maximum value without using the built-in <code>max()</code> function.
+    </div>
+    <br>
+    <textarea id="answer-box" placeholder="// Click here to focus for coding test, then press Alt + C..."></textarea>
+  </div>
+</body>
+</html>

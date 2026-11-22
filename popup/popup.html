@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sato Quick Assist</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <span class="logo">⚡</span>
+      <h2>Sato Quick Assist</h2>
+    </div>
+    <p class="subtitle">Use <kbd>Alt + C</kbd> to solve, <kbd>Alt + F</kbd> for a follow-up, or <kbd>Alt + V</kbd> to paste clipboard text into the editor.</p>
+    <button id="trigger-btn" class="primary-btn">Solve &amp; Type Now</button>
+    <button id="paste-btn" class="secondary-btn">📋 Paste Clipboard into Editor</button>
+    <button id="stop-btn" class="stop-btn">⏹ Stop / Abort</button>
+    <div id="status-bar" class="status-bar">Ready</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
