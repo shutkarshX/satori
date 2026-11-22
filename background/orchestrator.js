@@ -18,9 +18,13 @@ function buildPrompt(question, mode, isFollowUp = false) {
     return 'You are solving a Multiple Choice Question (MCQ). State ONLY the correct letter option (e.g. A, B, C, or D) and exact option text. Format strictly as: ANSWER: [Letter] - [Option Text]\n\n' + question;
   }
   if (isFollowUp) {
-    return 'The previous code failed some test cases or had issues. Check the required programming language from the prompt or write in the same language. Fix the algorithm to pass all edge cases. Provide ONLY the complete, corrected working code inside a single code block:\n\n' + question;
+    return 'The previous code failed some test cases or had issues. Check the required programming language from the prompt or write in the same language. Fix the algorithm to pass all edge cases. ' +
+      'If the question provides Header or Footer snippets, do NOT duplicate them; write ONLY the missing code required to fill the gap. ' +
+      'Provide ONLY the complete, corrected working code inside a single code block:\n\n' + question;
   }
-  return 'Read the question carefully. Check the requested programming language (e.g. C, C++, Java, Python) in the prompt and provide complete, optimal, compiling code for it. Do not output explanation or multiple choice options. Output strictly raw working code inside a single code block:\n\n' + question;
+  return 'Read the question carefully. Check the requested programming language (e.g. C, C++, Java, Python) in the prompt and provide complete, optimal, compiling code for it. ' +
+    'IMPORTANT: If the question shows "Header Snippet" or "Footer Snippet", write ONLY the code that fills the gap between them. Do NOT re-declare or redefine anything already in the Header or Footer snippet (like main() if footer already has it). ' +
+    'Do not output explanation or multiple choice options. Output strictly raw working code inside a single code block:\n\n' + question;
 }
 
 async function handleSolve(question, mode, callerTabId, runId, isNew = false, isFollowUp = false) {

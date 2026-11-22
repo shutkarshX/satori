@@ -49,6 +49,22 @@
     return '';
   }
 
+  function scrapeHeaderFooter() {
+    let result = '';
+    // Look for Header Snippet or Footer Snippet sections on Examly
+    const sections = Array.from(document.querySelectorAll('div, p, span, pre, code'));
+    for (const el of sections) {
+      const txt = (el.innerText || el.textContent || '').trim();
+      if (/^Header Snippet/i.test(txt) || /^Footer Snippet/i.test(txt)) {
+        const next = el.nextElementSibling || el.parentElement?.querySelector('pre, code, textarea, [class*="code" i]');
+        if (next) {
+          result += `\n[${txt.split('\n')[0]}]:\n${(next.innerText || next.textContent || '').trim()}\n`;
+        }
+      }
+    }
+    return result.trim();
+  }
+
   function detectLanguage() {
     const langBtn = Array.from(document.querySelectorAll('button, select, [role="button"], span, div'))
       .find((el) => /^(C\s*\(17\)|C\+\+|Java|Python|JavaScript|TypeScript|C#)/i.test((el.innerText || el.textContent || '').trim()));
@@ -76,6 +92,8 @@
       if (mode === 'code') {
         const lang = detectLanguage();
         if (lang) text = `Programming Language: ${lang}\n\n${text}`;
+        const snippets = scrapeHeaderFooter();
+        if (snippets) text = `${text}\n\n--- EXISTING CODE IN PLATFORM ---\n${snippets}`;
       }
       return { text, snippetCount: (list ? list.length : 0) };
     },
