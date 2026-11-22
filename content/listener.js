@@ -31,7 +31,7 @@
     }
     if (matchesKey(event, 'f')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-      window.satoWorkflowRunner.runCodeWorkflow(false, true);
+      window.satoWorkflowRunner.runCodeWorkflow(event.shiftKey, true);
       return;
     }
     if (matchesKey(event, 'v')) {
