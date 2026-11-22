@@ -15,17 +15,30 @@ try {
   // Force document to report having focus even when user is on another tab
   Object.defineProperty(document, 'hasFocus', { value: () => true, configurable: true });
 
-  // Web Audio keep-alive: exempts this tab from Chrome's background rendering throttle
+  // Web Audio keep-alive: attempt only if audio context is allowed or after user gesture
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (AudioCtx && !window.__satoAudioKeepAlive) {
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.00001, ctx.currentTime);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    window.__satoAudioKeepAlive = ctx;
+    try {
+      const ctx = new AudioCtx();
+      if (ctx.state !== 'suspended') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.00001, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        window.__satoAudioKeepAlive = ctx;
+      } else {
+        // Auto-resume if user ever interacts with Gemini tab
+        const resume = () => {
+          ctx.resume().catch(() => {});
+          window.removeEventListener('click', resume, true);
+          window.removeEventListener('keydown', resume, true);
+        };
+        window.addEventListener('click', resume, true);
+        window.addEventListener('keydown', resume, true);
+      }
+    } catch (_audioErr) {}
   }
 } catch (_e) {}
 }
