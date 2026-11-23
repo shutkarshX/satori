@@ -95,14 +95,32 @@
         ensureActive(runId);
         if (!answers.length) throw new Error('No answers in decrypted payload.');
 
-        // Try selecting the option on the current visible question
+        // 1. Identify the current visible question text on screen
+        const qContainer = document.querySelector('.question-container, [class*="question-title" i], [class*="question-data" i], [class*="question" i]');
+        const screenQText = (qContainer?.innerText || qContainer?.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+        // 2. Find exact answer entry matching the visible question
+        let targetEntry = null;
+        if (screenQText) {
+          targetEntry = answers.find(a => {
+            const cleanQ = a.question.replace(/\s+/g, ' ').trim().toLowerCase();
+            return screenQText.includes(cleanQ) || cleanQ.includes(screenQText) || cleanQ.slice(0, 40) === screenQText.slice(0, 40);
+          });
+        }
+
+        // 3. Select the correct option
         let matched = null;
-        for (const a of answers) {
-          ensureActive(runId);
-          try {
-            matched = window.satoMcqSelector.select(a.correct, document);
-            if (matched) break;
-          } catch (_e) {}
+        if (targetEntry) {
+          matched = window.satoMcqSelector.select(targetEntry.correct, document);
+        } else {
+          // Fallback: search answer list against visible radio options directly
+          for (const a of answers) {
+            ensureActive(runId);
+            try {
+              matched = window.satoMcqSelector.select(a.correct, document);
+              if (matched) break;
+            } catch (_e) {}
+          }
         }
 
         if (matched) {
