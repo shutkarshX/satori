@@ -45,31 +45,43 @@
     const visibleRadios = allRadios.filter((r) => r.offsetParent !== null || r.checkVisibility?.() !== false);
     const radios = visibleRadios.length ? visibleRadios : allRadios;
     if (radios.length) {
-      return radios.map((r) => ({
-        input: r,
-        el: r.closest('label') || (r.id && root.querySelector(`label[for="${CSS.escape(r.id)}"]`)) || r.parentElement,
-      })).filter((o) => o.el);
+      return radios.map((r) => {
+        // Look for row wrapper that contains both the checkmark label and the options-color text
+        const row = r.closest('[class*="row" i], [class*="option" i], [class*="choice" i]') || r.parentElement?.parentElement || r.parentElement;
+        return {
+          input: r,
+          el: row,
+          label: r.closest('label') || r.parentElement,
+          val: (r.value || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+        };
+      }).filter((o) => o.el);
     }
 
     // 2. ARIA role="radio"
     const ariaRadios = Array.from(root.querySelectorAll('[role="radio"]'))
       .filter((el) => el.offsetParent !== null || el.checkVisibility?.() !== false);
     if (ariaRadios.length) {
-      return ariaRadios.map((el) => ({ input: null, el }));
+      return ariaRadios.map((el) => ({ input: null, el, label: el, val: '' }));
     }
 
     // 3. Option card fallback on Examly
     const cards = Array.from(root.querySelectorAll('[class*="choice" i], [class*="option" i], [class*="answer" i]'))
       .filter((el) => el.offsetParent !== null && !el.matches('body, main, article, .question-container'));
-    return cards.map((el) => ({ input: null, el }));
+    return cards.map((el) => ({ input: null, el, label: el, val: '' }));
   }
 
-  function click({ input, el }) {
-    if (!el && !input) return;
-    const targetEl = input || el;
+  function click({ input, el, label }) {
+    if (!el && !input && !label) return;
     try {
-      (el || input).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      (label || el || input).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (_e) {}
+
+    // First: If radio has a checkmark-container label, clicking it toggles Angular immediately
+    if (label && label.classList?.contains('checkmark-container')) {
+      label.click();
+      if (input) input.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
 
     const dispatchAll = (target) => {
       if (!target) return;
@@ -82,23 +94,16 @@
       }
     };
 
+    if (label) {
+      dispatchAll(label);
+    }
     if (input) {
       input.checked = true;
       dispatchAll(input);
       input.dispatchEvent(new Event('change', { bubbles: true }));
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      // Also click the label or container wrapper so Angular/Material registers UI selection
-      if (el && el !== input) {
-        dispatchAll(el);
-      }
-    } else {
-      // Find any inner radio or label inside the card
-      const innerRadio = el.querySelector('input[type="radio"], [role="radio"]');
-      if (innerRadio) {
-        if (innerRadio.tagName === 'INPUT') innerRadio.checked = true;
-        dispatchAll(innerRadio);
-        innerRadio.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+    }
+    if (el && el !== label && el !== input) {
       dispatchAll(el);
     }
   }
@@ -112,12 +117,18 @@
 
       // PASS 1: Scan entire copied text against all Examly options (finds exact math or words inside big paragraphs!)
       for (const o of options) {
-        const rawOpt = o.el.innerText || o.el.textContent || '';
+        const rawOpt = o.val || o.el.innerText || o.el.textContent || '';
         const optClean = stripLetter(rawOpt);
         const optMath = cleanMathExpr(optClean);
 
+        // Direct value check against input.value or element text
+        if (o.val && (fullText.toLowerCase().includes(o.val.toLowerCase()) || o.val.toLowerCase().includes(fullText.toLowerCase()))) {
+          click(o);
+          return rawOpt.trim().slice(0, 40);
+        }
+
         // If the option's text or math formula appears anywhere in what you copied!
-        if (optClean.length >= 2 && fullText.toLowerCase().includes(optClean)) {
+        if (optClean.length >= 2 && (fullText.toLowerCase().includes(optClean) || optClean.includes(fullText.toLowerCase()))) {
           click(o);
           return rawOpt.trim().slice(0, 40);
         }

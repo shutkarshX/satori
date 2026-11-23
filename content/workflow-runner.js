@@ -94,16 +94,22 @@
         const answers = await window.satoFastPath.extractFast();
         ensureActive(runId);
         if (!answers.length) throw new Error('No answers in decrypted payload.');
-        const rootContainer = window.satoExtractor.getLastContainer();
-        let picked = 0;
+
+        // Try selecting the option on the current visible question
+        let matched = null;
         for (const a of answers) {
           ensureActive(runId);
           try {
-            window.satoMcqSelector.select(a.correct, rootContainer);
-            picked++;
+            matched = window.satoMcqSelector.select(a.correct, document);
+            if (matched) break;
           } catch (_e) {}
         }
-        window.satoToast.show(`Fast path: selected ${picked}/${answers.length}`, 'success', 3500);
+
+        if (matched) {
+          window.satoToast.show(`✓ Selected: ${matched}`, 'success', 3000);
+        } else {
+          window.satoToast.show('Could not match visible options to answer key.', 'error', 3500);
+        }
       } catch (err) {
         window.satoToast.show(`Fast path failed: ${err.message}`, 'error', 4000);
       } finally {
