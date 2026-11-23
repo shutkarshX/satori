@@ -65,16 +65,41 @@
   }
 
   function click({ input, el }) {
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!el && !input) return;
+    const targetEl = input || el;
+    try {
+      (el || input).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (_e) {}
+
+    const dispatchAll = (target) => {
+      if (!target) return;
+      const opts = { bubbles: true, cancelable: true, view: window };
+      ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
+        try { target.dispatchEvent(new MouseEvent(evt, opts)); } catch (_e) {}
+      });
+      if (typeof target.click === 'function') {
+        try { target.click(); } catch (_e) {}
+      }
+    };
+
     if (input) {
       input.checked = true;
-      input.click();
+      dispatchAll(input);
       input.dispatchEvent(new Event('change', { bubbles: true }));
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      // Also click the label or container wrapper so Angular/Material registers UI selection
+      if (el && el !== input) {
+        dispatchAll(el);
+      }
     } else {
-      el.click();
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      // Find any inner radio or label inside the card
+      const innerRadio = el.querySelector('input[type="radio"], [role="radio"]');
+      if (innerRadio) {
+        if (innerRadio.tagName === 'INPUT') innerRadio.checked = true;
+        dispatchAll(innerRadio);
+        innerRadio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      dispatchAll(el);
     }
   }
 
