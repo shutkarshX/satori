@@ -62,11 +62,10 @@
   }
 
   function readTestcaseStatus() {
-    // Check known Examly result containers or scan DOM for pass/fail signatures
     const bodyText = document.body.innerText || '';
-    
-    // Pattern 1: "X/X Testcases Passed" or "X / X test cases passed"
-    const ratioMatch = bodyText.match(/(\d+)\s*\/\s*(\d+)\s*test\s*cases?\s*passed/i);
+
+    // Pattern 1: "2/2 Sample testcase passed" or "2/2 test cases passed" or "2 / 2 Testcases Passed"
+    const ratioMatch = bodyText.match(/(\d+)\s*\/\s*(\d+)\s*(?:sample\s*)?test\s*cases?\s*passed/i);
     if (ratioMatch) {
       const passed = parseInt(ratioMatch[1], 10);
       const total = parseInt(ratioMatch[2], 10);
@@ -78,11 +77,21 @@
       const errMatch = bodyText.match(/(compilation\s*(failed|error)[^\n]*)/i);
       return { completed: true, passedAll: false, summary: errMatch ? errMatch[1].slice(0, 40) : 'Compilation Failed' };
     }
-    // Pattern 3: Explicit testcase failure cards or "X Testcases Failed"
-    const failMatch = bodyText.match(/(\d+)\s*test\s*cases?\s*failed/i);
-    if (failMatch) {
-      return { completed: true, passedAll: false, summary: `${failMatch[1]} Testcases Failed` };
+
+    // Pattern 3: Individual item cards: "Testcase 1 - Passed" vs "Testcase 1 - Failed"
+    const passedCards = (bodyText.match(/test\s*case\s*\d+\s*-\s*passed/gi) || []).length;
+    const failedCards = (bodyText.match(/test\s*case\s*\d+\s*-\s*failed/gi) || []).length;
+    if (passedCards > 0 || failedCards > 0) {
+      const total = passedCards + failedCards;
+      return { completed: true, passedAll: (failedCards === 0 && passedCards > 0), summary: `${passedCards}/${total} Testcases Passed` };
     }
+
+    // Pattern 4: "X Testcases Failed" or "X Sample testcase failed"
+    const failMatch = bodyText.match(/(\d+)\s*(?:sample\s*)?test\s*cases?\s*failed/i);
+    if (failMatch) {
+      return { completed: true, passedAll: false, summary: `${failMatch[1]} Testcase(s) Failed` };
+    }
+
     return { completed: false };
   }
 
