@@ -21,28 +21,23 @@
     } catch (_e) {}
     if (matchesKey(event, 's')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-      window.satoSnippetClient.addSnippet().then((result) => {
-        window.satoToast.show(result.added ? `Added snippet #${result.count} (${result.snippet.length} chars)` : 'Highlight text first.', result.added ? 'info' : 'error', 2500);
-      }).catch((error) => window.satoToast.show(error.message, 'error', 3000));
+      window.satoSnippetClient.addSnippet().then((r) => {
+        window.satoToast.show(r.added ? `Added #${r.count} (${r.snippet.length}c)` : 'Highlight text first.', r.added ? 'info' : 'error', 2500);
+      }).catch((e) => window.satoToast.show(e.message, 'error', 3000));
       return;
     }
     if (matchesKey(event, 'x')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-      window.satoSnippetClient.clearSnippets().then((count) => window.satoToast.show(`Cleared ${count} snippet(s)`, 'info', 2000))
-        .catch((error) => window.satoToast.show(error.message, 'error', 3000));
+      window.satoSnippetClient.clearSnippets().then((c) => window.satoToast.show(`Cleared ${c} snippet(s)`, 'info', 2000))
+        .catch((e) => window.satoToast.show(e.message, 'error', 3000));
       return;
     }
     if (matchesKey(event, 'g')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-      if (event.shiftKey) {
-        // Alt + Shift + G: Grab and insert the latest answer directly from open Gemini
-        window.satoWorkflowRunner.grabAndInsertFromGemini();
-      } else {
-        // Alt + G: Toggle side-by-side view
-        chrome.runtime.sendMessage({ type: 'SATO_TOGGLE_SIDE_BY_SIDE' }, (res) => {
-          window.satoToast.show(res?.open ? 'Gemini opened side-by-side!' : 'Gemini closed.', 'info', 2000);
-        });
-      }
+      if (event.shiftKey) return window.satoWorkflowRunner.grabAndInsertFromGemini();
+      chrome.runtime.sendMessage({ type: 'SATO_TOGGLE_SIDE_BY_SIDE' }, (res) => {
+        window.satoToast.show(res?.open ? 'Gemini opened side-by-side!' : 'Gemini closed.', 'info', 2000);
+      });
       return;
     }
     if (matchesKey(event, 'f')) {
@@ -67,6 +62,17 @@
     if (matchesKey(event, 'm')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
       window.satoWorkflowRunner.runMcqWorkflow(event.shiftKey);
+      return;
+    }
+    if (matchesKey(event, 'n')) {
+      event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+      try {
+        window.satoTestRunner?.clickNext();
+        window.satoToast.show('Clicked Next!', 'success', 2000);
+      } catch (err) {
+        window.satoToast.show(err.message, 'error', 2500);
+      }
+      return;
     }
   }, true);
 

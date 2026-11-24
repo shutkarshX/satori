@@ -117,7 +117,28 @@
 
         if (!text || !text.trim()) throw new Error('Clipboard is empty.');
         window.satoTyper.insert(target, text);
-        window.satoToast.show('Pasted clipboard code into the editor.', 'success', 2500);
+        window.satoToast.show('Pasted code into editor. Running compile…', 'info', 2000);
+        
+        // Auto Compile & Run and Advance if testcases pass
+        if (window.satoTestRunner) {
+          setTimeout(async () => {
+            try {
+              const res = await window.satoTestRunner.runAndWatch(18000);
+              if (res.passedAll) {
+                window.satoToast.show(`✓ ${res.summary}! Advancing…`, 'success', 2500);
+                setTimeout(() => {
+                  try { window.satoTestRunner.clickNext(); } catch (_e) {}
+                }, 1000);
+              } else if (res.completed) {
+                window.satoToast.show(`⚠️ Tests: ${res.summary}. Check editor.`, 'error', 4500);
+              } else {
+                window.satoToast.show('Execution finished or timed out.', 'info', 3000);
+              }
+            } catch (err) {
+              window.satoToast.show(err.message, 'info', 3000);
+            }
+          }, 400);
+        }
       } catch (error) {
         window.satoToast.show(`Clipboard paste error: ${error.message}`, 'error', 3500);
       }

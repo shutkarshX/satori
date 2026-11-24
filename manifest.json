@@ -41,6 +41,7 @@
         "content/native-typer.js",
         "content/mcq-selector.js",
         "content/snippet-client.js",
+        "content/test-runner.js",
         "content/examly-extractor.js",
         "content/workflow-runner.js",
         "content/listener.js"
