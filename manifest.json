@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Sato Quick Assist",
+  "name": "Satori",
   "version": "1.8.0",
-  "description": "Modular code typer and MCQ solver with Gemini bridge and fresh-chat reset.",
+  "description": "Modular code typer and MCQ solver with Gemini bridge and fast path.",
   "permissions": ["activeTab", "scripting", "storage", "tabs", "clipboardRead"],
   "host_permissions": ["https://*.examly.io/*", "https://gemini.google.com/*"],
   "background": { "service_worker": "background/orchestrator.js" },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Sato Quick Assist",
+    "default_title": "Satori",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
