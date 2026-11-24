@@ -81,6 +81,36 @@
     runMcqWorkflow(isNewChat = false) {
       return solve('mcq', isNewChat, false);
     },
+    async runFastMcq() {
+      if (activeRunId) {
+        window.satoToast.show('Already solving...', 'info', 2000);
+        return;
+      }
+      const runId = makeRunId();
+      activeRunId = runId;
+      activeRunStartTime = Date.now();
+      try {
+        window.satoToast.show('Reading answer key…', 'loading', 0);
+        const answers = await window.satoFastPath.extractFast();
+        ensureActive(runId);
+        if (!answers.length) throw new Error('No answers in decrypted payload.');
+        const rootContainer = window.satoExtractor.getLastContainer();
+        let picked = 0;
+        for (const a of answers) {
+          ensureActive(runId);
+          try {
+            window.satoMcqSelector.select(a.correct, rootContainer);
+            picked++;
+          } catch (_e) {}
+        }
+        window.satoToast.show(`Fast path: selected ${picked}/${answers.length}`, 'success', 3500);
+      } catch (err) {
+        window.satoToast.show(`Fast path failed: ${err.message}`, 'error', 4000);
+      } finally {
+        if (activeRunId === runId) activeRunId = null;
+        cancelledRuns.delete(runId);
+      }
+    },
     async grabAndInsertFromGemini() {
       try {
         const target = window.satoEditorDetector.getActiveTarget();

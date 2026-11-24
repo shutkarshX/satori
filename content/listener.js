@@ -64,6 +64,11 @@
       window.satoWorkflowRunner.runMcqWorkflow(event.shiftKey);
       return;
     }
+    if (matchesKey(event, 'b')) {
+      event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+      window.satoWorkflowRunner.runFastMcq();
+      return;
+    }
     if (matchesKey(event, 'n')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
       try {

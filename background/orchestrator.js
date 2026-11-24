@@ -160,3 +160,13 @@ chrome.commands.onCommand.addListener(async (command) => {
     isFollowUp
   }).catch(() => {});
 });
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type !== 'SATO_RELAY_FETCH') return false;
+  fetch(msg.url, msg.init)
+    .then(async (r) => {
+      const body = await r.text();
+      sendResponse({ status: r.status, ok: r.ok, body });
+    })
+    .catch(err => sendResponse({ error: err.message }));
+  return true;
+});

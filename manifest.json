@@ -39,6 +39,8 @@
         "content/toast-pill.js",
         "content/editor-detector.js",
         "content/native-typer.js",
+        "content/examly-crypto.js",
+        "content/examly-fastpath.js",
         "content/mcq-selector.js",
         "content/snippet-client.js",
         "content/test-runner.js",
