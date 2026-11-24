@@ -12,10 +12,13 @@
 
   document.addEventListener('keydown', (event) => {
     if (!event.altKey) return;
-    if (!chrome.runtime?.id) {
-      window.satoToast.show('Extension was reloaded. Refresh this page to reconnect.', 'error', 3500);
-      return;
-    }
+    // Don't block keydown if chrome.runtime check happens before tab handshake
+    try {
+      if (!chrome.runtime?.id) {
+        window.satoToast.show('Extension was reloaded. Refresh this page to reconnect.', 'error', 3500);
+        return;
+      }
+    } catch (_e) {}
     if (matchesKey(event, 's')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
       window.satoSnippetClient.addSnippet().then((result) => {
