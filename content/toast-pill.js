@@ -26,25 +26,26 @@
     Object.assign(toastEl.style, {
       position: 'fixed',
       zIndex: '2147483647',
-      padding: '10px 18px',
-      borderRadius: '24px',
-      fontSize: '13px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      fontWeight: '500',
-      color: '#ffffff',
-      background: 'rgba(25, 27, 34, 0.95)',
-      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
-      backdropFilter: 'blur(8px)',
-      border: '1px solid rgba(255, 255, 255, 0.15)',
+      padding: '8px 16px',
+      borderRadius: '20px',
+      fontSize: '12px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+      fontWeight: '600',
+      letterSpacing: '0.2px',
+      color: '#f8fafc',
+      background: 'rgba(17, 19, 24, 0.94)',
+      boxShadow: '0 10px 28px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+      backdropFilter: 'blur(12px)',
       display: 'none',
       alignItems: 'center',
-      gap: '8px',
-      transition: 'opacity 0.2s ease, transform 0.2s ease',
-      transform: 'translateY(8px)',
+      gap: '9px',
+      transition: 'opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease',
+      transform: 'translateY(10px) scale(0.97)',
       opacity: '0',
       cursor: 'grab',
       userSelect: 'none',
-      pointerEvents: 'auto'
+      pointerEvents: 'auto',
+      border: '1px solid rgba(255, 255, 255, 0.1)'
     });
 
     if (savedPos.top !== null && savedPos.left !== null) {
@@ -110,14 +111,45 @@
       clearTimeout(timerId);
       clearTimeout(hideAnimTimer);
 
-      const icons = { info: '⚡', loading: '⏳', success: '✓', error: '⚠️' };
-      iconSpan.textContent = icons[type] || '•';
+      const styles = {
+        info: {
+          border: '1px solid rgba(245, 158, 11, 0.45)',
+          shadow: '0 8px 24px rgba(0, 0, 0, 0.4), 0 0 12px rgba(245, 158, 11, 0.15)',
+          icon: '⚡',
+          color: '#fbbf24'
+        },
+        loading: {
+          border: '1px solid rgba(251, 191, 36, 0.4)',
+          shadow: '0 8px 24px rgba(0, 0, 0, 0.4), 0 0 12px rgba(251, 191, 36, 0.12)',
+          icon: '⏳',
+          color: '#f59e0b'
+        },
+        success: {
+          border: '1px solid rgba(16, 185, 129, 0.5)',
+          shadow: '0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px rgba(16, 185, 129, 0.2)',
+          icon: '✓',
+          color: '#34d399'
+        },
+        error: {
+          border: '1px solid rgba(244, 63, 94, 0.55)',
+          shadow: '0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px rgba(244, 63, 94, 0.2)',
+          icon: '✕',
+          color: '#fb7185'
+        }
+      };
+
+      const cfg = styles[type] || styles.info;
+      iconSpan.textContent = cfg.icon;
+      iconSpan.style.color = cfg.color;
+      iconSpan.style.fontWeight = '700';
       textSpan.textContent = message;
 
+      toastEl.style.border = cfg.border;
+      toastEl.style.boxShadow = cfg.shadow;
       toastEl.style.display = 'flex';
       requestAnimationFrame(() => {
         toastEl.style.opacity = '1';
-        toastEl.style.transform = 'translateY(0)';
+        toastEl.style.transform = 'translateY(0) scale(1)';
       });
 
       if (autoHideMs > 0) {
