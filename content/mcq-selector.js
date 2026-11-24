@@ -1,8 +1,24 @@
 (() => {
   if (window.__satoMcqSelectorLoaded) return;
   window.__satoMcqSelectorLoaded = true;
-  const norm = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
-  const stripLetter = (s) => norm(s).replace(/^[a-d][\)\.\:\-]\s*/, '');
+  const norm = (s) => (s || '')
+    .normalize('NFKD')
+    .replace(/[\u2217\u22c5\u00d7·×⋅]/g, '*')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  const stripLetter = (s) => norm(s)
+    .replace(/^(?:answer|correct answer|correct option|option)\s*[:\-]?\s*/i, '')
+    .replace(/^[a-d][\)\.\:\-]\s*/, '')
+    .trim();
+
+  function cleanMathExpr(str) {
+    return str
+      .replace(/[\s^_{}()]/g, '')
+      .replace(/2\s*k/g, '2k')
+      .toLowerCase();
+  }
 
   function extractLetter(raw) {
     const t = raw.trim();
@@ -58,14 +74,22 @@
         }
       }
 
-      // 2. Text match: exact first, then best scored partial match on smallest target
-      const ans = stripLetter(rawAnswer);
+      // 2. Text / Math match: exact first, then math normalized, then best scored partial match
+      const ans = stripLetter(rawAnswer.split('\n')[0]);
+      const ansMath = cleanMathExpr(ans);
+
       const scored = options.map((o) => {
-        const t = stripLetter(o.el.innerText);
+        const rawOpt = o.el.innerText || o.el.textContent || '';
+        const t = stripLetter(rawOpt);
+        const tMath = cleanMathExpr(t);
         let score = 0;
-        if (t === ans) score = 3;
-        else if (t.length > 2 && ans.length > 2 && (t.includes(ans) || ans.includes(t))) {
+
+        if (t === ans || (ansMath.length >= 2 && tMath === ansMath)) {
+          score = 5;
+        } else if (t.length > 2 && ans.length > 2 && (t.includes(ans) || ans.includes(t))) {
           score = Math.min(t.length, ans.length) / Math.max(t.length, ans.length);
+        } else if (ansMath.length >= 2 && (tMath.includes(ansMath) || ansMath.includes(tMath))) {
+          score = 2;
         }
         return { o, score, length: t.length };
       }).filter((x) => x.score > 0.4).sort((a, b) => b.score - a.score || a.length - b.length);
