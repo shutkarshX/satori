@@ -17,8 +17,18 @@
   }
 
   function findNextButton() {
-    return findButtonByText(/^(save\s*(&|and)?\s*next|next\s*question|next)$/i) ||
-           document.querySelector('[aria-label*="next" i], [title*="next" i]');
+    // 1. Text-based match (Save & Next, Next, Submit, Submit Answer, Next Question)
+    const byText = findButtonByText(/^(save\s*(&|and)?\s*next|next(\s*question)?|submit(\s*code|\s*answer)?)$/i);
+    if (byText) return byText;
+
+    // 2. Icon / Arrow buttons (e.g. pagination controls like ">", "chevron-right", aria-label="next")
+    return Array.from(document.querySelectorAll('button, [role="button"], a, div[tabindex="0"]')).find(el => {
+      if (el.offsetParent === null || el.disabled) return false;
+      const aria = (el.getAttribute('aria-label') || el.getAttribute('title') || '').toLowerCase();
+      if (aria.includes('next') || aria.includes('forward')) return true;
+      const cls = (el.className || '').toString().toLowerCase();
+      return (cls.includes('next') || cls.includes('chevron-right') || cls.includes('arrow-right')) && !cls.includes('prev');
+    }) || document.querySelector('[class*="pagination" i] [class*="next" i], [class*="nav" i] [class*="next" i]');
   }
 
   function readTestcaseStatus() {
