@@ -1,4 +1,4 @@
-/* Design System: Sleek Onyx, Smoked Titanium & Warm Amber/Copper */
+/* Modern Native UI - Refined Dark Obsidian & Amber */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -9,229 +9,208 @@
 
 body {
   width: 310px;
-  background: #0d0e11;
-  color: #f1f3f5;
-  padding: 14px;
-  overflow: hidden;
+  background: #111216;
+  color: #eceff2;
+  padding: 16px;
   user-select: none;
 }
 
-.shell {
+.container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-/* Header */
-.top-bar {
+/* Hero Section */
+.hero {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  gap: 11px;
 }
 
-.brand {
+.app-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
-.brand-glyph {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #0d0e11;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
-}
-
-.brand-text {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.brand-text h1 {
+.app-title {
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.8px;
   color: #ffffff;
+  letter-spacing: -0.2px;
 }
 
-.version-tag {
-  font-size: 10px;
-  font-weight: 600;
-  color: #71767f;
-  background: rgba(255, 255, 255, 0.05);
+.badge {
+  font-size: 9px;
+  font-weight: 800;
   padding: 2px 5px;
   border-radius: 4px;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 12px;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-}
-
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
-  animation: pulse-dot 2s infinite ease-in-out;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
-}
-
-.live-label {
-  font-size: 9px;
-  font-weight: 700;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
   letter-spacing: 0.5px;
-  color: #34d399;
 }
 
-/* Shortcuts Card */
-.shortcuts-card {
-  background: #14161b;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 10px 12px;
+.app-sub {
+  font-size: 11px;
+  color: #7b8190;
+}
+
+/* Action Cards */
+.action-grid {
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
 
-.section-title {
+.action-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #181a20;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.action-card:hover {
+  background: #20232b;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.action-card:active {
+  transform: scale(0.98);
+}
+
+/* Primary Amber Card */
+.primary-card {
+  background: linear-gradient(180deg, #1d1b17 0%, #171613 100%);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.primary-card:hover {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: linear-gradient(180deg, #25221b 0%, #1c1a16 100%);
+}
+
+.action-icon {
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+}
+
+.action-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.action-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f3f6;
+}
+
+.action-hint {
+  font-size: 10px;
+  color: #7b8190;
+}
+
+.hotkey-pill {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a4abb8;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Clean List Section */
+.list-section {
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.list-label {
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.9px;
-  color: #787f8c;
+  letter-spacing: 0.8px;
+  color: #5c6270;
   margin-bottom: 2px;
 }
 
-.shortcut-row {
+.list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.item-text {
+  font-size: 11px;
+  color: #abb2bf;
+}
+
+.item-kbd {
+  display: flex;
+  gap: 3px;
+}
+
+kbd {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-weight: 600;
+  color: #f59e0b;
+  background: #18191f;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Footer Controls */
+.footer {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.shortcut-desc {
-  font-size: 11px;
-  font-weight: 500;
-  color: #c9cdd4;
-}
-
-.key-combo {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: #555b66;
+.abort-link {
+  background: transparent;
+  border: none;
   font-size: 10px;
-}
-
-kbd {
-  display: inline-block;
-  padding: 2px 6px;
-  font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-weight: 600;
-  color: #f59e0b;
-  background: #1c1f26;
-  border: 1px solid rgba(245, 158, 11, 0.22);
-  border-bottom: 2px solid rgba(245, 158, 11, 0.35);
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-/* Action Buttons */
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
+  color: #f43f5e;
   cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  outline: none;
+  padding: 2px 0;
+  opacity: 0.85;
 }
 
-.btn:active {
-  transform: translateY(1px);
+.abort-link:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
-/* Primary Button: Amber Gold */
-.btn-primary {
-  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
-  color: #0d0e11;
-  border: 1px solid #fbbf24;
-  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-}
-
-.btn-primary:hover {
-  background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
-  box-shadow: 0 3px 10px rgba(245, 158, 11, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-
-/* Secondary Button: Smoked Slate */
-.btn-secondary {
-  background: #171920;
-  color: #e2e5e9;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.btn-secondary:hover {
-  background: #1f222b;
-  border-color: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
-}
-
-/* Danger Button: Subtle Crimson */
-.btn-danger {
-  background: rgba(244, 63, 94, 0.08);
-  color: #fb7185;
-  border: 1px solid rgba(244, 63, 94, 0.2);
-}
-
-.btn-danger:hover {
-  background: rgba(244, 63, 94, 0.16);
-  border-color: rgba(244, 63, 94, 0.35);
-  color: #fda4af;
-}
-
-/* Footer / Status */
-.footer-bar {
-  padding-top: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.status-text {
-  font-size: 11px;
-  color: #68707c;
-  font-weight: 500;
-  text-align: center;
+.status-indicator {
+  font-size: 10px;
+  color: #7b8190;
 }
