@@ -121,6 +121,30 @@
       } catch (error) {
         window.satoToast.show(`Clipboard paste error: ${error.message}`, 'error', 3500);
       }
+    },
+    async selectClipboardMcq() {
+      try {
+        let text = '';
+        try {
+          text = await navigator.clipboard.readText();
+        } catch (_clipErr) {
+          const helper = document.createElement('textarea');
+          helper.style.position = 'fixed';
+          helper.style.left = '-9999px';
+          document.body.appendChild(helper);
+          helper.focus();
+          document.execCommand('paste');
+          text = helper.value;
+          helper.remove();
+        }
+
+        if (!text || !text.trim()) throw new Error('Clipboard is empty. Copy the option/letter first.');
+        const rootContainer = window.satoExtractor.getLastContainer();
+        const selected = window.satoMcqSelector.select(text.trim(), rootContainer);
+        window.satoToast.show(`Done! Selected: ${selected}`, 'success', 3500);
+      } catch (error) {
+        window.satoToast.show(`MCQ select error: ${error.message}`, 'error', 3500);
+      }
     }
   };
 })();

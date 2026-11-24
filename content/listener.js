@@ -49,7 +49,11 @@
     }
     if (matchesKey(event, 'v')) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-      window.satoWorkflowRunner.pasteClipboardCode();
+      if (event.shiftKey) {
+        window.satoWorkflowRunner.selectClipboardMcq();
+      } else {
+        window.satoWorkflowRunner.pasteClipboardCode();
+      }
       return;
     }
     if (matchesKey(event, 'c')) {
